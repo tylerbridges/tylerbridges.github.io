@@ -1,0 +1,12 @@
+{
+  "name": "Rochester Weather",
+  "short_name": "RST Weather",
+  "description": "A weather.gov-only forecast dashboard for Rochester, Minnesota ZIP 55901.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#071522",
+  "theme_color": "#0b2545",
+  "icons": [
+    {"src":"/favicon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}
+  ]
+}
