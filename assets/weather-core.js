@@ -11,6 +11,13 @@ window.WX = (function(){
   function setCachedPoint(lat,lon,point){try{const all=JSON.parse(localStorage.getItem(POINT_CACHE_KEY)||'{}');all[pointCacheKey(lat,lon)]={point,ts:Date.now()};const keys=Object.keys(all);if(keys.length>5){keys.sort((a,b)=>all[a].ts-all[b].ts);delete all[keys[0]]}localStorage.setItem(POINT_CACHE_KEY,JSON.stringify(all))}catch{}}
   function geolocate(opts={}){return new Promise((resolve,reject)=>{if(!navigator.geolocation)return reject(new Error('Geolocation unsupported'));navigator.geolocation.getCurrentPosition(pos=>resolve({lat:+pos.coords.latitude.toFixed(4),lon:+pos.coords.longitude.toFixed(4)}),reject,{enableHighAccuracy:false,timeout:5000,maximumAge:600000,...opts})})}
   async function geocodeSearch(query){const results=await json(`https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=${encodeURIComponent(query)}`);if(!results.length)throw new Error('Location not found.');return {lat:+(+results[0].lat).toFixed(4),lon:+(+results[0].lon).toFixed(4)}}
+  const US_STATE_ABBR={Alabama:'AL',Alaska:'AK',Arizona:'AZ',Arkansas:'AR',California:'CA',Colorado:'CO',Connecticut:'CT',Delaware:'DE',Florida:'FL',Georgia:'GA',Hawaii:'HI',Idaho:'ID',Illinois:'IL',Indiana:'IN',Iowa:'IA',Kansas:'KS',Kentucky:'KY',Louisiana:'LA',Maine:'ME',Maryland:'MD',Massachusetts:'MA',Michigan:'MI',Minnesota:'MN',Mississippi:'MS',Missouri:'MO',Montana:'MT',Nebraska:'NE',Nevada:'NV','New Hampshire':'NH','New Jersey':'NJ','New Mexico':'NM','New York':'NY','North Carolina':'NC','North Dakota':'ND',Ohio:'OH',Oklahoma:'OK',Oregon:'OR',Pennsylvania:'PA','Rhode Island':'RI','South Carolina':'SC','South Dakota':'SD',Tennessee:'TN',Texas:'TX',Utah:'UT',Vermont:'VT',Virginia:'VA',Washington:'WA','West Virginia':'WV',Wisconsin:'WI',Wyoming:'WY','District of Columbia':'DC','Puerto Rico':'PR',Guam:'GU','American Samoa':'AS','U.S. Virgin Islands':'VI','Northern Mariana Islands':'MP'};
+  function normalizedLabel(result){
+    const a=result.address||{};
+    const city=a.city||a.town||a.village||a.hamlet||a.municipality||a.suburb||a.county;
+    const state=US_STATE_ABBR[a.state]||a.state;
+    return city&&state?`${city}, ${state}`:result.display_name;
+  }
   function refreshGeoInBackground(saved){geolocate({maximumAge:0}).then(pos=>{const sameSpot=saved.lat===pos.lat&&saved.lon===pos.lon;saveLocation({...pos,label:sameSpot?saved.label:null,source:'geo'})}).catch(()=>{})}
   async function resolveLocation(){
     const saved=getSavedLocation();
@@ -73,17 +80,32 @@ window.WX = (function(){
     return `${condition}${temperature==null?'':` · ${temperature}°F`}`;
   }
   function alertLine(a,tz){const p=a.properties;return `<div class="alert"><strong>${esc(p.event)}</strong><p>${esc(p.areaDesc)}</p><p>${esc(local(p.onset||p.effective,tz))}–${esc(local(p.ends||p.expires,tz))}</p><p>${esc((p.instruction||p.description||'See NWS alert for instructions.').replace(/\s+/g,' '))}</p><a href="${esc(p['@id']||a.id)}" target="_blank" rel="noreferrer">Full NWS alert</a></div>`}
-  function dayKeyOf(tz){return d=>new Intl.DateTimeFormat('en-CA',{timeZone:tz,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(d))}
+  function dayKey(tz,date){return new Intl.DateTimeFormat('en-CA',{timeZone:tz,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(date))}
   function findTodayPeriods(allPeriods,tz){
-    const key=dayKeyOf(tz),todayKey=key(new Date());
+    const todayKey=dayKey(tz,new Date());
     return {
-      day: allPeriods.find(p=>p.isDaytime&&key(p.startTime)===todayKey)||null,
-      night: allPeriods.find(p=>!p.isDaytime&&key(p.startTime)===todayKey)||null
+      day: allPeriods.find(p=>p.isDaytime&&dayKey(tz,p.startTime)===todayKey)||null,
+      night: allPeriods.find(p=>!p.isDaytime&&dayKey(tz,p.startTime)===todayKey)||null
     };
   }
-  function dayRows(periods,grid,tz){const key=dayKeyOf(tz);const rows=[];for(let i=0;i<periods.length&&rows.length<7;i++){const p=periods[i];if(!p.isDaytime&&rows.length)continue;let day=p.isDaytime?p:null,night=p.isDaytime?periods[i+1]:p;if(day&&night?.isDaytime)night=null;const base=day||night;const date=new Date(base.startTime);const dayKey=key(date);const uv=uvForDate(grid,dayKey,tz);rows.push({date,day,night,uv});if(day&&night)i++}return rows}
-  function uvForDate(grid,dateKey,tz){const key=dayKeyOf(tz);const values=grid.properties?.maxUVIndex?.values||[];for(const row of values){if(key(row.validTime.split('/')[0])===dateKey&&row.value!=null)return Math.round(row.value)}return null}
-  function renderDaysHTML(periods,grid,tz){return dayRows(periods,grid,tz).map(r=>{const d=r.day,n=r.night,b=d||n,title=r.date.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric',timeZone:tz});const gusts=[d,n].filter(Boolean).map(p=>gustFrom(p.detailedForecast)).filter(v=>v!=null),gust=gusts.length?Math.max(...gusts):null;const pop=d?.probabilityOfPrecipitation?.value;const metrics=[['High / low',`${d?.temperature??'—'}° / ${n?.temperature??'—'}°`],[gust==null?'Wind':'Wind / peak gust',`${b.windSpeed}${gust==null?'':` / ${gust} mph`}`],pop==null?null:['Day rain chance',`${pop}%`],r.uv==null?null:['Max UV',r.uv]].filter(Boolean).map(([k,v])=>`<span class="metric"><b>${esc(k)}:</b>&nbsp;${esc(v)}</span>`).join('');return `<article class="day"><div class="day-title"><span aria-hidden="true">${emoji(b.shortForecast)}</span> ${esc(title)}</div><div class="condition">${esc(b.shortForecast)}</div><div class="metrics">${metrics}</div><hr><div class="detail"><ul>${listItem('Day',d?shortText(d):'Daytime period has ended; not included in this NWS forecast.')}${listItem('Night',n?shortText(n):'Not yet provided by NWS.')}</ul></div></article>`}).join('')}
+  function uvForDate(grid,dateKey,tz){const values=grid.properties?.maxUVIndex?.values||[];for(const row of values){if(dayKey(tz,row.validTime.split('/')[0])===dateKey&&row.value!=null)return Math.round(row.value)}return null}
+  function humidityForDate(grid,dateKey,tz){const values=grid.properties?.relativeHumidity?.values||[];const vals=values.filter(row=>dayKey(tz,row.validTime.split('/')[0])===dateKey).map(r=>r.value).filter(v=>v!=null);if(!vals.length)return null;return Math.round(vals.reduce((a,b)=>a+b,0)/vals.length)}
+  function dayRows(periods,grid,tz){const rows=[];for(let i=0;i<periods.length&&rows.length<7;i++){const p=periods[i];if(!p.isDaytime&&rows.length)continue;let day=p.isDaytime?p:null,night=p.isDaytime?periods[i+1]:p;if(day&&night?.isDaytime)night=null;const base=day||night;const date=new Date(base.startTime);const key=dayKey(tz,date);const uv=uvForDate(grid,key,tz);const humidity=humidityForDate(grid,key,tz);rows.push({date,day,night,uv,humidity});if(day&&night)i++}return rows}
+  function dayMetrics(d,n,uv,humidity){
+    const b=d||n;
+    const gusts=[d,n].filter(Boolean).map(p=>gustFrom(p.detailedForecast)).filter(v=>v!=null);
+    const gust=gusts.length?Math.max(...gusts):null;
+    const pop=d?.probabilityOfPrecipitation?.value;
+    return [
+      ['High / low',`${d?.temperature??'—'}° / ${n?.temperature??'—'}°`],
+      [gust==null?'Wind':'Wind / peak gust',`${b.windSpeed}${gust==null?'':` / ${gust} mph`}`],
+      pop==null?null:['Rain chance',`${pop}%`],
+      humidity==null?null:['Humidity',`${humidity}%`],
+      uv==null?null:['Max UV',uv]
+    ].filter(Boolean);
+  }
+  function metricsHTML(pairs){return pairs.map(([k,v])=>`<span class="metric"><b>${esc(k)}:</b>&nbsp;${esc(v)}</span>`).join('')}
+  function renderDaysHTML(periods,grid,tz){return dayRows(periods,grid,tz).map(r=>{const d=r.day,n=r.night,b=d||n,title=r.date.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric',timeZone:tz});const metrics=metricsHTML(dayMetrics(d,n,r.uv,r.humidity));return `<article class="day"><div class="day-title"><span aria-hidden="true">${emoji(b.shortForecast)}</span> ${esc(title)}</div><div class="condition">${esc(b.shortForecast)}</div><div class="metrics">${metrics}</div><hr><div class="detail"><ul>${listItem('Day',d?shortText(d):'Daytime period has ended; not included in this NWS forecast.')}${listItem('Night',n?shortText(n):'Not yet provided by NWS.')}</ul></div></article>`}).join('')}
 
   function mountHeader(active,onLocationChange){
     const header=el('site-header');
@@ -113,8 +135,9 @@ window.WX = (function(){
       if(q.length<3){suggestionMap.clear();el('location-suggestions').innerHTML='';return}
       suggestTimer=setTimeout(async()=>{
         try{
-          const results=await json(`https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=us&q=${encodeURIComponent(q)}`);
-          suggestionMap=new Map(results.map(r=>[r.display_name,{lat:+(+r.lat).toFixed(4),lon:+(+r.lon).toFixed(4)}]));
+          const results=await json(`https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&countrycodes=us&q=${encodeURIComponent(q)}`);
+          suggestionMap=new Map();
+          results.forEach(r=>{const label=normalizedLabel(r);if(!suggestionMap.has(label))suggestionMap.set(label,{lat:+(+r.lat).toFixed(4),lon:+(+r.lon).toFixed(4)})});
           el('location-suggestions').innerHTML=[...suggestionMap.keys()].map(name=>`<option value="${esc(name)}"></option>`).join('');
         }catch{}
       },350);
@@ -137,5 +160,6 @@ window.WX = (function(){
 
   return {API,DEFAULT_LOC,el,esc,getSavedLocation,saveLocation,geolocate,geocodeSearch,resolveLocation,resolvePoint,json,
     emoji,local,maxWind,gustFrom,durationMs,gridValues,kphToMph,cToF,product,listItem,shortText,concise,
-    currentObservation,currentHeadline,alertLine,dayRows,uvForDate,findTodayPeriods,renderDaysHTML,mountHeader};
+    currentObservation,currentHeadline,alertLine,dayKey,dayRows,uvForDate,humidityForDate,dayMetrics,metricsHTML,
+    findTodayPeriods,renderDaysHTML,mountHeader};
 })();
