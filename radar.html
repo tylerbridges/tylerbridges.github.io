@@ -29,6 +29,7 @@
     .leaflet-control-attribution{font-size:10px}
     .leaflet-control-zoom{border:0!important;box-shadow:var(--shadow)!important}
     .leaflet-control-zoom a{background:var(--surface)!important;color:var(--text)!important;border-color:var(--line)!important}
+    .map-dark .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.94) contrast(.9)}
   </style>
 </head>
 <body>
@@ -115,7 +116,8 @@
           el('loading').classList.add('hidden');el('content').classList.remove('hidden');
           map=L.map('map',{zoomControl:true,attributionControl:true}).setView(latlng,8);
           const dark=document.documentElement.getAttribute('data-theme')!=='light';
-          L.tileLayer(`https://{s}.basemaps.cartocdn.com/${dark?'dark_all':'voyager'}/{z}/{x}/{y}{r}.png`,{maxZoom:19,attribution:'© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>, © <a href="https://carto.com/attributions" target="_blank" rel="noreferrer">CARTO</a>'}).addTo(map);
+          if(dark)el('map').classList.add('map-dark');
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors'}).addTo(map);
           marker=L.marker(latlng).addTo(map);
           if(typeof L.esri==='undefined'){el('error').classList.remove('hidden');el('error').textContent='Radar map library (Esri-Leaflet) failed to load. Check your connection and reload.';return}
           esriLayer=L.esri.dynamicMapLayer({url:SERVICE,opacity:0.75,f:'image',attribution:'Radar © <a href="https://www.weather.gov/" target="_blank" rel="noreferrer">NOAA/NWS</a> nowCoast'}).addTo(map);
