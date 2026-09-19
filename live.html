@@ -172,9 +172,15 @@
     window.addEventListener('focus',autoRefresh);
     setInterval(()=>{if(document.visibilityState==='visible')load()},10*60000);
     let suggestionMap=new Map(),suggestTimer=null;
+    function pickLocation(pos,query){
+      saveLocation({...pos,label:null,source:'search',query});
+      el('location-input').value='';el('location-suggestions').innerHTML='';suggestionMap.clear();
+      load();
+    }
     el('location-input').addEventListener('input',()=>{
       clearTimeout(suggestTimer);
       const q=el('location-input').value.trim();
+      if(suggestionMap.has(q)){el('kicker').textContent='Loading…';pickLocation(suggestionMap.get(q),q);return}
       if(q.length<3){suggestionMap.clear();el('location-suggestions').innerHTML='';return}
       suggestTimer=setTimeout(async()=>{
         try{
@@ -189,12 +195,8 @@
       const q=el('location-input').value.trim();
       if(!q)return;
       el('kicker').textContent='Searching…';
-      try{
-        const pos=suggestionMap.get(q)||await geocodeSearch(q);
-        saveLocation({...pos,label:null,source:'search',query:q});
-        el('location-input').value='';el('location-suggestions').innerHTML='';suggestionMap.clear();
-        load();
-      }catch(err){el('kicker').textContent=err.message||'Location search failed';}
+      try{pickLocation(suggestionMap.get(q)||await geocodeSearch(q),q)}
+      catch(err){el('kicker').textContent=err.message||'Location search failed';}
     });
     el('locate-btn').addEventListener('click',async()=>{
       el('kicker').textContent='Locating…';
