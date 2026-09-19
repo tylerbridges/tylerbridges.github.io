@@ -26,6 +26,7 @@
     <div id="loading" class="loading" role="status" aria-live="polite">Loading forecast…</div>
     <div id="error" class="error hidden" role="alert"></div>
     <div id="content" class="hidden">
+      <div id="today-card"></div>
       <div class="days" id="days"></div>
       <p class="status" id="updated"></p>
       <div id="site-footer-nav"></div>
@@ -34,19 +35,23 @@
   <script src="/assets/weather-core.js"></script>
   <script>
   (()=>{
-    const {el,resolveLocation,resolvePoint,json,local,renderDaysHTML,mountHeader,mountFooterNav,mountPullToRefresh}=WX;
+    const {el,resolveLocation,resolvePoint,json,local,emoji,dayRows,findTodayPeriods,renderDaysHTML,loadTodayCard,mountHeader,mountFooterNav,mountPullToRefresh}=WX;
     let busy=false,lastLoad=0,hasLoaded=false;
     const header=mountHeader('forecast',()=>load());
     mountFooterNav('forecast');
     async function load(){if(busy)return;busy=true;lastLoad=Date.now();if(!hasLoaded){el('loading').classList.remove('hidden');el('error').classList.add('hidden');el('content').classList.add('hidden')}else{el('content').classList.add('refreshing')}try{
       const loc=await resolveLocation();
-      const {point,label,tz}=await resolvePoint(loc);
+      const {point,label,tz,officeId}=await resolvePoint(loc);
       header.setKicker(label);
       const grid=await json(point.properties.forecastGridData).catch(()=>({properties:{}}));
       const forecast=await json(point.properties.forecast);
       const now=new Date(),freshPeriods=forecast.properties.periods.filter(p=>new Date(p.endTime)>now);
       if(!freshPeriods.length||!forecast.properties.updateTime)throw new Error('The 7-day forecast is unavailable.');
-      el('days').innerHTML=renderDaysHTML(forecast.properties.periods,grid,tz);
+      const rows=dayRows(forecast.properties.periods,grid,tz);
+      const today=findTodayPeriods(forecast.properties.periods,tz);
+      const todayTitle=`${emoji((today.day||today.night).shortForecast)} Today · ${now.toLocaleDateString('en-US',{timeZone:tz,month:'short',day:'numeric'})}`;
+      await loadTodayCard(el('today-card'),todayTitle,loc,point,officeId,today,grid,tz);
+      el('days').innerHTML=renderDaysHTML(rows.slice(1),tz);
       el('updated').textContent=`Forecast issued ${local(forecast.properties.updateTime,tz)} · Refreshed ${local(now,tz)}.`;
       el('loading').classList.add('hidden');el('content').classList.remove('hidden');hasLoaded=true;
     }catch(e){
