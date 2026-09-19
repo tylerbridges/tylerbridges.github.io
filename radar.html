@@ -157,11 +157,19 @@
     }
     function buildMap(latlng){
       map=new maplibregl.Map({
-        container:'map',style:VECTOR_STYLE,center:[latlng[1],latlng[0]],zoom:7.5,
+        container:'map',style:VECTOR_STYLE,center:[latlng[1],latlng[0]],zoom:8,
         attributionControl:{compact:false},dragRotate:false,pitchWithRotate:false,
         // Vector tiles are resolution-independent; render at the device's real
         // pixel ratio so the basemap is genuinely sharp rather than upscaled.
-        pixelRatio:window.devicePixelRatio||1
+        pixelRatio:window.devicePixelRatio||1,
+        // Skip the tile crossfade so panning feels immediate rather than
+        // fading in (localIdeographFontFamily already defaults to locally
+        // rendering CJK glyphs instead of fetching them over the network).
+        fadeDuration:0,
+        minZoom:3,maxZoom:14,cooperativeGestures:false,
+        // Bound how many off-screen tiles MapLibre keeps warm; the radar map
+        // is small and short-lived, so a large cache only costs memory.
+        maxTileCacheSize:24,refreshExpiredTiles:false
       });
       map.touchZoomRotate.disableRotation();
       map.on('style.load',onStyleReady);
