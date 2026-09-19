@@ -44,7 +44,7 @@
   (()=>{
     const {el,esc,resolveLocation,resolvePoint,json,emoji,local,maxWind,gustFrom,gridValues,kphToMph,concise,listItem,
       currentObservation,currentHeadline,alertLine,dayKey,dayRows,uvForDate,humidityForDate,dayMetrics,metricsHTML,
-      findTodayPeriods,product,mountHeader,mountFooterNav,DEFAULT_LOC}=WX;
+      findTodayPeriods,product,mountHeader,mountFooterNav,mountPullToRefresh,DEFAULT_LOC}=WX;
     let chartData=null,currentLoc=null;
     const header=mountHeader('today',()=>load());
     mountFooterNav('today');
@@ -90,6 +90,7 @@
     document.addEventListener('visibilitychange',autoRefresh);
     window.addEventListener('focus',autoRefresh);
     setInterval(()=>{if(document.visibilityState==='visible')load()},10*60000);
+    mountPullToRefresh(load);
     let chartWidth=0;new ResizeObserver(entries=>{const width=entries[0].contentRect.width;if(width>0&&width!==chartWidth){chartWidth=width;requestAnimationFrame(redraw)}}).observe(document.querySelector('.charts'));window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',redraw);if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});load();
   })();
   </script>

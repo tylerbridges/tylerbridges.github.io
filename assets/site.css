@@ -57,5 +57,8 @@ hr{border:0;border-top:1px solid var(--line);margin:.85rem 0}
 .locate-inline{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:30px;height:30px;padding:0;border:0;border-radius:8px;background:var(--blue);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 5px rgba(0,0,0,.18)}
 .locate-inline:active{transform:translateY(-50%) scale(.92)}
 .foot-tabs{margin-top:2rem}
+.ptr-indicator{position:fixed;top:0;left:50%;z-index:50;width:34px;height:34px;border-radius:50%;background:var(--surface);box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;color:var(--blue);opacity:0;pointer-events:none}
+.ptr-indicator.spinning .ptr-icon{animation:ptr-spin .8s linear infinite}
+@keyframes ptr-spin{to{transform:rotate(360deg)}}
 @media(min-width:720px){.shell{padding-left:1.5rem;padding-right:1.5rem}.brief{padding:1.1rem 1.2rem}.charts{gap:1.6rem}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}

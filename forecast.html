@@ -34,7 +34,7 @@
   <script src="/assets/weather-core.js"></script>
   <script>
   (()=>{
-    const {el,resolveLocation,resolvePoint,json,local,renderDaysHTML,mountHeader,mountFooterNav}=WX;
+    const {el,resolveLocation,resolvePoint,json,local,renderDaysHTML,mountHeader,mountFooterNav,mountPullToRefresh}=WX;
     let busy=false,lastLoad=0,hasLoaded=false;
     const header=mountHeader('forecast',()=>load());
     mountFooterNav('forecast');
@@ -57,6 +57,7 @@
     document.addEventListener('visibilitychange',autoRefresh);
     window.addEventListener('focus',autoRefresh);
     setInterval(()=>{if(document.visibilityState==='visible')load()},10*60000);
+    mountPullToRefresh(load);
     if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
     load();
   })();
