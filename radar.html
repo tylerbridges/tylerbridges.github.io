@@ -16,22 +16,23 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.css">
   <title>Radar — Rochester Weather</title>
   <style>
-    html,body{height:100%}
-    body.radar-page{margin:0;display:flex;flex-direction:column;height:100vh;height:100dvh;overflow:hidden}
-    .radar-head{width:min(920px,100%);margin:0 auto;padding:calc(env(safe-area-inset-top) + .4rem) max(1rem,env(safe-area-inset-right)) .5rem max(1rem,env(safe-area-inset-left));flex:0 0 auto}
-    #map{flex:1;min-height:0;width:100%;background:var(--bg)}
-    .radar-controls{flex:0 0 auto;display:flex;flex-direction:column;gap:.4rem;padding:.7rem 1rem calc(env(safe-area-inset-bottom) + .7rem);background:var(--surface);border-top:1px solid var(--line)}
-    .radar-row{display:flex;align-items:center;gap:.7rem}
-    .play-btn{flex:0 0 auto;width:44px;height:44px;border-radius:999px;border:1px solid var(--line);background:var(--surface-2);color:var(--text);font-size:1.1rem;display:flex;align-items:center;justify-content:center}
-    .radar-row input[type=range]{flex:1;accent-color:var(--blue)}
-    .radar-time{flex:0 0 auto;min-width:5.5rem;text-align:right;font-size:.82rem;color:var(--muted);font-variant-numeric:tabular-nums}
-    #radar-status{margin:0}
+    .radar-card{position:relative;border-radius:18px;overflow:hidden;border:1px solid var(--line);box-shadow:var(--shadow);height:min(62vh,520px);min-height:340px;background:var(--surface-2)}
+    #map{position:absolute;inset:0}
+    .radar-overlay{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:.6rem;padding:.65rem .8rem calc(env(safe-area-inset-bottom) + .65rem);background:color-mix(in srgb,var(--surface) 75%,transparent);backdrop-filter:saturate(180%) blur(18px);-webkit-backdrop-filter:saturate(180%) blur(18px);border-top:1px solid color-mix(in srgb,var(--line) 55%,transparent)}
+    .play-btn{flex:0 0 auto;width:38px;height:38px;border-radius:999px;border:0;background:var(--blue);color:#fff;font-size:.95rem;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.3)}
+    .play-btn:active{transform:scale(.94)}
+    .radar-overlay input[type=range]{flex:1;accent-color:var(--blue)}
+    .radar-time{flex:0 0 auto;min-width:5rem;text-align:right;font-size:.76rem;color:var(--muted);font-variant-numeric:tabular-nums}
+    .radar-legend{display:flex;align-items:center;gap:.55rem;margin-top:1rem;font-size:.78rem;color:var(--muted)}
+    .legend-bar{flex:1;height:7px;border-radius:999px;background:linear-gradient(90deg,#4fc3f7,#66bb6a,#ffee58,#ffa726,#ef5350)}
+    #radar-status{margin-top:.9rem}
     .leaflet-control-attribution{font-size:10px}
-    #map.hidden,#radar-controls.hidden{display:none}
+    .leaflet-control-zoom{border:0!important;box-shadow:var(--shadow)!important}
+    .leaflet-control-zoom a{background:var(--surface)!important;color:var(--text)!important;border-color:var(--line)!important}
   </style>
 </head>
-<body class="radar-page">
-  <div class="radar-head">
+<body>
+  <main class="shell">
     <header id="site-header"></header>
     <div class="page-head">
       <p class="kicker" id="kicker">Locating…</p>
@@ -39,23 +40,32 @@
     </div>
     <div id="loading" class="loading" role="status" aria-live="polite">Loading radar…</div>
     <div id="error" class="error hidden" role="alert"></div>
-  </div>
-  <div id="map" class="hidden"></div>
-  <div id="radar-controls" class="radar-controls hidden">
-    <div class="radar-row">
-      <button id="play-btn" class="play-btn" type="button" aria-label="Pause">⏸️</button>
-      <input id="frame-slider" type="range" min="0" value="0" step="1" aria-label="Radar frame">
-      <span id="radar-time" class="radar-time"></span>
+    <div id="content" class="hidden">
+      <div class="radar-card">
+        <div id="map"></div>
+        <div class="radar-overlay">
+          <button id="play-btn" class="play-btn" type="button" aria-label="Pause">⏸️</button>
+          <input id="frame-slider" type="range" min="0" value="0" step="1" aria-label="Radar frame">
+          <span id="radar-time" class="radar-time"></span>
+        </div>
+      </div>
+      <div class="radar-legend" aria-hidden="true">
+        <span>Light</span>
+        <span class="legend-bar"></span>
+        <span>Heavy</span>
+      </div>
+      <p class="status" id="radar-status"></p>
+      <div id="site-footer-nav"></div>
     </div>
-    <p class="status" id="radar-status"></p>
-  </div>
+  </main>
   <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/esri-leaflet@3.0.12/dist/esri-leaflet.js"></script>
   <script src="/assets/weather-core.js"></script>
   <script>
   (()=>{
-    const {el,resolveLocation,mountHeader}=WX;
+    const {el,resolveLocation,mountHeader,mountFooterNav}=WX;
     const header=mountHeader('radar',()=>centerOnLocation());
+    mountFooterNav('radar');
     // NOAA nowCoast time-enabled NEXRAD base reflectivity mosaic — run by NOAA/NWS.
     // weather.gov's own API (api.weather.gov) is JSON-only and has no radar imagery;
     // this is NOAA's official real-time GIS service for that data.
@@ -102,14 +112,15 @@
         header.setKicker(loc.label||'Your location');
         const latlng=[loc.lat,loc.lon];
         if(!map){
+          el('loading').classList.add('hidden');el('content').classList.remove('hidden');
           map=L.map('map',{zoomControl:true,attributionControl:true}).setView(latlng,8);
           const dark=document.documentElement.getAttribute('data-theme')!=='light';
           L.tileLayer(`https://{s}.basemaps.cartocdn.com/${dark?'dark_all':'voyager'}/{z}/{x}/{y}{r}.png`,{maxZoom:19,attribution:'© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>, © <a href="https://carto.com/attributions" target="_blank" rel="noreferrer">CARTO</a>'}).addTo(map);
           marker=L.marker(latlng).addTo(map);
-          el('loading').classList.add('hidden');el('map').classList.remove('hidden');el('radar-controls').classList.remove('hidden');
           if(typeof L.esri==='undefined'){el('error').classList.remove('hidden');el('error').textContent='Radar map library (Esri-Leaflet) failed to load. Check your connection and reload.';return}
           esriLayer=L.esri.dynamicMapLayer({url:SERVICE,opacity:0.75,f:'image',attribution:'Radar © <a href="https://www.weather.gov/" target="_blank" rel="noreferrer">NOAA/NWS</a> nowCoast'}).addTo(map);
           try{await loadFrames(false);if(playing)play()}catch(e){el('error').classList.remove('hidden');el('error').textContent=e.message}
+          requestAnimationFrame(()=>map.invalidateSize());
         }else{
           map.setView(latlng,map.getZoom());
           marker.setLatLng(latlng);
@@ -124,6 +135,7 @@
     document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')refreshFrames()});
     window.addEventListener('focus',refreshFrames);
     window.addEventListener('pageshow',e=>{if(e.persisted)refreshFrames()});
+    window.addEventListener('resize',()=>{if(map)map.invalidateSize()});
     setInterval(()=>{if(document.visibilityState==='visible')refreshFrames()},5*60000);
     if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
     centerOnLocation();
