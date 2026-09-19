@@ -107,20 +107,22 @@ window.WX = (function(){
   function metricsHTML(pairs){return pairs.map(([k,v])=>`<span class="metric"><b>${esc(k)}:</b>&nbsp;${esc(v)}</span>`).join('')}
   function renderDaysHTML(periods,grid,tz){return dayRows(periods,grid,tz).map(r=>{const d=r.day,n=r.night,b=d||n,title=r.date.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric',timeZone:tz});const metrics=metricsHTML(dayMetrics(d,n,r.uv,r.humidity));return `<article class="day"><div class="day-title"><span aria-hidden="true">${emoji(b.shortForecast)}</span> ${esc(title)}</div><div class="condition">${esc(b.shortForecast)}</div><div class="metrics">${metrics}</div><hr><div class="detail"><ul>${listItem('Day',d?shortText(d):'Daytime period has ended; not included in this NWS forecast.')}${listItem('Night',n?shortText(n):'Not yet provided by NWS.')}</ul></div></article>`}).join('')}
 
+  const LOCATE_ICON='<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M12 2.3 4.4 20.2c-.18.42.27.85.68.66L12 17.8l6.92 3.06c.41.19.86-.24.68-.66L12 2.3z" fill="currentColor"/></svg>';
   function mountHeader(active,onLocationChange){
     const header=el('site-header');
     header.innerHTML=`
+      <form id="location-form" class="location-form" role="search">
+        <div class="search-field">
+          <input id="location-input" list="location-suggestions" type="text" inputmode="search" autocomplete="off" placeholder="City, state or ZIP" aria-label="Search for a location">
+          <datalist id="location-suggestions"></datalist>
+          <button class="locate-inline" id="locate-btn" type="button" aria-label="Use current location">${LOCATE_ICON}</button>
+        </div>
+      </form>
       <nav class="tabs" aria-label="Pages">
         <a href="/" class="tab${active==='today'?' active':''}">Today</a>
         <a href="/forecast.html" class="tab${active==='forecast'?' active':''}">7-Day</a>
         <a href="/radar.html" class="tab${active==='radar'?' active':''}">Radar</a>
-      </nav>
-      <form id="location-form" class="location-form" role="search">
-        <input id="location-input" list="location-suggestions" type="text" inputmode="search" autocomplete="off" placeholder="City, state or ZIP" aria-label="Search for a location">
-        <datalist id="location-suggestions"></datalist>
-        <button class="loc-btn" type="submit" aria-label="Search location">🔎</button>
-        <button class="loc-btn" id="locate-btn" type="button" aria-label="Use current location">📍</button>
-      </form>`;
+      </nav>`;
     let suggestionMap=new Map(),suggestTimer=null;
     function setKicker(text){const k=el('kicker');if(k)k.textContent=text}
     function pick(pos,query){
