@@ -42,7 +42,7 @@
   <script>
   (()=>{
     const {el,esc,resolveLocation,resolvePoint,json,emoji,local,maxWind,gustFrom,gridValues,kphToMph,concise,listItem,
-      currentObservation,currentHeadline,alertLine,dayKey,hourLabel,dayRows,uvForDate,humidityForDate,dayMetrics,metricsHTML,
+      currentObservation,currentHeadline,alertLine,dayKey,hourLabel,dayRows,uvForDate,humidityForDate,gustForDate,dayMetrics,metricsHTML,
       findTodayPeriods,product,mountHeader,mountFooterNav,mountPullToRefresh,DEFAULT_LOC}=WX;
     let chartData=null,currentLoc=null;
     const header=mountHeader('today',()=>load());
@@ -71,13 +71,13 @@
       el('near-title').textContent=`${emoji((today.day||today.night).shortForecast)} Today · ${now.toLocaleDateString('en-US',{timeZone:tz,month:'short',day:'numeric'})}`;
       el('near-list').innerHTML=[today.day?listItem('Today',concise(today.day)):'',today.night?listItem('Tonight',concise(today.night)):''].join('');
       const todayKey=dayKey(tz,now);
-      el('near-metrics').innerHTML=metricsHTML(dayMetrics(today.day,today.night,uvForDate(grid,todayKey,tz),humidityForDate(grid,todayKey,tz)));
+      el('near-metrics').innerHTML=metricsHTML(dayMetrics(today.day,today.night,uvForDate(grid,todayKey,tz),humidityForDate(grid,todayKey,tz),gustForDate(grid,todayKey,tz)));
       const tomorrow=rows[1];
       if(tomorrow){
         el('later-title').textContent=`${emoji((tomorrow.day||tomorrow.night).shortForecast)} Tomorrow · ${tomorrow.date.toLocaleDateString('en-US',{timeZone:tz,month:'short',day:'numeric'})}`;
         el('later-list').innerHTML=[tomorrow.day?listItem(tomorrow.day.name,concise(tomorrow.day)):'',tomorrow.night?listItem(tomorrow.night.name,concise(tomorrow.night)):''].join('');
         const tomorrowKey=dayKey(tz,tomorrow.date);
-        el('later-metrics').innerHTML=metricsHTML(dayMetrics(tomorrow.day,tomorrow.night,uvForDate(grid,tomorrowKey,tz),humidityForDate(grid,tomorrowKey,tz)));
+        el('later-metrics').innerHTML=metricsHTML(dayMetrics(tomorrow.day,tomorrow.night,uvForDate(grid,tomorrowKey,tz),humidityForDate(grid,tomorrowKey,tz),gustForDate(grid,tomorrowKey,tz)));
       }else{el('later-title').textContent='Tomorrow';el('later-list').innerHTML='';el('later-metrics').innerHTML=''}
       const active=alerts?.features||[];el('alerts').innerHTML=alerts?(active.length?active.map(a=>alertLine(a,tz)).join(''):'<p>No active NWS alerts.</p>'):'<p>Current NWS alerts could not be verified.</p>';
       const needsHazard=active.length||periods.some(p=>/thunder|snow|ice|freezing|fog|heavy rain|blizzard/i.test(p.detailedForecast)||gustFrom(p.detailedForecast)>20);
