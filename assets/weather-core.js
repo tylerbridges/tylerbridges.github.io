@@ -66,7 +66,7 @@ window.WX = (function(){
     const value=observation.temperature?.value;
     const unit=observation.temperature?.unitCode;
     const temperature=value==null?null:unit?.endsWith('degC')?cToF(value):unit?.endsWith('degF')?Math.round(value):null;
-    return `${condition}${temperature==null?'':` and ${temperature}°F`}`;
+    return `${condition}${temperature==null?'':` · ${temperature}°F`}`;
   }
   function alertLine(a,tz){const p=a.properties;return `<div class="alert"><strong>${esc(p.event)}</strong><p>${esc(p.areaDesc)}</p><p>${esc(local(p.onset||p.effective,tz))}–${esc(local(p.ends||p.expires,tz))}</p><p>${esc((p.instruction||p.description||'See NWS alert for instructions.').replace(/\s+/g,' '))}</p><a href="${esc(p['@id']||a.id)}" target="_blank" rel="noreferrer">Full NWS alert</a></div>`}
   function dayKey(tz,date){return new Intl.DateTimeFormat('en-CA',{timeZone:tz,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(date))}
@@ -126,11 +126,11 @@ window.WX = (function(){
       ['H',`${d?.temperature??'—'}° L: ${n?.temperature??'—'}°`],
       pop==null?null:['Rain %',`${pop}%`],
       humidity==null?null:['Humidity',`${humidity}%`],
-      ['Wind',`${wind==null?b.windSpeed:`${wind} mph`}${gust==null?'':` | Gusts: ${gust} mph`}`],
+      ['Wind',`${wind==null?esc(b.windSpeed):`${wind} mph`}${gust==null?'':` | <b>Gusts:</b> ${gust} mph`}`],
       uv==null?null:['Max UV',uv]
     ].filter(Boolean);
   }
-  function metricsHTML(pairs){return pairs.map(([k,v])=>`<span class="metric"><b>${esc(k)}:</b> ${esc(v)}</span>`).join('')}
+  function metricsHTML(pairs){return pairs.map(([k,v])=>`<span class="metric"><b>${esc(k)}:</b> ${v}</span>`).join('')}
   // Punchy one-line summaries replacing the old Today/Tonight (or Day/Night)
   // bullet breakdown. todayBrief leads with the live observation since "now"
   // is known; futureBrief leads with the H/L range since a future day has no
@@ -138,7 +138,7 @@ window.WX = (function(){
   function todayBrief(current,d,n){
     const now=current||(d?`${d.shortForecast} with a high near ${d.temperature}°`:'Conditions unavailable');
     const later=n?`Becoming ${n.shortForecast.toLowerCase()} tonight with a low near ${n.temperature}°.`:'';
-    return `${now}.${later?' '+later:''}`;
+    return {now:`${now}.`,later};
   }
   function futureBrief(d,n){
     const hi=d?`${d.shortForecast} with a high near ${d.temperature}°`:null;
@@ -169,7 +169,8 @@ window.WX = (function(){
     const alertsRes=await json(`${API}/alerts/active?point=${loc.lat},${loc.lon}`).catch(()=>null);
     const active=alertsRes?.features||[];
     const alertsHTML=alertsRes?(active.length?active.map(a=>alertLine(a,tz)).join(''):'<p>No active NWS alerts.</p>'):'<p>Current NWS alerts could not be verified.</p>';
-    container.innerHTML=`<article class="brief"><h3>${esc(title)}</h3><hr><p class="condition">${esc(brief)}</p><div class="metrics">${metrics}</div><hr><h3>NWS Alerts</h3><div id="alerts">${alertsHTML}</div></article>`;
+    const laterHTML=brief.later?`<p class="condition">${esc(brief.later)}</p>`:'';
+    container.innerHTML=`<article class="brief"><h3>${esc(title)}</h3><hr><p class="now-line">${esc(brief.now)}</p>${laterHTML}<div class="metrics">${metrics}</div><hr><h3>NWS Alerts</h3><div id="alerts">${alertsHTML}</div></article>`;
     const hazardText=[todayPeriods.day?.detailedForecast,todayPeriods.night?.detailedForecast].filter(Boolean).join(' ');
     const needsHazard=active.length||/thunder|snow|ice|freezing|fog|heavy rain|blizzard/i.test(hazardText)||(gustFrom(hazardText)||0)>20;
     if(needsHazard&&officeId){
