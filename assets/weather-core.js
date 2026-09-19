@@ -217,21 +217,24 @@ window.WX = (function(){
     document.body.prepend(indicator);
     const icon=indicator.querySelector('.ptr-icon');
     const THRESHOLD=64,MAX=100;
-    let startY=0,pulling=false,refreshing=false,dist=0;
+    let startY=0,pulling=false,refreshing=false,dist=0,armed=false;
+    function buzz(ms){try{navigator.vibrate?.(ms)}catch{}}
     function position(d){indicator.style.transform=`translate(-50%, ${-44+d}px)`;indicator.style.opacity=String(Math.min(1,d/THRESHOLD))}
-    function reset(){pulling=false;dist=0;indicator.style.transition='transform .2s ease,opacity .2s ease';position(0);icon.style.transform=''}
+    function reset(){pulling=false;dist=0;armed=false;indicator.style.transition='transform .2s ease,opacity .2s ease';position(0);icon.style.transform=''}
     reset();
     document.addEventListener('touchstart',e=>{
       if(refreshing||document.scrollingElement.scrollTop>0)return;
-      startY=e.touches[0].clientY;pulling=true;indicator.style.transition='none';
+      startY=e.touches[0].clientY;pulling=true;armed=false;indicator.style.transition='none';
     },{passive:true});
     document.addEventListener('touchmove',e=>{
       if(!pulling||refreshing)return;
       const delta=e.touches[0].clientY-startY;
-      if(delta<=0){dist=0;position(0);return}
+      if(delta<=0){dist=0;armed=false;position(0);return}
       dist=Math.min(MAX,delta*0.5);
       position(dist);
       icon.style.transform=`rotate(${dist*3.2}deg)`;
+      if(dist>=THRESHOLD&&!armed){armed=true;buzz(10)}
+      else if(dist<THRESHOLD&&armed){armed=false}
     },{passive:true});
     document.addEventListener('touchend',async()=>{
       if(!pulling||refreshing)return;
@@ -239,6 +242,7 @@ window.WX = (function(){
       indicator.style.transition='transform .2s ease,opacity .2s ease';
       if(dist>=THRESHOLD){
         refreshing=true;
+        buzz(15);
         indicator.classList.add('spinning');
         icon.style.transform='';
         indicator.style.transform='translate(-50%, 16px)';indicator.style.opacity='1';
