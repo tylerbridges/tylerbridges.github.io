@@ -52,6 +52,9 @@ hr{border:0;border-top:1px solid var(--line);margin:.85rem 0}
 .loading{padding:1rem 0;color:var(--muted)}
 .error{background:color-mix(in srgb,var(--red) 10%,var(--surface));border:1px solid color-mix(in srgb,var(--red) 35%,var(--line));padding:1rem;border-radius:14px}
 .hidden{display:none}
+#content{transition:opacity .2s ease}
+#content.refreshing{opacity:.55}
+@media(prefers-reduced-motion:reduce){#content{transition:none}}
 .alert{margin:.65rem 0}
 .alert p{margin:.3rem 0}
 .location-form{margin:0}
