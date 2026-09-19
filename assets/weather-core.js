@@ -118,23 +118,22 @@ window.WX = (function(){
     const startIdx=Math.max(0,order.indexOf(todayKey));
     return order.slice(startIdx,startIdx+7).map(key=>({...byKey[key],uv:uvForDate(grid,key,tz),humidity:humidityForDate(grid,key,tz)}));
   }
-  function windRange(windSpeed,gust){
+  function windAvg(windSpeed){
     const nums=(String(windSpeed).match(/\d+/g)||[]).map(Number);
-    if(!nums.length)return windSpeed;
-    let low=Math.min(...nums),high=Math.max(...nums);
-    if(gust!=null&&gust>high)high=gust;
-    return low===high?`${low} mph`:`${low}-${high} mph`;
+    if(!nums.length)return null;
+    return Math.round(nums.reduce((a,b)=>a+b,0)/nums.length);
   }
   function dayMetrics(d,n,uv,humidity){
     const b=d||n;
     const gusts=[d,n].filter(Boolean).map(p=>gustFrom(p.detailedForecast)).filter(v=>v!=null);
     const gust=gusts.length?Math.max(...gusts):null;
     const pop=d?.probabilityOfPrecipitation?.value;
+    const wind=windAvg(b.windSpeed);
     return [
       ['H',`${d?.temperature??'—'}° L: ${n?.temperature??'—'}°`],
       pop==null?null:['Rain %',`${pop}%`],
-      ['Wind',windRange(b.windSpeed,gust)],
       humidity==null?null:['Humidity',`${humidity}%`],
+      ['Wind',`${wind==null?b.windSpeed:`${wind} mph`}${gust==null?'':` | Gusts: ${gust} mph`}`],
       uv==null?null:['Max UV',uv]
     ].filter(Boolean);
   }
