@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0b2545">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="description" content="Live animated weather radar centered on your location.">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="preconnect" href="https://api.weather.gov">
+  <link rel="preconnect" href="https://nominatim.openstreetmap.org" crossorigin>
+  <link rel="preconnect" href="https://tilecache.rainviewer.com" crossorigin>
+  <link rel="stylesheet" href="/assets/site.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.css">
+  <title>Radar — Rochester Weather</title>
+  <style>
+    html,body{height:100%}
+    body.radar-page{margin:0;display:flex;flex-direction:column;height:100vh;height:100dvh;overflow:hidden}
+    .radar-head{width:min(920px,100%);margin:auto;padding:calc(env(safe-area-inset-top) + 1rem) max(1rem,env(safe-area-inset-right)) .5rem max(1rem,env(safe-area-inset-left));flex:0 0 auto}
+    #map{flex:1;min-height:0;width:100%;background:var(--bg)}
+    .radar-controls{flex:0 0 auto;display:flex;align-items:center;gap:.7rem;padding:.7rem 1rem calc(env(safe-area-inset-bottom) + .7rem);background:var(--surface);border-top:1px solid var(--line)}
+    .play-btn{flex:0 0 auto;width:44px;height:44px;border-radius:999px;border:1px solid var(--line);background:var(--surface-2);color:var(--text);font-size:1.1rem;display:flex;align-items:center;justify-content:center}
+    .radar-controls input[type=range]{flex:1;accent-color:var(--blue)}
+    .radar-time{flex:0 0 auto;min-width:5.5rem;text-align:right;font-size:.82rem;color:var(--muted);font-variant-numeric:tabular-nums}
+    .leaflet-control-attribution{font-size:10px}
+  </style>
+</head>
+<body class="radar-page">
+  <div class="radar-head">
+    <header id="site-header"></header>
+    <div class="page-head">
+      <p class="kicker" id="kicker">Locating…</p>
+      <h1>Live Radar</h1>
+    </div>
+    <div id="loading" class="loading" role="status" aria-live="polite">Loading radar…</div>
+    <div id="error" class="error hidden" role="alert"></div>
+  </div>
+  <div id="map" class="hidden"></div>
+  <div id="radar-controls" class="radar-controls hidden">
+    <button id="play-btn" class="play-btn" type="button" aria-label="Pause">⏸️</button>
+    <input id="frame-slider" type="range" min="0" value="0" step="1" aria-label="Radar frame">
+    <span id="radar-time" class="radar-time"></span>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/assets/weather-core.js"></script>
+  <script>
+  (()=>{
+    const {el,resolveLocation,mountHeader}=WX;
+    const header=mountHeader('radar',()=>centerOnLocation());
+    let map=null,marker=null,frames=[],layers=[],idx=0,playing=true,timer=null,host='';
+    function frameLabel(t){return new Date(t*1000).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}
+    function showFrame(i){
+      if(!frames.length)return;
+      idx=((i%frames.length)+frames.length)%frames.length;
+      layers.forEach((l,j)=>l.setOpacity(j===idx?0.75:0));
+      el('frame-slider').value=idx;
+      const isLive=idx>=frames.length-1&&frames[idx].time>=Math.floor(Date.now()/1000)-300;
+      el('radar-time').textContent=isLive?`${frameLabel(frames[idx].time)} · now`:frameLabel(frames[idx].time);
+    }
+    function play(){playing=true;el('play-btn').textContent='⏸️';el('play-btn').setAttribute('aria-label','Pause');clearInterval(timer);timer=setInterval(()=>showFrame(idx+1),600)}
+    function pause(){playing=false;el('play-btn').textContent='▶️';el('play-btn').setAttribute('aria-label','Play');clearInterval(timer)}
+    async function loadFrames(){
+      const meta=await fetch('https://api.rainviewer.com/public/weather-maps.json').then(r=>r.json());
+      host=meta.host;
+      const nextFrames=[...(meta.radar?.past||[]),...(meta.radar?.nowcast||[])];
+      if(!nextFrames.length)throw new Error('No radar frames available.');
+      layers.forEach(l=>map.removeLayer(l));
+      frames=nextFrames;
+      layers=frames.map(f=>L.tileLayer(`${host}${f.path}/256/{z}/{x}/{y}/2/1_1.png`,{opacity:0,attribution:'Radar © <a href="https://www.rainviewer.com/" target="_blank" rel="noreferrer">RainViewer</a>'}).addTo(map));
+      el('frame-slider').max=frames.length-1;
+      showFrame(frames.length-1);
+    }
+    function centerOnLocation(){
+      if(typeof L==='undefined'){el('loading').classList.add('hidden');el('error').classList.remove('hidden');el('error').textContent='Map library failed to load. Check your connection and reload.';return}
+      resolveLocation().then(async loc=>{
+        header.setKicker(loc.label||'Your location');
+        const latlng=[loc.lat,loc.lon];
+        if(!map){
+          map=L.map('map',{zoomControl:true,attributionControl:true}).setView(latlng,8);
+          const dark=window.matchMedia('(prefers-color-scheme: dark)').matches;
+          L.tileLayer(`https://{s}.basemaps.cartocdn.com/${dark?'dark_all':'voyager'}/{z}/{x}/{y}{r}.png`,{maxZoom:19,attribution:'© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>, © <a href="https://carto.com/attributions" target="_blank" rel="noreferrer">CARTO</a>'}).addTo(map);
+          marker=L.marker(latlng).addTo(map);
+          el('loading').classList.add('hidden');el('map').classList.remove('hidden');el('radar-controls').classList.remove('hidden');
+          try{await loadFrames();if(playing)play()}catch(e){el('error').classList.remove('hidden');el('error').textContent=e.message}
+        }else{
+          map.setView(latlng,map.getZoom());
+          marker.setLatLng(latlng);
+        }
+      }).catch(()=>{
+        el('loading').classList.add('hidden');el('error').classList.remove('hidden');el('error').textContent='Could not resolve a location.';
+      });
+    }
+    el('play-btn').addEventListener('click',()=>playing?pause():play());
+    el('frame-slider').addEventListener('input',e=>{pause();showFrame(+e.target.value)});
+    document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&map)loadFrames().catch(()=>{})});
+    setInterval(()=>{if(document.visibilityState==='visible'&&map)loadFrames().catch(()=>{})},10*60000);
+    if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
+    centerOnLocation();
+  })();
+  </script>
+</body>
+</html>
