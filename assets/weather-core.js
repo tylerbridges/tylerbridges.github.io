@@ -103,6 +103,7 @@ window.WX = (function(){
   }
   function uvForDate(grid,dateKey,tz){const values=grid.properties?.maxUVIndex?.values||[];for(const row of values){if(dayKey(tz,row.validTime.split('/')[0])===dateKey&&row.value!=null)return Math.round(row.value)}return null}
   function humidityForDate(grid,dateKey,tz){const values=grid.properties?.relativeHumidity?.values||[];const vals=values.filter(row=>dayKey(tz,row.validTime.split('/')[0])===dateKey).map(r=>r.value).filter(v=>v!=null);if(!vals.length)return null;return Math.round(vals.reduce((a,b)=>a+b,0)/vals.length)}
+  function gustForDate(grid,dateKey,tz){const field=grid.properties?.windGust;const values=field?.values||[];const kph=field?.uom?.includes('km_h');const vals=values.filter(row=>dayKey(tz,row.validTime.split('/')[0])===dateKey).map(r=>r.value).filter(v=>v!=null);if(!vals.length)return null;const max=Math.max(...vals);return Math.round(kph?max*.621371:max)}
   function dayRows(allPeriods,grid,tz){
     // Group by calendar date (in the location's timezone) rather than walking
     // day/night pairs positionally, so today's row is always complete even
@@ -116,17 +117,18 @@ window.WX = (function(){
     });
     const todayKey=dayKey(tz,new Date());
     const startIdx=Math.max(0,order.indexOf(todayKey));
-    return order.slice(startIdx,startIdx+7).map(key=>({...byKey[key],uv:uvForDate(grid,key,tz),humidity:humidityForDate(grid,key,tz)}));
+    return order.slice(startIdx,startIdx+7).map(key=>({...byKey[key],uv:uvForDate(grid,key,tz),humidity:humidityForDate(grid,key,tz),gust:gustForDate(grid,key,tz)}));
   }
   function windAvg(windSpeed){
     const nums=(String(windSpeed).match(/\d+/g)||[]).map(Number);
     if(!nums.length)return null;
     return Math.round(nums.reduce((a,b)=>a+b,0)/nums.length);
   }
-  function dayMetrics(d,n,uv,humidity){
+  function dayMetrics(d,n,uv,humidity,gridGust){
     const b=d||n;
     const gusts=[d,n].filter(Boolean).map(p=>gustFrom(p.detailedForecast)).filter(v=>v!=null);
-    const gust=gusts.length?Math.max(...gusts):null;
+    const textGust=gusts.length?Math.max(...gusts):null;
+    const gust=gridGust??textGust;
     const pop=d?.probabilityOfPrecipitation?.value;
     const wind=windAvg(b.windSpeed);
     return [
@@ -138,7 +140,7 @@ window.WX = (function(){
     ].filter(Boolean);
   }
   function metricsHTML(pairs){return pairs.map(([k,v])=>`<span class="metric"><b>${esc(k)}:</b> ${esc(v)}</span>`).join('')}
-  function renderDaysHTML(periods,grid,tz){return dayRows(periods,grid,tz).map(r=>{const d=r.day,n=r.night,b=d||n,title=r.date.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric',timeZone:tz});const metrics=metricsHTML(dayMetrics(d,n,r.uv,r.humidity));const dayText=d?concise(d):'Daytime period has ended; not included in this NWS forecast.';const nightText=n?concise(n):'Not yet provided by NWS.';return `<article class="day"><div class="day-title"><span aria-hidden="true">${emoji(b.shortForecast)}</span> ${esc(title)}</div><div class="condition">${esc(b.shortForecast)}</div><hr><div class="detail"><ul><li>${esc(dayText)}</li><li>${esc(nightText)}</li></ul></div><div class="metrics">${metrics}</div></article>`}).join('')}
+  function renderDaysHTML(periods,grid,tz){return dayRows(periods,grid,tz).map(r=>{const d=r.day,n=r.night,b=d||n,title=r.date.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric',timeZone:tz});const metrics=metricsHTML(dayMetrics(d,n,r.uv,r.humidity,r.gust));const dayText=d?concise(d):'Daytime period has ended; not included in this NWS forecast.';const nightText=n?concise(n):'Not yet provided by NWS.';return `<article class="day"><div class="day-title"><span aria-hidden="true">${emoji(b.shortForecast)}</span> ${esc(title)}</div><div class="condition">${esc(b.shortForecast)}</div><hr><div class="detail"><ul><li>${esc(dayText)}</li><li>${esc(nightText)}</li></ul></div><div class="metrics">${metrics}</div></article>`}).join('')}
 
   const LOCATE_ICON='<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M12 2.3 4.4 20.2c-.18.42.27.85.68.66L12 17.8l6.92 3.06c.41.19.86-.24.68-.66L12 2.3z" fill="currentColor" transform="rotate(45 12 12)"/></svg>';
   const SEARCH_ICON='<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.2"/><line x1="15.3" y1="15.3" x2="20.5" y2="20.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>';
@@ -257,6 +259,6 @@ window.WX = (function(){
 
   return {API,DEFAULT_LOC,el,esc,getSavedLocation,saveLocation,geolocate,geocodeSearch,resolveLocation,resolvePoint,json,
     emoji,local,maxWind,gustFrom,durationMs,gridValues,kphToMph,cToF,product,listItem,concise,
-    currentObservation,currentHeadline,alertLine,dayKey,startOfDay,hourLabel,dayRows,uvForDate,humidityForDate,dayMetrics,metricsHTML,
+    currentObservation,currentHeadline,alertLine,dayKey,startOfDay,hourLabel,dayRows,uvForDate,humidityForDate,gustForDate,dayMetrics,metricsHTML,
     findTodayPeriods,renderDaysHTML,mountHeader,mountFooterNav,mountPullToRefresh};
 })();
