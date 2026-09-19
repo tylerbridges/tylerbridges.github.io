@@ -91,21 +91,28 @@ window.WX = (function(){
   function uvForDate(grid,dateKey,tz){const values=grid.properties?.maxUVIndex?.values||[];for(const row of values){if(dayKey(tz,row.validTime.split('/')[0])===dateKey&&row.value!=null)return Math.round(row.value)}return null}
   function humidityForDate(grid,dateKey,tz){const values=grid.properties?.relativeHumidity?.values||[];const vals=values.filter(row=>dayKey(tz,row.validTime.split('/')[0])===dateKey).map(r=>r.value).filter(v=>v!=null);if(!vals.length)return null;return Math.round(vals.reduce((a,b)=>a+b,0)/vals.length)}
   function dayRows(periods,grid,tz){const rows=[];for(let i=0;i<periods.length&&rows.length<7;i++){const p=periods[i];if(!p.isDaytime&&rows.length)continue;let day=p.isDaytime?p:null,night=p.isDaytime?periods[i+1]:p;if(day&&night?.isDaytime)night=null;const base=day||night;const date=new Date(base.startTime);const key=dayKey(tz,date);const uv=uvForDate(grid,key,tz);const humidity=humidityForDate(grid,key,tz);rows.push({date,day,night,uv,humidity});if(day&&night)i++}return rows}
+  function windRange(windSpeed,gust){
+    const nums=(String(windSpeed).match(/\d+/g)||[]).map(Number);
+    if(!nums.length)return windSpeed;
+    let low=Math.min(...nums),high=Math.max(...nums);
+    if(gust!=null&&gust>high)high=gust;
+    return low===high?`${low} mph`:`${low}-${high} mph`;
+  }
   function dayMetrics(d,n,uv,humidity){
     const b=d||n;
     const gusts=[d,n].filter(Boolean).map(p=>gustFrom(p.detailedForecast)).filter(v=>v!=null);
     const gust=gusts.length?Math.max(...gusts):null;
     const pop=d?.probabilityOfPrecipitation?.value;
     return [
-      ['High / low',`${d?.temperature??'—'}° / ${n?.temperature??'—'}°`],
-      [gust==null?'Wind':'Wind / peak gust',`${b.windSpeed}${gust==null?'':` / ${gust} mph`}`],
-      pop==null?null:['Rain chance',`${pop}%`],
+      ['High / Low',`${d?.temperature??'—'}° / ${n?.temperature??'—'}°`],
+      ['Wind',windRange(b.windSpeed,gust)],
+      pop==null?null:['Rain %',`${pop}%`],
       humidity==null?null:['Humidity',`${humidity}%`],
       uv==null?null:['Max UV',uv]
     ].filter(Boolean);
   }
   function metricsHTML(pairs){return pairs.map(([k,v])=>`<span class="metric"><b>${esc(k)}:</b>&nbsp;${esc(v)}</span>`).join('')}
-  function renderDaysHTML(periods,grid,tz){return dayRows(periods,grid,tz).map(r=>{const d=r.day,n=r.night,b=d||n,title=r.date.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric',timeZone:tz});const metrics=metricsHTML(dayMetrics(d,n,r.uv,r.humidity));return `<article class="day"><div class="day-title"><span aria-hidden="true">${emoji(b.shortForecast)}</span> ${esc(title)}</div><div class="condition">${esc(b.shortForecast)}</div><div class="metrics">${metrics}</div><hr><div class="detail"><ul>${listItem('Day',d?shortText(d):'Daytime period has ended; not included in this NWS forecast.')}${listItem('Night',n?shortText(n):'Not yet provided by NWS.')}</ul></div></article>`}).join('')}
+  function renderDaysHTML(periods,grid,tz){return dayRows(periods,grid,tz).map(r=>{const d=r.day,n=r.night,b=d||n,title=r.date.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric',timeZone:tz});const metrics=metricsHTML(dayMetrics(d,n,r.uv,r.humidity));return `<article class="day"><div class="day-title"><span aria-hidden="true">${emoji(b.shortForecast)}</span> ${esc(title)}</div><div class="condition">${esc(b.shortForecast)}</div><hr><div class="detail"><ul>${listItem('Day',d?shortText(d):'Daytime period has ended; not included in this NWS forecast.')}${listItem('Night',n?shortText(n):'Not yet provided by NWS.')}</ul></div><div class="metrics">${metrics}</div></article>`}).join('')}
 
   const LOCATE_ICON='<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M12 2.3 4.4 20.2c-.18.42.27.85.68.66L12 17.8l6.92 3.06c.41.19.86-.24.68-.66L12 2.3z" fill="currentColor"/></svg>';
   function mountHeader(active,onLocationChange){
