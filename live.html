@@ -14,32 +14,17 @@
   <link rel="dns-prefetch" href="https://api.weather.gov">
   <link rel="preconnect" href="https://nominatim.openstreetmap.org" crossorigin>
   <link rel="dns-prefetch" href="https://nominatim.openstreetmap.org">
+  <link rel="stylesheet" href="/assets/site.css">
   <title>Rochester Weather</title>
-  <style>
-    :root{color-scheme:light dark;--bg:#f3f7fb;--surface:#fff;--surface-2:#eaf2fa;--text:#112337;--muted:#53677d;--line:#cbd8e6;--line-strong:#8198af;--navy:#0b2545;--blue:#1d67a9;--cyan:#28a8c7;--orange:#d77822;--red:#bd3d39;--green:#22765a;--shadow:0 12px 30px rgba(24,56,90,.09)}
-    @media(prefers-color-scheme:dark){:root{--bg:#071522;--surface:#0d2234;--surface-2:#14304a;--text:#eaf3fb;--muted:#a5b7c8;--line:#29445d;--line-strong:#55728b;--navy:#c7e2f5;--blue:#76bbed;--cyan:#61d2e8;--orange:#f2a152;--red:#f17b75;--green:#61c79e;--shadow:0 15px 34px rgba(0,0,0,.22)}}
-    .last-updated{margin:.45rem 0 0;color:var(--muted);font-size:.78rem;font-weight:400;line-height:1.5}
-    /* Keep gestures on the document without the edge rubber-band pause. */
-    html,body{overscroll-behavior-y:none;scroll-behavior:auto;touch-action:pan-y pinch-zoom}
-    *{box-sizing:border-box}body{margin:0;background:linear-gradient(180deg,color-mix(in srgb,var(--blue) 8%,var(--bg)),var(--bg) 18rem);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",sans-serif;line-height:1.45}.shell{width:min(920px,100%);margin:auto;padding:calc(env(safe-area-inset-top) + 1rem) max(1rem,env(safe-area-inset-right)) calc(env(safe-area-inset-bottom) + 2rem) max(1rem,env(safe-area-inset-left))}header{display:flex;flex-direction:column;gap:.7rem;padding:.5rem 0 1rem}.kicker{margin:0;color:var(--muted);font-size:.78rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase}h1{font-size:clamp(1.65rem,5vw,2.55rem);line-height:1.12;letter-spacing:-.035em;margin:.35rem 0 0;max-width:760px}h2{font-size:1.25rem;margin:1.8rem 0 .75rem}h3{font-size:1rem;margin:0}.briefs{display:grid;gap:.8rem}.brief{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:1rem 1.05rem;box-shadow:var(--shadow)}.brief h3{color:var(--blue)}.brief ul{margin:.55rem 0 0;padding-left:1.25rem}.brief li+li{margin-top:.28rem}.status{margin-top:.7rem;color:var(--muted);font-size:.8rem}.days{border-top:2px solid var(--line-strong)}.day{padding:1rem 0;border-bottom:2px solid var(--line-strong);text-align:left}.day-title{font-size:1.1rem;font-weight:750}.condition{color:var(--muted);font-size:.9rem;margin-top:.08rem}.metrics{display:flex;flex-wrap:wrap;gap:.42rem;margin-top:.65rem}.metric{display:inline-flex;gap:.3rem;align-items:center;background:var(--surface-2);border-radius:999px;padding:.36rem .62rem;color:var(--text);font-size:.84rem}.metric b{font-weight:750}.detail{margin-top:.7rem}.detail summary{display:flex;justify-content:space-between;align-items:center;list-style:none;background:var(--surface-2);color:var(--muted);border-radius:10px;padding:.58rem .7rem;font-weight:700;min-height:44px}.detail summary::-webkit-details-marker{display:none}.detail[open] summary .chev{transform:rotate(180deg)}.chev{transition:transform .18s}.detail ul{color:var(--muted);padding-left:1.35rem;margin:.65rem 0 .1rem}.detail li+li{margin-top:.42rem}.charts{display:grid;gap:1.35rem}.chart h3{margin-bottom:.25rem}.chart svg{display:block;width:100%;height:195px}.legend{display:flex;gap:1rem;flex-wrap:wrap;color:var(--muted);font-size:.8rem}.swatch{width:.95rem;height:.16rem;display:inline-block;vertical-align:middle;margin-right:.3rem}.note,.sources,.install{color:var(--muted);font-size:.8rem}.sources{margin-top:1.5rem}.sources a{color:var(--blue)}.install{margin-top:.8rem}.loading{padding:1rem 0;color:var(--muted)}.error{background:color-mix(in srgb,var(--red) 10%,var(--surface));border:1px solid color-mix(in srgb,var(--red) 35%,var(--line));padding:1rem;border-radius:14px}.hidden{display:none}@media(min-width:720px){.shell{padding-left:1.5rem;padding-right:1.5rem}.brief{padding:1.1rem 1.2rem}.charts{gap:1.6rem}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
-  .brief ul,.detail ul{list-style:none;padding-left:0}.days{border:0;display:grid;gap:.8rem}.day{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:1rem}hr{border:0;border-top:1px solid var(--line);margin:.85rem 0}.metric{display:inline-block}.chart{margin:0}.alert{margin:.65rem 0}.alert p{margin:.3rem 0}.brief li{margin-top:.5rem}
-  .location-form{display:flex;gap:.4rem;margin:0}.location-form input{flex:1 1 auto;min-width:0;min-height:42px;border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:999px;padding:0 1rem;font:inherit;box-shadow:var(--shadow)}.loc-btn{flex:0 0 auto;width:42px;height:42px;min-height:42px;padding:0;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:999px;font-size:1.05rem;line-height:1;box-shadow:var(--shadow)}.loc-btn:active{transform:translateY(1px)}</style>
 </head>
 <body>
   <main class="shell">
-    <header>
-      <form id="location-form" class="location-form" role="search">
-        <input id="location-input" list="location-suggestions" type="text" inputmode="search" autocomplete="off" placeholder="City, state or ZIP" aria-label="Search for a location">
-        <datalist id="location-suggestions"></datalist>
-        <button class="loc-btn" type="submit" aria-label="Search location">🔎</button>
-        <button class="loc-btn" id="locate-btn" type="button" aria-label="Use current location">📍</button>
-      </form>
-      <div>
-        <p class="kicker" id="kicker">Locating…</p>
-        <h1 id="headline">Checking current conditions…</h1>
-        <p id="last-updated" class="last-updated" aria-live="polite"></p>
-      </div>
-    </header>
+    <header id="site-header"></header>
+    <div class="page-head">
+      <p class="kicker" id="kicker">Locating…</p>
+      <h1 id="headline">Checking current conditions…</h1>
+      <p id="last-updated" class="last-updated" aria-live="polite"></p>
+    </div>
     <div id="loading" class="loading" role="status" aria-live="polite">Refreshing from weather.gov…</div>
     <div id="error" class="error hidden" role="alert"></div>
     <div id="content" class="hidden">
@@ -47,162 +32,59 @@
         <article class="brief"><h3 id="near-title">Near term</h3><ul id="near-list"></ul><hr><h3>NWS Alerts</h3><div id="alerts"></div></article>
         <article class="brief"><h3 id="later-title">Later outlook</h3><ul id="later-list"></ul></article>
       </section>
-      <section aria-labelledby="outlook-title"><h2 id="outlook-title">Seven-day outlook</h2><div class="days" id="days"></div></section>
+      <p class="see-more"><a href="/forecast.html">See the full 7-day forecast →</a></p>
       <section aria-labelledby="charts-title"><h2 id="charts-title">Next 48 hours</h2><p class="note">Hourly values from the NWS forecast grid. Missing gusts remain missing.</p><div class="charts"><figure class="chart"><h3>Temperature</h3><svg id="temp-chart" role="img" aria-label="Hourly temperature in degrees Fahrenheit"></svg><div class="legend"><span><i class="swatch" style="background:var(--blue)"></i>Temperature</span></div></figure><figure class="chart"><h3>Precipitation probability</h3><svg id="pop-chart" role="img" aria-label="Hourly precipitation probability in percent"></svg><div class="legend"><span><i class="swatch" style="background:var(--cyan)"></i>Probability</span></div></figure><figure class="chart"><h3>Wind and gusts</h3><svg id="wind-chart" role="img" aria-label="Hourly sustained wind and gusts in miles per hour"></svg><div class="legend"><span><i class="swatch" style="background:var(--green)"></i>Sustained</span><span><i class="swatch" style="background:var(--orange)"></i>Gust</span></div></figure></div></section>
-      <p class="sources">NWS sources: <a id="forecast-link" target="_blank" rel="noreferrer">seven-day forecast</a> · <a id="hourly-link" target="_blank" rel="noreferrer">hourly forecast</a> · <a id="hwo-link" target="_blank" rel="noreferrer">Hazardous Weather Outlook</a> · <a id="afd-link" target="_blank" rel="noreferrer">forecast discussion</a> · <a id="local-alerts-link" target="_blank" rel="noreferrer">local alerts</a></p>
       <p class="status" id="updated"></p>
       <p class="install">On iPhone: open this page in Safari, tap Share, then Add to Home Screen.</p>
     </div>
   </main>
+  <script src="/assets/weather-core.js"></script>
   <script>
   (()=>{
-    const API='https://api.weather.gov',LOC_KEY='weather-location',POINT_CACHE_KEY='weather-point-cache',POINT_TTL=6*3600000,DEFAULT_LOC={lat:44.0136,lon:-92.4757,label:'Rochester, Minnesota',source:'default'};
-    const el=id=>document.getElementById(id), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const {el,esc,resolveLocation,resolvePoint,json,emoji,local,maxWind,gustFrom,gridValues,kphToMph,concise,listItem,
+      currentObservation,currentHeadline,alertLine,dayRows,findTodayPeriods,product,mountHeader,DEFAULT_LOC}=WX;
     let chartData=null,currentLoc=null;
-    function getSavedLocation(){try{return JSON.parse(localStorage.getItem(LOC_KEY))}catch{return null}}
-    function saveLocation(loc){currentLoc=loc;try{localStorage.setItem(LOC_KEY,JSON.stringify(loc))}catch{}}
-    function pointCacheKey(lat,lon){return `${lat.toFixed(2)},${lon.toFixed(2)}`}
-    function getCachedPoint(lat,lon){try{const all=JSON.parse(localStorage.getItem(POINT_CACHE_KEY)||'{}');const entry=all[pointCacheKey(lat,lon)];if(entry&&Date.now()-entry.ts<POINT_TTL)return entry.point}catch{}return null}
-    function setCachedPoint(lat,lon,point){try{const all=JSON.parse(localStorage.getItem(POINT_CACHE_KEY)||'{}');all[pointCacheKey(lat,lon)]={point,ts:Date.now()};const keys=Object.keys(all);if(keys.length>5){keys.sort((a,b)=>all[a].ts-all[b].ts);delete all[keys[0]]}localStorage.setItem(POINT_CACHE_KEY,JSON.stringify(all))}catch{}}
-    function geolocate(opts={}){return new Promise((resolve,reject)=>{if(!navigator.geolocation)return reject(new Error('Geolocation unsupported'));navigator.geolocation.getCurrentPosition(pos=>resolve({lat:+pos.coords.latitude.toFixed(4),lon:+pos.coords.longitude.toFixed(4)}),reject,{enableHighAccuracy:false,timeout:5000,maximumAge:600000,...opts})})}
-    async function geocodeSearch(query){const results=await json(`https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=${encodeURIComponent(query)}`);if(!results.length)throw new Error('Location not found.');return {lat:+(+results[0].lat).toFixed(4),lon:+(+results[0].lon).toFixed(4)}}
-    function refreshGeoInBackground(saved){geolocate({maximumAge:0}).then(pos=>{const sameSpot=saved.lat===pos.lat&&saved.lon===pos.lon;saveLocation({...pos,label:sameSpot?saved.label:null,source:'geo'})}).catch(()=>{})}
-    async function resolveLocation(){
-      const saved=getSavedLocation();
-      if(saved){
-        currentLoc=saved;
-        if(saved.source==='geo')refreshGeoInBackground(saved);
-        return saved;
-      }
-      try{const pos=await geolocate();const loc={...pos,label:null,source:'geo'};saveLocation(loc);return loc}
-      catch{const loc={...DEFAULT_LOC};currentLoc=loc;return loc}
-    }
-    async function json(url){let last;for(let i=0;i<2;i++){try{const r=await fetch(url,{cache:'no-store',headers:{Accept:'application/geo+json, application/json'},signal:AbortSignal.timeout(20000)});if(!r.ok)throw new Error(`weather.gov returned ${r.status}`);return await r.json()}catch(e){last=e}}throw last}
-    function emoji(text){const t=String(text).toLowerCase();return /thunder/.test(t)?'⛈️':/snow|blizzard/.test(t)?'🌨️':/ice|freezing|sleet/.test(t)?'🧊':/rain|shower|drizzle/.test(t)?'🌧️':/fog|mist/.test(t)?'🌫️':/partly|mostly sunny/.test(t)?'🌤️':/cloud|overcast/.test(t)?'☁️':/sun|clear/.test(t)?'☀️':'🌡️'}
-    const local=(t,options={})=>t?new Date(t).toLocaleString('en-US',{timeZone:'America/Chicago',month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short',...options}):'Not provided';
-    function maxWind(s){const n=(String(s).match(/\d+/g)||[]).map(Number);return n.length?Math.max(...n):null}
-    function gustFrom(text){const m=String(text).match(/gusts?(?: as high as| up to| near| to)?\s*(\d+)\s*mph/i);return m?+m[1]:null}
-    function durationMs(iso){const m=iso.match(/P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?)?/);return m?((+m[1]||0)*864e5+(+m[2]||0)*36e5+(+m[3]||0)*6e4):36e5}
-    function gridValues(field,times,convert=v=>v){if(!field?.values)return times.map(()=>null);return times.map(t=>{const ms=t.getTime();for(const row of field.values){const [start,dur='PT1H']=row.validTime.split('/');const a=new Date(start).getTime();if(ms>=a&&ms<a+durationMs(dur))return row.value==null?null:convert(row.value)}return null})}
-    const kphToMph=v=>Math.round(v*.621371), cToF=v=>Math.round(v*9/5+32);
-    function productSentences(text){const clean=String(text||'').replace(/\s+/g,' ');return clean.split(/(?<=[.!?])\s+/).filter(s=>/tornado|hail|damaging wind|severe thunder|blizzard|snow squall|flash flood|flooding/i.test(s)&&s.length<260).slice(0,2)}
-    async function product(type,officeId){try{const list=await json(`${API}/products/types/${type}/locations/${officeId}`);const item=(list['@graph']||[])[0];if(!item?.id)return null;return await json(item.id.startsWith('http')?item.id:`${API}/products/${item.id}`)}catch{return null}}
-    function listItem(label,text){return `<li><strong>${esc(label)}:</strong> ${esc(text)}</li>`}
-    function shortText(p){
-      // Keep the forecast narrative and temperature; the chips own wind and probability.
-      const sentences=(p.detailedForecast||'').replace(/\s+/g,' ').trim().split(/(?<=[.!?])\s+/);
-      const narrative=sentences.filter(s=>! /^(?:(?:north|south|east|west|northeast|northwest|southeast|southwest|variable|light|calm|and)[ -]*)*winds?\b(?! chill)|^calm\b|^gusts?\b|^chance of precipitation is\b/i.test(s));
-      let text=narrative.join(' ').trim()||p.shortForecast||'Conditions not provided.';
-      if(!/\b(?:high|low|temperature|degrees|heat index|wind chill)\b/i.test(text)&&p.temperature!=null){
-        text=text.replace(/[.!?]$/, '')+`. ${p.isDaytime?'High':'Low'} ${p.temperature}°${p.temperatureUnit||'F'}.`;
-      }
-      return text;
-    }
-    function concise(p){const text=p.detailedForecast||'',pop=text.match(/Chance of precipitation is (\d+)%/i)?.[1]??p.probabilityOfPrecipitation?.value;const rain=text.match(/New (?:rainfall|snow accumulation|snowfall) amounts?[^.]*\./i)?.[0]||'';const g=gustFrom(text);return `${p.shortForecast}${pop==null?'':`, ${pop}%`}. ${rain.replace('New rainfall amounts between ','Rain ').replace('New rainfall amounts ','Rain ').replace(' possible','')} Wind ${p.windSpeed}${g==null?'':` (gusts to ${g} mph)`}.`.replace(/\s+/g,' ')}
-    async function currentObservation(point){
-      const stations=await json(point.properties.observationStations);
-      const station=stations.features?.[0]?.id;
-      if(!station)throw new Error('No nearby observation station.');
-      const result=await json(`${station}/observations/latest`);
-      const observation=result.properties,age=Date.now()-Date.parse(observation?.timestamp);
-      if(!Number.isFinite(age)||age< -300000||age>2*3600000||!observation.textDescription?.trim())throw new Error('Current conditions unavailable.');
-      return {observation,confirmedAt:new Date()};
-    }
-    function currentHeadline(observation){
-      const condition=observation.textDescription.trim();
-      const value=observation.temperature?.value;
-      const unit=observation.temperature?.unitCode;
-      const temperature=value==null?null:unit?.endsWith('degC')?cToF(value):unit?.endsWith('degF')?Math.round(value):null;
-      return `${condition}${temperature==null?'':` · ${temperature}°F`}`;
-    }
-    function alertLine(a){const p=a.properties;return `<div class="alert"><strong>${esc(p.event)}</strong><p>${esc(p.areaDesc)}</p><p>${esc(local(p.onset||p.effective))}–${esc(local(p.ends||p.expires))}</p><p>${esc((p.instruction||p.description||'See NWS alert for instructions.').replace(/\s+/g,' '))}</p><a href="${esc(p['@id']||a.id)}" target="_blank" rel="noreferrer">Full NWS alert</a></div>`}
-    function periodRange(periods){if(!periods.length)return 'Outlook';return periods.length===1?periods[0].name:`${periods[0].name}–${periods.at(-1).name}`}
-    function dayRows(periods,grid){const rows=[];for(let i=0;i<periods.length&&rows.length<7;i++){const p=periods[i];if(!p.isDaytime&&rows.length)continue;let day=p.isDaytime?p:null,night=p.isDaytime?periods[i+1]:p;if(day&&night?.isDaytime)night=null;const base=day||night;const date=new Date(base.startTime);const dayKey=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Chicago',year:'numeric',month:'2-digit',day:'2-digit'}).format(date);const uv=uvForDate(grid,dayKey);rows.push({date,day,night,uv});if(day&&night)i++}return rows}
-    function uvForDate(grid,key){const values=grid.properties?.maxUVIndex?.values||[];for(const row of values){const d=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Chicago',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(row.validTime.split('/')[0]));if(d===key&&row.value!=null)return Math.round(row.value)}return null}
-    function renderDays(periods,grid){el('days').innerHTML=dayRows(periods,grid).map(r=>{const d=r.day,n=r.night,b=d||n,title=r.date.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric',timeZone:'America/Chicago'});const gusts=[d,n].filter(Boolean).map(p=>gustFrom(p.detailedForecast)).filter(v=>v!=null),gust=gusts.length?Math.max(...gusts):null;const pop=d?.probabilityOfPrecipitation?.value;const metrics=[['High / low',`${d?.temperature??'—'}° / ${n?.temperature??'—'}°`],[gust==null?'Wind':'Wind / peak gust',`${b.windSpeed}${gust==null?'':` / ${gust} mph`}`],pop==null?null:['Day rain chance',`${pop}%`],r.uv==null?null:['Max UV',r.uv]].filter(Boolean).map(([k,v])=>`<span class="metric"><b>${esc(k)}:</b>&nbsp;${esc(v)}</span>`).join('');return `<article class="day"><div class="day-title"><span aria-hidden="true">${emoji(b.shortForecast)}</span> ${esc(title)}</div><div class="condition">${esc(b.shortForecast)}</div><div class="metrics">${metrics}</div><hr><div class="detail"><ul>${listItem('Day',d?shortText(d):'Daytime period has ended; not included in this NWS forecast.')}${listItem('Night',n?shortText(n):'Not yet provided by NWS.')}</ul></div></article>`}).join('')}
+    const header=mountHeader('today',()=>load());
     function draw(svg,series,domain,yTitle,refs=[]){const w=Math.max(320,svg.clientWidth||320),h=195,m={l:48,r:12,t:12,b:35},x=i=>m.l+i*(w-m.l-m.r)/47,y=v=>m.t+(domain[1]-v)*(h-m.t-m.b)/(domain[1]-domain[0]),ns='http://www.w3.org/2000/svg';svg.setAttribute('viewBox',`0 0 ${w} ${h}`);svg.innerHTML='';const add=(tag,a,t)=>{const n=document.createElementNS(ns,tag);Object.entries(a||{}).forEach(([k,v])=>n.setAttribute(k,v));if(t!=null)n.textContent=t;svg.appendChild(n);return n};const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();add('rect',{x:m.l,y:m.t,width:w-m.l-m.r,height:h-m.t-m.b,fill:'none',stroke:css('--line')});for(let j=0;j<=4;j++){const v=domain[0]+(domain[1]-domain[0])*j/4,yy=y(v);add('line',{x1:m.l,y1:yy,x2:w-m.r,y2:yy,stroke:css('--line')});add('text',{x:m.l-7,y:yy+4,'text-anchor':'end',fill:css('--muted'),'font-size':11},Math.round(v))}refs.forEach(r=>{const yy=y(r.v);add('line',{x1:m.l,y1:yy,x2:w-m.r,y2:yy,stroke:css(r.color),'stroke-dasharray':'4 4'});add('text',{x:w-m.r-3,y:yy-4,'text-anchor':'end',fill:css('--muted'),'font-size':11},r.label)});(w<440?[0,16,32,47]:[0,12,24,36,47]).forEach(i=>add('text',{x:x(i),y:h-11,'text-anchor':i===0?'start':i===47?'end':'middle',fill:css('--muted'),'font-size':11},chartData.labels[i]||''));add('text',{x:11,y:(m.t+h-m.b)/2,transform:`rotate(-90 11 ${(m.t+h-m.b)/2})`,'text-anchor':'middle',fill:css('--muted'),'font-size':11},yTitle);if(svg.id==='wind-chart')for(const p of chartData.periodMax||[]){add('line',{x1:x(p.indices[0]),x2:x(p.indices.at(-1)),y1:y(p.g),y2:y(p.g),stroke:css('--orange'),'stroke-width':2,'stroke-dasharray':'3 5'});add('text',{x:x(p.indices[0]),y:y(p.g)-5,fill:css('--text'),'font-size':11},'NWS period max gust')}series.forEach(s=>{let d='',on=false;s.values.forEach((v,i)=>{if(v==null){on=false;return}d+=(on?'L':'M')+x(i).toFixed(1)+' '+y(v).toFixed(1)+' ';on=true});add('path',{d,fill:'none',stroke:css(s.color),'stroke-width':2.6,'stroke-linejoin':'round','stroke-dasharray':s.dash||''})})}
     function redraw(){if(!chartData||!chartData.temp.length){['temp-chart','pop-chart','wind-chart'].forEach(id=>el(id).innerHTML='');return;}const temps=chartData.temp.filter(v=>v!=null),maxT=Math.max(...temps,80),minT=Math.min(...temps,30);draw(el('temp-chart'),[{values:chartData.temp,color:'--blue'}],[Math.floor((minT-5)/5)*5,Math.ceil((maxT+5)/5)*5],'°F');draw(el('pop-chart'),[{values:chartData.pop,color:'--cyan'}],[0,100],'%',[{v:50,color:'--orange',label:'50%'}]);const vals=[...chartData.wind,...chartData.gust,...(chartData.periodMax||[]).map(p=>p.g)].filter(v=>v!=null),maxW=Math.max(20,...vals);draw(el('wind-chart'),[{values:chartData.wind,color:'--green'},{values:chartData.gust,color:'--orange',dash:'6 4'}],[0,Math.ceil((maxW+3)/5)*5],'mph',[{v:10,color:'--orange',label:'10 mph'},{v:20,color:'--red',label:'20 mph'}])}
     let busy=false,lastLoad=0,hasLoaded=false;
     async function load(){if(busy)return;busy=true;lastLoad=Date.now();if(!hasLoaded){el('loading').classList.remove('hidden');el('error').classList.add('hidden');el('content').classList.add('hidden')}try{
-      const loc=await resolveLocation(),POINT=`${loc.lat},${loc.lon}`;
-      let point=getCachedPoint(loc.lat,loc.lon);
-      if(!point){point=await json(`${API}/points/${POINT}`);setCachedPoint(loc.lat,loc.lon,point)}
-      const rel=point.properties.relativeLocation?.properties;
-      const label=rel?`${rel.city}, ${rel.state}`:loc.label||'Selected location';
-      if(loc.label!==label)saveLocation({...loc,label});
-      el('kicker').textContent=label;
-      const officeId=(point.properties.forecastOffice||'').split('/').pop();
-      const countyId=(point.properties.county||'').split('/').pop();
-      const zoneId=(point.properties.forecastZone||'').split('/').pop();
-      const results=await Promise.allSettled([json(point.properties.forecast),json(point.properties.forecastHourly),json(point.properties.forecastGridData),json(`${API}/alerts/active?point=${POINT}`),currentObservation(point)]);
+      const loc=await resolveLocation();currentLoc=loc;
+      const {point,label,tz,officeId}=await resolvePoint(loc);
+      header.setKicker(label);
+      const results=await Promise.allSettled([json(point.properties.forecast),json(point.properties.forecastHourly),json(point.properties.forecastGridData),json(`${WX.API}/alerts/active?point=${loc.lat},${loc.lon}`),currentObservation(point)]);
       if(results[0].status!=='fulfilled')throw new Error('The current seven-day forecast is unavailable.');
       const forecast=results[0].value,hourly=results[1].value,grid=results[2].value||{properties:{}},alerts=results[3].value;
       const now=new Date(),periods=forecast.properties.periods.filter(p=>new Date(p.endTime)>now);
       if(!periods.length||!forecast.properties.updateTime||now-new Date(forecast.properties.updateTime)>36*3600000)throw new Error('NWS forecast is stale or cannot be verified.');
-      const hourlyFresh=hourly?.properties?.updateTime&&now-new Date(hourly.properties.updateTime)<36*3600000; const hours=(hourlyFresh?hourly.properties.periods:[]).filter(p=>new Date(p.endTime)>now).slice(0,48),rows=dayRows(periods,grid),near=rows[0];
+      const hourlyFresh=hourly?.properties?.updateTime&&now-new Date(hourly.properties.updateTime)<36*3600000; const hours=(hourlyFresh?hourly.properties.periods:[]).filter(p=>new Date(p.endTime)>now).slice(0,48),rows=dayRows(periods,grid,tz);
+      const today=findTodayPeriods(forecast.properties.periods,tz);
       const current=results[4].status==='fulfilled'?results[4].value:null;
       el('headline').textContent=current?currentHeadline(current.observation):'Current conditions unavailable';
-      el('last-updated').textContent=current?`Last updated ${local(current.confirmedAt,{year:'numeric'})}`:'';
-      el('last-updated').title=current?`Latest NWS observation: ${local(current.observation.timestamp)}`:'';
-      el('near-title').textContent=`${emoji((near.day||near.night).shortForecast)} Today · ${now.toLocaleDateString('en-US',{timeZone:'America/Chicago',month:'short',day:'numeric'})}`;
-      el('near-list').innerHTML=[near.day?listItem('Today',concise(near.day)):'',near.night?listItem('Tonight',concise(near.night)):''].join('');
-      const later=rows.slice(1,3);el('later-title').textContent=later.map(r=>`${emoji((r.day||r.night).shortForecast)} ${r.date.toLocaleDateString('en-US',{weekday:'long',timeZone:'America/Chicago'})}`).join('–');
+      el('last-updated').textContent=current?`Last updated ${local(current.confirmedAt,tz,{year:'numeric'})}`:'';
+      el('last-updated').title=current?`Latest NWS observation: ${local(current.observation.timestamp,tz)}`:'';
+      el('near-title').textContent=`${emoji((today.day||today.night).shortForecast)} Today · ${now.toLocaleDateString('en-US',{timeZone:tz,month:'short',day:'numeric'})}`;
+      el('near-list').innerHTML=[today.day?listItem('Today',concise(today.day)):'',today.night?listItem('Tonight',concise(today.night)):''].join('');
+      const later=rows.slice(1,3);el('later-title').textContent=later.map(r=>`${emoji((r.day||r.night).shortForecast)} ${r.date.toLocaleDateString('en-US',{weekday:'long',timeZone:tz})}`).join('–');
       el('later-list').innerHTML=later.flatMap((r,i)=>[r.day?listItem(r.day.name,concise(r.day)):'',i===0&&r.night?listItem(r.night.name,concise(r.night)):'']).join('');
-      const active=alerts?.features||[];el('alerts').innerHTML=alerts?(active.length?active.map(alertLine).join(''):'<p>No active NWS alerts.</p>'):'<p>Current NWS alerts could not be verified. Check the local alerts link below.</p>';
+      const active=alerts?.features||[];el('alerts').innerHTML=alerts?(active.length?active.map(a=>alertLine(a,tz)).join(''):'<p>No active NWS alerts.</p>'):'<p>Current NWS alerts could not be verified.</p>';
       const needsHazard=active.length||periods.some(p=>/thunder|snow|ice|freezing|fog|heavy rain|blizzard/i.test(p.detailedForecast)||gustFrom(p.detailedForecast)>20);
       const [hwo,afd]=needsHazard&&officeId?await Promise.all([product('HWO',officeId),product('AFD',officeId)]):[null,null];
-      if(needsHazard){const hazardText=[hwo?.productText,afd?.productText].filter(Boolean).join(' ');if(/severe|tornado|hail|damaging|blizzard|flood/i.test(hazardText))el('alerts').innerHTML+=`<p class="note">Regional NWS hazard guidance is available in the <a href="https://forecast.weather.gov/product.php?site=NWS&issuedby=${esc(officeId)}&product=HWO" target="_blank">outlook</a> and <a href="https://forecast.weather.gov/product.php?site=${esc(officeId)}&issuedby=${esc(officeId)}&product=AFD" target="_blank">discussion</a>. Regional threats may not apply to your exact location; only issued local alerts are listed above.</p>`;if(!hwo||!afd)el('alerts').innerHTML+='<p class="note">Some regional hazard guidance could not be refreshed.</p>'}
-      renderDays(periods,grid);
+      if(needsHazard){const hazardText=[hwo?.productText,afd?.productText].filter(Boolean).join(' ');if(/severe|tornado|hail|damaging|blizzard|flood/i.test(hazardText))el('alerts').innerHTML+='<p class="note">Regional NWS hazard guidance indicates elevated risk nearby. Regional threats may not apply to your exact location; only issued local alerts are listed above.</p>';if(!hwo||!afd)el('alerts').innerHTML+='<p class="note">Some regional hazard guidance could not be refreshed.</p>'}
       const times=hours.map(x=>new Date(x.startTime)),gust=gridValues(grid.properties.windGust,times,v=>grid.properties.windGust.uom?.includes('km_h')?kphToMph(v):Math.round(v));
-      chartData={temp:hours.map(x=>x.temperature),pop:hours.map(x=>x.probabilityOfPrecipitation?.value??null),wind:hours.map(x=>maxWind(x.windSpeed)),gust,labels:times.map(d=>d.toLocaleString('en-US',{weekday:'short',hour:'numeric',timeZone:'America/Chicago'})),periodMax:[]};
+      chartData={temp:hours.map(x=>x.temperature),pop:hours.map(x=>x.probabilityOfPrecipitation?.value??null),wind:hours.map(x=>maxWind(x.windSpeed)),gust,labels:times.map(d=>d.toLocaleString('en-US',{weekday:'short',hour:'numeric',timeZone:tz})),periodMax:[]};
       periods.forEach(p=>{const g=gustFrom(p.detailedForecast);if(g==null)return;const indices=times.map((t,i)=>t>=new Date(p.startTime)&&t<new Date(p.endTime)&&gust[i]==null?i:null).filter(i=>i!=null);if(indices.length)chartData.periodMax.push({g,indices})});
-      document.querySelector('#charts-title + .note').textContent=hours.length?`${local(hours[0].startTime)}–${local(hours.at(-1).endTime)} · Precipitation probability, not amount. ${chartData.periodMax.length?'NWS did not provide hour-specific gusts for dashed segments; these show period maxima, not hourly predictions.':gust.every(v=>v==null)?'Gusts: Not provided by NWS.':'Hourly gusts from the NWS grid.'}`:'Hourly forecast unavailable; chart data not shown.';
-      el('forecast-link').href=`https://forecast.weather.gov/MapClick.php?lat=${loc.lat}&lon=${loc.lon}`;el('hourly-link').href=`https://forecast.weather.gov/MapClick.php?FcstType=graphical&lat=${loc.lat}&lon=${loc.lon}&unit=0`;
-      el('hwo-link').href=officeId?`https://forecast.weather.gov/product.php?site=NWS&issuedby=${encodeURIComponent(officeId)}&product=HWO`:'https://forecast.weather.gov/';
-      el('afd-link').href=officeId?`https://forecast.weather.gov/product.php?site=${encodeURIComponent(officeId)}&issuedby=${encodeURIComponent(officeId)}&product=AFD`:'https://forecast.weather.gov/';
-      el('local-alerts-link').href=zoneId&&countyId?`https://forecast.weather.gov/showsigwx.php?warnzone=${encodeURIComponent(zoneId)}&warncounty=${encodeURIComponent(countyId)}&lat=${loc.lat}&lon=${loc.lon}`:`https://alerts.weather.gov/`;
-      el('updated').textContent=`Refreshed ${local(now)} · Forecast issued ${local(forecast.properties.updateTime)} · Hourly issued ${local(hourly?.properties?.updateTime)} · Alerts checked ${alerts?local(now):'unavailable'}${hwo?' · HWO '+local(hwo.issuanceTime):''}${afd?' · AFD '+local(afd.issuanceTime):''}. Latest published NWS guidance; not continuous emergency monitoring.`;
+      document.querySelector('#charts-title + .note').textContent=hours.length?`${local(hours[0].startTime,tz)}–${local(hours.at(-1).endTime,tz)} · Precipitation probability, not amount. ${chartData.periodMax.length?'NWS did not provide hour-specific gusts for dashed segments; these show period maxima, not hourly predictions.':gust.every(v=>v==null)?'Gusts: Not provided by NWS.':'Hourly gusts from the NWS grid.'}`:'Hourly forecast unavailable; chart data not shown.';
+      el('updated').textContent=`Refreshed ${local(now,tz)} · Forecast issued ${local(forecast.properties.updateTime,tz)} · Hourly issued ${local(hourly?.properties?.updateTime,tz)} · Alerts checked ${alerts?local(now,tz):'unavailable'}${hwo?' · HWO '+local(hwo.issuanceTime,tz):''}${afd?' · AFD '+local(afd.issuanceTime,tz):''}. Latest published NWS guidance; not continuous emergency monitoring.`;
       el('loading').classList.add('hidden');el('content').classList.remove('hidden');requestAnimationFrame(redraw);hasLoaded=true;
     }catch(e){
-      if(!hasLoaded){const loc=currentLoc||DEFAULT_LOC;el('loading').classList.add('hidden');el('headline').textContent='Weather update unavailable';el('last-updated').textContent='';el('error').classList.remove('hidden');el('error').innerHTML=`${esc(e.message)} <a href="https://forecast.weather.gov/MapClick.php?lat=${loc.lat}&lon=${loc.lon}">Open weather.gov</a>.`}
+      if(!hasLoaded){el('loading').classList.add('hidden');el('headline').textContent='Weather update unavailable';el('last-updated').textContent='';el('error').classList.remove('hidden');el('error').textContent=e.message}
     }finally{busy=false}}
     function autoRefresh(){if(document.visibilityState==='visible'&&Date.now()-lastLoad>5*60000)load()}
     window.addEventListener('pageshow',e=>{if(e.persisted)load()});
     document.addEventListener('visibilitychange',autoRefresh);
     window.addEventListener('focus',autoRefresh);
     setInterval(()=>{if(document.visibilityState==='visible')load()},10*60000);
-    let suggestionMap=new Map(),suggestTimer=null;
-    function pickLocation(pos,query){
-      saveLocation({...pos,label:null,source:'search',query});
-      el('location-input').value='';el('location-suggestions').innerHTML='';suggestionMap.clear();
-      load();
-    }
-    el('location-input').addEventListener('input',()=>{
-      clearTimeout(suggestTimer);
-      const q=el('location-input').value.trim();
-      if(suggestionMap.has(q)){el('kicker').textContent='Loading…';pickLocation(suggestionMap.get(q),q);return}
-      if(q.length<3){suggestionMap.clear();el('location-suggestions').innerHTML='';return}
-      suggestTimer=setTimeout(async()=>{
-        try{
-          const results=await json(`https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=us&q=${encodeURIComponent(q)}`);
-          suggestionMap=new Map(results.map(r=>[r.display_name,{lat:+(+r.lat).toFixed(4),lon:+(+r.lon).toFixed(4)}]));
-          el('location-suggestions').innerHTML=[...suggestionMap.keys()].map(name=>`<option value="${esc(name)}"></option>`).join('');
-        }catch{}
-      },350);
-    });
-    el('location-form').addEventListener('submit',async e=>{
-      e.preventDefault();
-      const q=el('location-input').value.trim();
-      if(!q)return;
-      el('kicker').textContent='Searching…';
-      try{pickLocation(suggestionMap.get(q)||await geocodeSearch(q),q)}
-      catch(err){el('kicker').textContent=err.message||'Location search failed';}
-    });
-    el('locate-btn').addEventListener('click',async()=>{
-      el('kicker').textContent='Locating…';
-      try{const pos=await geolocate();saveLocation({...pos,label:null,source:'geo'});load()}
-      catch{el('kicker').textContent='Location access denied or unavailable';}
-    });
     let chartWidth=0;new ResizeObserver(entries=>{const width=entries[0].contentRect.width;if(width>0&&width!==chartWidth){chartWidth=width;requestAnimationFrame(redraw)}}).observe(document.querySelector('.charts'));window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',redraw);if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});load();
   })();
   </script>

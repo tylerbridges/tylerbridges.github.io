@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0b2545">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="description" content="Full 7-day NWS forecast for your location.">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="preconnect" href="https://api.weather.gov">
+  <link rel="dns-prefetch" href="https://api.weather.gov">
+  <link rel="preconnect" href="https://nominatim.openstreetmap.org" crossorigin>
+  <link rel="dns-prefetch" href="https://nominatim.openstreetmap.org">
+  <link rel="stylesheet" href="/assets/site.css">
+  <title>7-Day Forecast — Rochester Weather</title>
+</head>
+<body>
+  <main class="shell">
+    <header id="site-header"></header>
+    <div class="page-head">
+      <p class="kicker" id="kicker">Locating…</p>
+      <h1>7-Day Forecast</h1>
+    </div>
+    <div id="loading" class="loading" role="status" aria-live="polite">Loading forecast…</div>
+    <div id="error" class="error hidden" role="alert"></div>
+    <div id="content" class="hidden">
+      <div class="days" id="days"></div>
+      <p class="status" id="updated"></p>
+    </div>
+  </main>
+  <script src="/assets/weather-core.js"></script>
+  <script>
+  (()=>{
+    const {el,resolveLocation,resolvePoint,json,local,renderDaysHTML,mountHeader}=WX;
+    let busy=false,lastLoad=0,hasLoaded=false;
+    const header=mountHeader('forecast',()=>load());
+    async function load(){if(busy)return;busy=true;lastLoad=Date.now();if(!hasLoaded){el('loading').classList.remove('hidden');el('error').classList.add('hidden');el('content').classList.add('hidden')}try{
+      const loc=await resolveLocation();
+      const {point,label,tz}=await resolvePoint(loc);
+      header.setKicker(label);
+      const grid=await json(point.properties.forecastGridData).catch(()=>({properties:{}}));
+      const forecast=await json(point.properties.forecast);
+      const now=new Date(),periods=forecast.properties.periods.filter(p=>new Date(p.endTime)>now);
+      if(!periods.length||!forecast.properties.updateTime)throw new Error('The 7-day forecast is unavailable.');
+      el('days').innerHTML=renderDaysHTML(periods,grid,tz);
+      el('updated').textContent=`Forecast issued ${local(forecast.properties.updateTime,tz)} · Refreshed ${local(now,tz)}.`;
+      el('loading').classList.add('hidden');el('content').classList.remove('hidden');hasLoaded=true;
+    }catch(e){
+      if(!hasLoaded){el('loading').classList.add('hidden');el('error').classList.remove('hidden');el('error').textContent=e.message}
+    }finally{busy=false}}
+    function autoRefresh(){if(document.visibilityState==='visible'&&Date.now()-lastLoad>5*60000)load()}
+    window.addEventListener('pageshow',e=>{if(e.persisted)load()});
+    document.addEventListener('visibilitychange',autoRefresh);
+    window.addEventListener('focus',autoRefresh);
+    setInterval(()=>{if(document.visibilityState==='visible')load()},10*60000);
+    if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
+    load();
+  })();
+  </script>
+</body>
+</html>
