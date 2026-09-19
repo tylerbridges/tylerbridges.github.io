@@ -53,16 +53,14 @@ window.WX = (function(){
   const kphToMph=v=>Math.round(v*.621371), cToF=v=>Math.round(v*9/5+32);
   async function product(type,officeId){try{const list=await json(`${API}/products/types/${type}/locations/${officeId}`);const item=(list['@graph']||[])[0];if(!item?.id)return null;return await json(item.id.startsWith('http')?item.id:`${API}/products/${item.id}`)}catch{return null}}
   function listItem(label,text){return `<li><strong>${esc(label)}:</strong> ${esc(text)}</li>`}
-  function shortText(p){
-    const sentences=(p.detailedForecast||'').replace(/\s+/g,' ').trim().split(/(?<=[.!?])\s+/);
-    const narrative=sentences.filter(s=>! /^(?:(?:north|south|east|west|northeast|northwest|southeast|southwest|variable|light|calm|and)[ -]*)*winds?\b(?! chill)|^calm\b|^gusts?\b|^chance of precipitation is\b/i.test(s));
-    let text=narrative.join(' ').trim()||p.shortForecast||'Conditions not provided.';
-    if(!/\b(?:high|low|temperature|degrees|heat index|wind chill)\b/i.test(text)&&p.temperature!=null){
-      text=text.replace(/[.!?]$/, '')+`. ${p.isDaytime?'High':'Low'} ${p.temperature}°${p.temperatureUnit||'F'}.`;
-    }
-    return text;
+  function concise(p){
+    // Brief line: just high/low (matching the H/L chip format) and wind/gusts —
+    // shortForecast and rain % already appear via the card's title/condition
+    // and the Rain % chip, so they're left out here to avoid repeating them.
+    const label=p.isDaytime?'H':'L';
+    const gust=gustFrom(p.detailedForecast||'');
+    return `${label}: ${p.temperature}°. Wind: ${p.windSpeed}${gust==null?'':` Gusts: ${gust} mph`}.`;
   }
-  function concise(p){const text=p.detailedForecast||'',pop=text.match(/Chance of precipitation is (\d+)%/i)?.[1]??p.probabilityOfPrecipitation?.value;const rain=text.match(/New (?:rainfall|snow accumulation|snowfall) amounts?[^.]*\./i)?.[0]||'';const g=gustFrom(text);return `${p.shortForecast}${pop==null?'':`, ${pop}%`}. ${rain.replace('New rainfall amounts between ','Rain ').replace('New rainfall amounts ','Rain ').replace(' possible','')} Wind ${p.windSpeed}${g==null?'':` (gusts to ${g} mph)`}.`.replace(/\s+/g,' ')}
   async function currentObservation(point){
     const stations=await json(point.properties.observationStations);
     const station=stations.features?.[0]?.id;
@@ -141,7 +139,7 @@ window.WX = (function(){
     ].filter(Boolean);
   }
   function metricsHTML(pairs){return pairs.map(([k,v])=>`<span class="metric"><b>${esc(k)}:</b> ${esc(v)}</span>`).join('')}
-  function renderDaysHTML(periods,grid,tz){return dayRows(periods,grid,tz).map(r=>{const d=r.day,n=r.night,b=d||n,title=r.date.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric',timeZone:tz});const metrics=metricsHTML(dayMetrics(d,n,r.uv,r.humidity));return `<article class="day"><div class="day-title"><span aria-hidden="true">${emoji(b.shortForecast)}</span> ${esc(title)}</div><div class="condition">${esc(b.shortForecast)}</div><hr><div class="detail"><ul>${listItem('Day',d?shortText(d):'Daytime period has ended; not included in this NWS forecast.')}${listItem('Night',n?shortText(n):'Not yet provided by NWS.')}</ul></div><div class="metrics">${metrics}</div></article>`}).join('')}
+  function renderDaysHTML(periods,grid,tz){return dayRows(periods,grid,tz).map(r=>{const d=r.day,n=r.night,b=d||n,title=r.date.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric',timeZone:tz});const metrics=metricsHTML(dayMetrics(d,n,r.uv,r.humidity));return `<article class="day"><div class="day-title"><span aria-hidden="true">${emoji(b.shortForecast)}</span> ${esc(title)}</div><div class="condition">${esc(b.shortForecast)}</div><hr><div class="detail"><ul>${listItem('Day',d?concise(d):'Daytime period has ended; not included in this NWS forecast.')}${listItem('Night',n?concise(n):'Not yet provided by NWS.')}</ul></div><div class="metrics">${metrics}</div></article>`}).join('')}
 
   const LOCATE_ICON='<svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true"><path d="M12 2.3 4.4 20.2c-.18.42.27.85.68.66L12 17.8l6.92 3.06c.41.19.86-.24.68-.66L12 2.3z" fill="currentColor" transform="rotate(45 12 12)"/></svg>';
   function mountHeader(active,onLocationChange){
@@ -252,7 +250,7 @@ window.WX = (function(){
   }
 
   return {API,DEFAULT_LOC,el,esc,getSavedLocation,saveLocation,geolocate,geocodeSearch,resolveLocation,resolvePoint,json,
-    emoji,local,maxWind,gustFrom,durationMs,gridValues,kphToMph,cToF,product,listItem,shortText,concise,
+    emoji,local,maxWind,gustFrom,durationMs,gridValues,kphToMph,cToF,product,listItem,concise,
     currentObservation,currentHeadline,alertLine,dayKey,startOfDay,hourLabel,dayRows,uvForDate,humidityForDate,dayMetrics,metricsHTML,
     findTodayPeriods,renderDaysHTML,mountHeader,mountFooterNav,mountPullToRefresh};
 })();
