@@ -11,7 +11,7 @@
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="preconnect" href="https://api.weather.gov">
   <link rel="preconnect" href="https://nominatim.openstreetmap.org" crossorigin>
-  <link rel="preconnect" href="https://mapservices.weather.noaa.gov" crossorigin>
+  <link rel="preconnect" href="https://nowcoast.noaa.gov" crossorigin>
   <link rel="stylesheet" href="/assets/site.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.css">
   <title>Radar — Rochester Weather</title>
@@ -69,8 +69,14 @@
     mountFooterNav('radar');
     // NOAA nowCoast time-enabled NEXRAD base reflectivity mosaic — run by NOAA/NWS.
     // weather.gov's own API (api.weather.gov) is JSON-only and has no radar imagery;
-    // this is NOAA's official real-time GIS service for that data.
-    const SERVICE='https://mapservices.weather.noaa.gov/eventdriven/rest/services/radar/radar_base_reflectivity_time/MapServer';
+    // this is NOAA's official real-time GIS service for that data. NOAA has
+    // restructured this exact service before, so a fallback candidate is kept
+    // in case the primary URL is retired or reorganized again.
+    const SERVICE_CANDIDATES=[
+      'https://nowcoast.noaa.gov/arcgis/rest/services/nowcoast/radar_meteo_imagery_nexrad_time/MapServer',
+      'https://idpgis.ncep.noaa.gov/arcgis/rest/services/NWS_Observations/radar_base_reflectivity/MapServer'
+    ];
+    let activeService=SERVICE_CANDIDATES[0];
     let map=null,marker=null,esriLayer=null,frames=[],idx=0,playing=true,timer=null;
 
     function fmtTime(ms){return new Date(ms).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}
@@ -78,7 +84,7 @@
     function updateStatus(checkedNow){
       if(!frames.length){el('radar-status').textContent='';return}
       const latest=frames[frames.length-1];
-      el('radar-status').textContent=`Latest NOAA radar run: ${fmtFull(latest)}${checkedNow?' · just refreshed':''} · Source: NOAA nowCoast NEXRAD base reflectivity`;
+      el('radar-status').textContent=`Latest NOAA radar run: ${fmtFull(latest)}${checkedNow?' · just refreshed':''} · Source: NOAA/NWS NEXRAD base reflectivity`;
     }
     function showFrame(i){
       if(!frames.length)return;
@@ -91,9 +97,15 @@
     function pause(){playing=false;el('play-btn').textContent='▶️';el('play-btn').setAttribute('aria-label','Play');clearInterval(timer)}
 
     async function loadFrames(isRefresh){
-      const meta=await fetch(`${SERVICE}?f=json`,{cache:'no-store'}).then(r=>r.json());
-      const info=meta.timeInfo;
-      if(!info?.timeExtent?.length)throw new Error('NOAA radar service did not report an available time range.');
+      let info=null;
+      for(const url of SERVICE_CANDIDATES){
+        try{
+          const meta=await fetch(`${url}?f=json`,{cache:'no-store'}).then(r=>r.json());
+          if(meta.timeInfo?.timeExtent?.length){info=meta.timeInfo;activeService=url;break}
+        }catch{}
+      }
+      if(!info)throw new Error('NOAA radar service did not report an available time range.');
+      if(esriLayer&&esriLayer.options.url!==activeService)esriLayer.setUrl(activeService);
       const [, end]=info.timeExtent;
       const stepMs=(info.timeInterval&&info.timeIntervalUnits==='esriTimeUnitsMinutes'?info.timeInterval:5)*60000;
       const spanMs=90*60000;
@@ -120,7 +132,7 @@
           L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors'}).addTo(map);
           marker=L.marker(latlng).addTo(map);
           if(typeof L.esri==='undefined'){el('error').classList.remove('hidden');el('error').textContent='Radar map library (Esri-Leaflet) failed to load. Check your connection and reload.';return}
-          esriLayer=L.esri.dynamicMapLayer({url:SERVICE,opacity:0.75,f:'image',attribution:'Radar © <a href="https://www.weather.gov/" target="_blank" rel="noreferrer">NOAA/NWS</a> nowCoast'}).addTo(map);
+          esriLayer=L.esri.dynamicMapLayer({url:activeService,opacity:0.75,f:'image',attribution:'Radar © <a href="https://www.weather.gov/" target="_blank" rel="noreferrer">NOAA/NWS</a>'}).addTo(map);
           try{await loadFrames(false);if(playing)play()}catch(e){el('error').classList.remove('hidden');el('error').textContent=e.message}
           requestAnimationFrame(()=>map.invalidateSize());
         }else{
