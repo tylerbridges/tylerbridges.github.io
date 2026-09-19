@@ -192,8 +192,52 @@ window.WX = (function(){
       </nav>`;
   }
 
+  // iOS Safari has no built-in pull-to-refresh gesture (unlike some Android
+  // browsers), so this reproduces the native-feeling gesture by hand: drag
+  // down from the top of the page, release past a threshold, refresh.
+  function mountPullToRefresh(onRefresh){
+    if(!('ontouchstart'in window))return;
+    const indicator=document.createElement('div');
+    indicator.className='ptr-indicator';
+    indicator.innerHTML='<span class="ptr-icon"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M12 3v6l4-2.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/></svg></span>';
+    document.body.prepend(indicator);
+    const icon=indicator.querySelector('.ptr-icon');
+    const THRESHOLD=64,MAX=100;
+    let startY=0,pulling=false,refreshing=false,dist=0;
+    function position(d){indicator.style.transform=`translate(-50%, ${-44+d}px)`;indicator.style.opacity=String(Math.min(1,d/THRESHOLD))}
+    function reset(){pulling=false;dist=0;indicator.style.transition='transform .2s ease,opacity .2s ease';position(0);icon.style.transform=''}
+    reset();
+    document.addEventListener('touchstart',e=>{
+      if(refreshing||document.scrollingElement.scrollTop>0)return;
+      startY=e.touches[0].clientY;pulling=true;indicator.style.transition='none';
+    },{passive:true});
+    document.addEventListener('touchmove',e=>{
+      if(!pulling||refreshing)return;
+      const delta=e.touches[0].clientY-startY;
+      if(delta<=0){dist=0;position(0);return}
+      dist=Math.min(MAX,delta*0.5);
+      position(dist);
+      icon.style.transform=`rotate(${dist*3.2}deg)`;
+    },{passive:true});
+    document.addEventListener('touchend',async()=>{
+      if(!pulling||refreshing)return;
+      pulling=false;
+      indicator.style.transition='transform .2s ease,opacity .2s ease';
+      if(dist>=THRESHOLD){
+        refreshing=true;
+        indicator.classList.add('spinning');
+        icon.style.transform='';
+        indicator.style.transform='translate(-50%, 16px)';indicator.style.opacity='1';
+        try{await onRefresh()}catch{}
+        indicator.classList.remove('spinning');
+        refreshing=false;
+      }
+      reset();
+    });
+  }
+
   return {API,DEFAULT_LOC,el,esc,getSavedLocation,saveLocation,geolocate,geocodeSearch,resolveLocation,resolvePoint,json,
     emoji,local,maxWind,gustFrom,durationMs,gridValues,kphToMph,cToF,product,listItem,shortText,concise,
     currentObservation,currentHeadline,alertLine,dayKey,dayRows,uvForDate,humidityForDate,dayMetrics,metricsHTML,
-    findTodayPeriods,renderDaysHTML,mountHeader,mountFooterNav};
+    findTodayPeriods,renderDaysHTML,mountHeader,mountFooterNav,mountPullToRefresh};
 })();
