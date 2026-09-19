@@ -1,5 +1,7 @@
-:root{color-scheme:light dark;--bg:#f3f7fb;--surface:#fff;--surface-2:#eaf2fa;--text:#112337;--muted:#53677d;--line:#cbd8e6;--line-strong:#8198af;--navy:#0b2545;--blue:#1d67a9;--cyan:#28a8c7;--orange:#d77822;--red:#bd3d39;--green:#22765a;--shadow:0 12px 30px rgba(24,56,90,.09);--seg-track:#e4ecf5;--seg-active:#fff}
-@media(prefers-color-scheme:dark){:root{--bg:#071522;--surface:#0d2234;--surface-2:#14304a;--text:#eaf3fb;--muted:#a5b7c8;--line:#29445d;--line-strong:#55728b;--navy:#c7e2f5;--blue:#76bbed;--cyan:#61d2e8;--orange:#f2a152;--red:#f17b75;--green:#61c79e;--shadow:0 15px 34px rgba(0,0,0,.22);--seg-track:#0a1c2c;--seg-active:#26496b}}
+/* Dark is the default appearance for now; a future toggle can set
+   data-theme="light" on <html> to opt into the light palette below. */
+:root{color-scheme:dark;--bg:#071522;--surface:#0d2234;--surface-2:#14304a;--text:#eaf3fb;--muted:#a5b7c8;--line:#29445d;--line-strong:#55728b;--navy:#c7e2f5;--blue:#76bbed;--cyan:#61d2e8;--orange:#f2a152;--red:#f17b75;--green:#61c79e;--shadow:0 15px 34px rgba(0,0,0,.22);--seg-track:#0a1c2c;--seg-active:#26496b}
+:root[data-theme="light"]{color-scheme:light;--bg:#f3f7fb;--surface:#fff;--surface-2:#eaf2fa;--text:#112337;--muted:#53677d;--line:#cbd8e6;--line-strong:#8198af;--navy:#0b2545;--blue:#1d67a9;--cyan:#28a8c7;--orange:#d77822;--red:#bd3d39;--green:#22765a;--shadow:0 12px 30px rgba(24,56,90,.09);--seg-track:#e4ecf5;--seg-active:#fff}
 .last-updated{margin:.45rem 0 0;color:var(--muted);font-size:.78rem;font-weight:400;line-height:1.5}
 html,body{overscroll-behavior-y:none;scroll-behavior:auto;touch-action:pan-y pinch-zoom}
 *{box-sizing:border-box}
