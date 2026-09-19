@@ -18,7 +18,7 @@
   <style>
     html,body{height:100%}
     body.radar-page{margin:0;display:flex;flex-direction:column;height:100vh;height:100dvh;overflow:hidden}
-    .radar-head{width:min(920px,100%);margin:auto;padding:calc(env(safe-area-inset-top) + 1rem) max(1rem,env(safe-area-inset-right)) .5rem max(1rem,env(safe-area-inset-left));flex:0 0 auto}
+    .radar-head{width:min(920px,100%);margin:0 auto;padding:calc(env(safe-area-inset-top) + .4rem) max(1rem,env(safe-area-inset-right)) .5rem max(1rem,env(safe-area-inset-left));flex:0 0 auto}
     #map{flex:1;min-height:0;width:100%;background:var(--bg)}
     .radar-controls{flex:0 0 auto;display:flex;flex-direction:column;gap:.4rem;padding:.7rem 1rem calc(env(safe-area-inset-bottom) + .7rem);background:var(--surface);border-top:1px solid var(--line)}
     .radar-row{display:flex;align-items:center;gap:.7rem}
@@ -27,6 +27,7 @@
     .radar-time{flex:0 0 auto;min-width:5.5rem;text-align:right;font-size:.82rem;color:var(--muted);font-variant-numeric:tabular-nums}
     #radar-status{margin:0}
     .leaflet-control-attribution{font-size:10px}
+    #map.hidden,#radar-controls.hidden{display:none}
   </style>
 </head>
 <body class="radar-page">
