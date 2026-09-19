@@ -52,15 +52,6 @@ window.WX = (function(){
   function gridValues(field,times,convert=v=>v){if(!field?.values)return times.map(()=>null);return times.map(t=>{const ms=t.getTime();for(const row of field.values){const [start,dur='PT1H']=row.validTime.split('/');const a=new Date(start).getTime();if(ms>=a&&ms<a+durationMs(dur))return row.value==null?null:convert(row.value)}return null})}
   const kphToMph=v=>Math.round(v*.621371), cToF=v=>Math.round(v*9/5+32);
   async function product(type,officeId){try{const list=await json(`${API}/products/types/${type}/locations/${officeId}`);const item=(list['@graph']||[])[0];if(!item?.id)return null;return await json(item.id.startsWith('http')?item.id:`${API}/products/${item.id}`)}catch{return null}}
-  function listItem(label,text){return `<li><strong>${esc(label)}:</strong> ${esc(text)}</li>`}
-  function concise(p){
-    // Brief line: just high/low (matching the H/L chip format) and wind/gusts —
-    // shortForecast and rain % already appear via the card's title/condition
-    // and the Rain % chip, so they're left out here to avoid repeating them.
-    const label=p.isDaytime?'H':'L';
-    const gust=gustFrom(p.detailedForecast||'');
-    return `${label}: ${p.temperature}°. Wind: ${p.windSpeed}${gust==null?'':` Gusts: ${gust} mph`}.`;
-  }
   async function currentObservation(point){
     const stations=await json(point.properties.observationStations);
     const station=stations.features?.[0]?.id;
@@ -140,7 +131,56 @@ window.WX = (function(){
     ].filter(Boolean);
   }
   function metricsHTML(pairs){return pairs.map(([k,v])=>`<span class="metric"><b>${esc(k)}:</b> ${esc(v)}</span>`).join('')}
-  function renderDaysHTML(periods,grid,tz){return dayRows(periods,grid,tz).map(r=>{const d=r.day,n=r.night,b=d||n,title=r.date.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric',timeZone:tz});const metrics=metricsHTML(dayMetrics(d,n,r.uv,r.humidity,r.gust));const dayText=d?concise(d):'Daytime period has ended; not included in this NWS forecast.';const nightText=n?concise(n):'Not yet provided by NWS.';return `<article class="day"><div class="day-title"><span aria-hidden="true">${emoji(b.shortForecast)}</span> ${esc(title)}</div><div class="condition">${esc(b.shortForecast)}</div><hr><div class="detail"><ul><li>${esc(dayText)}</li><li>${esc(nightText)}</li></ul></div><div class="metrics">${metrics}</div></article>`}).join('')}
+  // Punchy one-line summaries replacing the old Today/Tonight (or Day/Night)
+  // bullet breakdown. todayBrief leads with the live observation since "now"
+  // is known; futureBrief leads with the H/L range since a future day has no
+  // "current" reading yet.
+  function todayBrief(current,d,n){
+    const now=current||(d?`${d.shortForecast} with a high near ${d.temperature}°`:'Conditions unavailable');
+    const later=n?`Becoming ${n.shortForecast.toLowerCase()} tonight with a low near ${n.temperature}°.`:'';
+    return `${now}.${later?' '+later:''}`;
+  }
+  function futureBrief(d,n){
+    const hi=d?`${d.shortForecast} with a high near ${d.temperature}°`:null;
+    const lo=n?`${hi?`becoming ${n.shortForecast.toLowerCase()} tonight`:n.shortForecast} with a low near ${n.temperature}°`:null;
+    if(hi&&lo)return `${hi}, ${lo}.`;
+    return `${hi||lo||'Forecast unavailable'}.`;
+  }
+  function renderFutureCardHTML(title,d,n,metrics){
+    return `<article class="brief"><h3>${esc(title)}</h3><hr><p class="condition">${esc(futureBrief(d,n))}</p><div class="metrics">${metrics}</div></article>`;
+  }
+  function renderDaysHTML(rows,tz){
+    return rows.map(r=>{
+      const d=r.day,n=r.night,b=d||n;
+      const title=r.date.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric',timeZone:tz});
+      const metrics=metricsHTML(dayMetrics(d,n,r.uv,r.humidity,r.gust));
+      return `<article class="day"><div class="day-title"><span aria-hidden="true">${emoji(b.shortForecast)}</span> ${esc(title)}</div><hr><p class="condition">${esc(futureBrief(d,n))}</p><div class="metrics">${metrics}</div></article>`;
+    }).join('');
+  }
+  // Shared by the Today page and the 7-day page's first (today) card so the
+  // two never drift apart: same brief statement, same metrics, same NWS
+  // Alerts section, fetched and rendered by this one function.
+  async function loadTodayCard(container,title,loc,point,officeId,todayPeriods,grid,tz){
+    const todayKey=dayKey(tz,new Date());
+    const metrics=metricsHTML(dayMetrics(todayPeriods.day,todayPeriods.night,uvForDate(grid,todayKey,tz),humidityForDate(grid,todayKey,tz),gustForDate(grid,todayKey,tz)));
+    const current=await currentObservation(point).catch(()=>null);
+    const currentText=current?currentHeadline(current.observation):null;
+    const brief=todayBrief(currentText,todayPeriods.day,todayPeriods.night);
+    const alertsRes=await json(`${API}/alerts/active?point=${loc.lat},${loc.lon}`).catch(()=>null);
+    const active=alertsRes?.features||[];
+    const alertsHTML=alertsRes?(active.length?active.map(a=>alertLine(a,tz)).join(''):'<p>No active NWS alerts.</p>'):'<p>Current NWS alerts could not be verified.</p>';
+    container.innerHTML=`<article class="brief"><h3>${esc(title)}</h3><hr><p class="condition">${esc(brief)}</p><div class="metrics">${metrics}</div><hr><h3>NWS Alerts</h3><div id="alerts">${alertsHTML}</div></article>`;
+    const hazardText=[todayPeriods.day?.detailedForecast,todayPeriods.night?.detailedForecast].filter(Boolean).join(' ');
+    const needsHazard=active.length||/thunder|snow|ice|freezing|fog|heavy rain|blizzard/i.test(hazardText)||(gustFrom(hazardText)||0)>20;
+    if(needsHazard&&officeId){
+      const [hwo,afd]=await Promise.all([product('HWO',officeId),product('AFD',officeId)]);
+      const guidance=[hwo?.productText,afd?.productText].filter(Boolean).join(' ');
+      let extra='';
+      if(/severe|tornado|hail|damaging|blizzard|flood/i.test(guidance))extra+='<p class="note">Regional NWS hazard guidance indicates elevated risk nearby. Regional threats may not apply to your exact location; only issued local alerts are listed above.</p>';
+      if(!hwo||!afd)extra+='<p class="note">Some regional hazard guidance could not be refreshed.</p>';
+      if(extra){const slot=container.querySelector('#alerts');if(slot)slot.innerHTML+=extra}
+    }
+  }
 
   const LOCATE_ICON='<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M12 2.3 4.4 20.2c-.18.42.27.85.68.66L12 17.8l6.92 3.06c.41.19.86-.24.68-.66L12 2.3z" fill="currentColor" transform="rotate(45 12 12)"/></svg>';
   const SEARCH_ICON='<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.2"/><line x1="15.3" y1="15.3" x2="20.5" y2="20.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>';
@@ -258,7 +298,8 @@ window.WX = (function(){
   }
 
   return {API,DEFAULT_LOC,el,esc,getSavedLocation,saveLocation,geolocate,geocodeSearch,resolveLocation,resolvePoint,json,
-    emoji,local,maxWind,gustFrom,durationMs,gridValues,kphToMph,cToF,product,listItem,concise,
+    emoji,local,maxWind,gustFrom,durationMs,gridValues,kphToMph,cToF,product,
     currentObservation,currentHeadline,alertLine,dayKey,startOfDay,hourLabel,dayRows,uvForDate,humidityForDate,gustForDate,dayMetrics,metricsHTML,
+    todayBrief,futureBrief,renderFutureCardHTML,loadTodayCard,
     findTodayPeriods,renderDaysHTML,mountHeader,mountFooterNav,mountPullToRefresh};
 })();

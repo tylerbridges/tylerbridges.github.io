@@ -28,8 +28,8 @@
     <div id="error" class="error hidden" role="alert"></div>
     <div id="content" class="hidden">
       <section class="briefs" aria-label="Forecast highlights">
-        <article class="brief"><h3 id="near-title">Near term</h3><hr><p class="condition" id="current-condition"></p><ul id="near-list"></ul><div class="metrics" id="near-metrics"></div><hr><h3>NWS Alerts</h3><div id="alerts"></div></article>
-        <article class="brief"><h3 id="later-title">Later outlook</h3><hr><ul id="later-list"></ul><div class="metrics" id="later-metrics"></div></article>
+        <div id="today-card"></div>
+        <div id="tomorrow-card"></div>
       </section>
       <p class="see-more"><a href="/forecast.html">See the full 7-day forecast →</a></p>
       <section aria-labelledby="charts-title"><h2 id="charts-title">Next 48 hours</h2><div class="charts"><figure class="chart"><h3>Temperature</h3><svg id="temp-chart" role="img" aria-label="Hourly temperature in degrees Fahrenheit"></svg><div class="legend"><span><i class="swatch" style="background:var(--blue)"></i>Temperature</span></div></figure><figure class="chart"><h3>Precipitation probability</h3><svg id="pop-chart" role="img" aria-label="Hourly precipitation probability in percent"></svg><div class="legend"><span><i class="swatch" style="background:var(--cyan)"></i>Probability</span></div></figure><figure class="chart"><h3>Wind and gusts</h3><svg id="wind-chart" role="img" aria-label="Hourly sustained wind and gusts in miles per hour"></svg><div class="legend"><span><i class="swatch" style="background:var(--green)"></i>Sustained</span><span><i class="swatch" style="background:var(--orange)"></i>Gust</span></div></figure></div></section>
@@ -41,9 +41,9 @@
   <script src="/assets/weather-core.js"></script>
   <script>
   (()=>{
-    const {el,esc,resolveLocation,resolvePoint,json,emoji,local,maxWind,gustFrom,gridValues,kphToMph,concise,listItem,
-      currentObservation,currentHeadline,alertLine,dayKey,hourLabel,dayRows,uvForDate,humidityForDate,gustForDate,dayMetrics,metricsHTML,
-      findTodayPeriods,product,mountHeader,mountFooterNav,mountPullToRefresh,DEFAULT_LOC}=WX;
+    const {el,resolveLocation,resolvePoint,json,emoji,local,maxWind,gustFrom,gridValues,kphToMph,
+      dayKey,hourLabel,dayRows,uvForDate,humidityForDate,gustForDate,dayMetrics,metricsHTML,
+      findTodayPeriods,renderFutureCardHTML,loadTodayCard,mountHeader,mountFooterNav,mountPullToRefresh,DEFAULT_LOC}=WX;
     let chartData=null,currentLoc=null;
     const header=mountHeader('today',()=>load());
     mountFooterNav('today');
@@ -54,9 +54,9 @@
       const loc=await resolveLocation();currentLoc=loc;
       const {point,label,tz,officeId}=await resolvePoint(loc);
       header.setKicker('');el('headline').textContent=label;
-      const results=await Promise.allSettled([json(point.properties.forecast),json(point.properties.forecastHourly),json(point.properties.forecastGridData),json(`${WX.API}/alerts/active?point=${loc.lat},${loc.lon}`),currentObservation(point)]);
+      const results=await Promise.allSettled([json(point.properties.forecast),json(point.properties.forecastHourly),json(point.properties.forecastGridData)]);
       if(results[0].status!=='fulfilled')throw new Error('The current seven-day forecast is unavailable.');
-      const forecast=results[0].value,hourly=results[1].value,grid=results[2].value||{properties:{}},alerts=results[3].value;
+      const forecast=results[0].value,hourly=results[1].value,grid=results[2].value||{properties:{}};
       const now=new Date(),periods=forecast.properties.periods.filter(p=>new Date(p.endTime)>now);
       if(!periods.length||!forecast.properties.updateTime||now-new Date(forecast.properties.updateTime)>36*3600000)throw new Error('NWS forecast is stale or cannot be verified.');
       const windowStart=new Date(Math.floor(now.getTime()/3600000)*3600000);
@@ -66,23 +66,15 @@
       const hours=times.map(t=>hourlyPeriods.find(p=>t>=new Date(p.startTime)&&t<new Date(p.endTime))||null);
       const rows=dayRows(forecast.properties.periods,grid,tz);
       const today=findTodayPeriods(forecast.properties.periods,tz);
-      const current=results[4].status==='fulfilled'?results[4].value:null;
-      el('current-condition').textContent=current?currentHeadline(current.observation):'Current conditions unavailable';
-      el('near-title').textContent=`${emoji((today.day||today.night).shortForecast)} Today · ${now.toLocaleDateString('en-US',{timeZone:tz,month:'short',day:'numeric'})}`;
-      el('near-list').innerHTML=[today.day?listItem('Today',concise(today.day)):'',today.night?listItem('Tonight',concise(today.night)):''].join('');
-      const todayKey=dayKey(tz,now);
-      el('near-metrics').innerHTML=metricsHTML(dayMetrics(today.day,today.night,uvForDate(grid,todayKey,tz),humidityForDate(grid,todayKey,tz),gustForDate(grid,todayKey,tz)));
+      const todayTitle=`${emoji((today.day||today.night).shortForecast)} Today · ${now.toLocaleDateString('en-US',{timeZone:tz,month:'short',day:'numeric'})}`;
+      await loadTodayCard(el('today-card'),todayTitle,loc,point,officeId,today,grid,tz);
       const tomorrow=rows[1];
       if(tomorrow){
-        el('later-title').textContent=`${emoji((tomorrow.day||tomorrow.night).shortForecast)} Tomorrow · ${tomorrow.date.toLocaleDateString('en-US',{timeZone:tz,month:'short',day:'numeric'})}`;
-        el('later-list').innerHTML=[tomorrow.day?listItem(tomorrow.day.name,concise(tomorrow.day)):'',tomorrow.night?listItem(tomorrow.night.name,concise(tomorrow.night)):''].join('');
+        const tomorrowTitle=`${emoji((tomorrow.day||tomorrow.night).shortForecast)} Tomorrow · ${tomorrow.date.toLocaleDateString('en-US',{timeZone:tz,month:'short',day:'numeric'})}`;
         const tomorrowKey=dayKey(tz,tomorrow.date);
-        el('later-metrics').innerHTML=metricsHTML(dayMetrics(tomorrow.day,tomorrow.night,uvForDate(grid,tomorrowKey,tz),humidityForDate(grid,tomorrowKey,tz),gustForDate(grid,tomorrowKey,tz)));
-      }else{el('later-title').textContent='Tomorrow';el('later-list').innerHTML='';el('later-metrics').innerHTML=''}
-      const active=alerts?.features||[];el('alerts').innerHTML=alerts?(active.length?active.map(a=>alertLine(a,tz)).join(''):'<p>No active NWS alerts.</p>'):'<p>Current NWS alerts could not be verified.</p>';
-      const needsHazard=active.length||periods.some(p=>/thunder|snow|ice|freezing|fog|heavy rain|blizzard/i.test(p.detailedForecast)||gustFrom(p.detailedForecast)>20);
-      const [hwo,afd]=needsHazard&&officeId?await Promise.all([product('HWO',officeId),product('AFD',officeId)]):[null,null];
-      if(needsHazard){const hazardText=[hwo?.productText,afd?.productText].filter(Boolean).join(' ');if(/severe|tornado|hail|damaging|blizzard|flood/i.test(hazardText))el('alerts').innerHTML+='<p class="note">Regional NWS hazard guidance indicates elevated risk nearby. Regional threats may not apply to your exact location; only issued local alerts are listed above.</p>';if(!hwo||!afd)el('alerts').innerHTML+='<p class="note">Some regional hazard guidance could not be refreshed.</p>'}
+        const tomorrowMetrics=metricsHTML(dayMetrics(tomorrow.day,tomorrow.night,uvForDate(grid,tomorrowKey,tz),humidityForDate(grid,tomorrowKey,tz),gustForDate(grid,tomorrowKey,tz)));
+        el('tomorrow-card').innerHTML=renderFutureCardHTML(tomorrowTitle,tomorrow.day,tomorrow.night,tomorrowMetrics);
+      }else{el('tomorrow-card').innerHTML=renderFutureCardHTML('Tomorrow',null,null,'')}
       const gust=gridValues(grid.properties.windGust,times,v=>grid.properties.windGust.uom?.includes('km_h')?kphToMph(v):Math.round(v));
       const labels=times.map(d=>hourLabel(d,tz));
       const tickIndices=labels.map((l,i)=>({l,i})).filter(o=>['12a','6a','12p','6p'].includes(o.l)).map(o=>o.i);
@@ -91,7 +83,7 @@
       el('updated').textContent=`Updated ${local(now,tz)} · ${label}`;
       el('loading').classList.add('hidden');el('content').classList.remove('hidden');requestAnimationFrame(redraw);hasLoaded=true;
     }catch(e){
-      if(!hasLoaded){el('loading').classList.add('hidden');el('current-condition').textContent='Weather update unavailable';el('error').classList.remove('hidden');el('error').textContent=e.message}
+      if(!hasLoaded){el('loading').classList.add('hidden');el('error').classList.remove('hidden');el('error').textContent=e.message}
     }finally{busy=false;el('content').classList.remove('refreshing')}}
     function autoRefresh(){if(document.visibilityState==='visible'&&Date.now()-lastLoad>5*60000)load()}
     window.addEventListener('pageshow',e=>{if(e.persisted)load()});
