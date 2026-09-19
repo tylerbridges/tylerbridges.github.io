@@ -126,7 +126,8 @@ window.WX = (function(){
       ['H',`${d?.temperature??'—'}° L: ${n?.temperature??'—'}°`],
       pop==null?null:['Rain %',`${pop}%`],
       humidity==null?null:['Humidity',`${humidity}%`],
-      ['Wind',`${wind==null?esc(b.windSpeed):`${wind} mph`}${gust==null?'':` | <b>Gusts:</b> ${gust} mph`}`],
+      ['Wind',wind==null?esc(b.windSpeed):`${wind} mph`],
+      gust==null?null:['Gusts',`${gust} mph`],
       uv==null?null:['Max UV',uv]
     ].filter(Boolean);
   }
