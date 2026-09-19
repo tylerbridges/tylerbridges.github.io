@@ -163,6 +163,7 @@ window.WX = (function(){
     function pick(pos,query){
       saveLocation({...pos,label:null,source:'search',query});
       el('location-input').value='';el('location-suggestions').innerHTML='';suggestionMap.clear();
+      el('location-input').blur();
       onLocationChange();
     }
     el('location-input').addEventListener('input',()=>{
