@@ -141,15 +141,17 @@ window.WX = (function(){
   function metricsHTML(pairs){return pairs.map(([k,v])=>`<span class="metric"><b>${esc(k)}:</b> ${esc(v)}</span>`).join('')}
   function renderDaysHTML(periods,grid,tz){return dayRows(periods,grid,tz).map(r=>{const d=r.day,n=r.night,b=d||n,title=r.date.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric',timeZone:tz});const metrics=metricsHTML(dayMetrics(d,n,r.uv,r.humidity));return `<article class="day"><div class="day-title"><span aria-hidden="true">${emoji(b.shortForecast)}</span> ${esc(title)}</div><div class="condition">${esc(b.shortForecast)}</div><hr><div class="detail"><ul>${listItem('Day',d?concise(d):'Daytime period has ended; not included in this NWS forecast.')}${listItem('Night',n?concise(n):'Not yet provided by NWS.')}</ul></div><div class="metrics">${metrics}</div></article>`}).join('')}
 
-  const LOCATE_ICON='<svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true"><path d="M12 2.3 4.4 20.2c-.18.42.27.85.68.66L12 17.8l6.92 3.06c.41.19.86-.24.68-.66L12 2.3z" fill="currentColor" transform="rotate(45 12 12)"/></svg>';
+  const LOCATE_ICON='<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M12 2.3 4.4 20.2c-.18.42.27.85.68.66L12 17.8l6.92 3.06c.41.19.86-.24.68-.66L12 2.3z" fill="currentColor" transform="rotate(45 12 12)"/></svg>';
+  const SEARCH_ICON='<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.2"/><line x1="15.3" y1="15.3" x2="20.5" y2="20.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>';
   function mountHeader(active,onLocationChange){
     const header=el('site-header');
     header.innerHTML=`
       <form id="location-form" class="location-form" role="search">
         <div class="search-field">
+          <button class="icon-btn" id="locate-btn" type="button" aria-label="Use current location">${LOCATE_ICON}</button>
           <input id="location-input" list="location-suggestions" type="text" inputmode="search" autocomplete="off" placeholder="City, state or ZIP" aria-label="Search for a location">
           <datalist id="location-suggestions"></datalist>
-          <button class="locate-inline" id="locate-btn" type="button" aria-label="Use current location">${LOCATE_ICON}</button>
+          <button class="icon-btn" type="submit" aria-label="Search location">${SEARCH_ICON}</button>
         </div>
       </form>
       <nav class="tabs" aria-label="Pages">
