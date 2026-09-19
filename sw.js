@@ -1,4 +1,4 @@
-const CACHE='rochester-weather-v5';
+const CACHE='rochester-weather-v6';
 const SHELL=['/','/index.html','/brief.html','/manifest.webmanifest','/favicon.svg'];
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL))));
 self.addEventListener('install',()=>self.skipWaiting());
