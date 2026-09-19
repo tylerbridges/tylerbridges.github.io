@@ -81,6 +81,21 @@ window.WX = (function(){
   }
   function alertLine(a,tz){const p=a.properties;return `<div class="alert"><strong>${esc(p.event)}</strong><p>${esc(p.areaDesc)}</p><p>${esc(local(p.onset||p.effective,tz))}–${esc(local(p.ends||p.expires,tz))}</p><p>${esc((p.instruction||p.description||'See NWS alert for instructions.').replace(/\s+/g,' '))}</p><a href="${esc(p['@id']||a.id)}" target="_blank" rel="noreferrer">Full NWS alert</a></div>`}
   function dayKey(tz,date){return new Intl.DateTimeFormat('en-CA',{timeZone:tz,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(date))}
+  function startOfDay(tz){
+    // Shift "now" onto the wall-clock time of tz (interpreted as if it were
+    // the machine's own local time), zero it to midnight, then correct back
+    // by the gap between that shift and the real machine-local time.
+    const now=new Date();
+    const shifted=new Date(now.toLocaleString('en-US',{timeZone:tz}));
+    const diff=now.getTime()-shifted.getTime();
+    shifted.setHours(0,0,0,0);
+    return new Date(shifted.getTime()+diff);
+  }
+  function hourLabel(date,tz){
+    const h=+new Intl.DateTimeFormat('en-US',{timeZone:tz,hour:'numeric',hour12:false}).format(new Date(date))%24;
+    const h12=h%12===0?12:h%12;
+    return `${h12}${h<12?'a':'p'}`;
+  }
   function findTodayPeriods(allPeriods,tz){
     const todayKey=dayKey(tz,new Date());
     return {
@@ -145,7 +160,7 @@ window.WX = (function(){
         <a href="/radar.html" class="tab${active==='radar'?' active':''}">Radar</a>
       </nav>`;
     let suggestionMap=new Map(),suggestTimer=null;
-    function setKicker(text){const k=el('kicker');if(k)k.textContent=text}
+    function setKicker(text){const k=el('kicker');if(k){k.textContent=text;k.style.display=text?'':'none'}}
     function pick(pos,query){
       saveLocation({...pos,label:null,source:'search',query});
       el('location-input').value='';el('location-suggestions').innerHTML='';suggestionMap.clear();
@@ -238,6 +253,6 @@ window.WX = (function(){
 
   return {API,DEFAULT_LOC,el,esc,getSavedLocation,saveLocation,geolocate,geocodeSearch,resolveLocation,resolvePoint,json,
     emoji,local,maxWind,gustFrom,durationMs,gridValues,kphToMph,cToF,product,listItem,shortText,concise,
-    currentObservation,currentHeadline,alertLine,dayKey,dayRows,uvForDate,humidityForDate,dayMetrics,metricsHTML,
+    currentObservation,currentHeadline,alertLine,dayKey,startOfDay,hourLabel,dayRows,uvForDate,humidityForDate,dayMetrics,metricsHTML,
     findTodayPeriods,renderDaysHTML,mountHeader,mountFooterNav,mountPullToRefresh};
 })();

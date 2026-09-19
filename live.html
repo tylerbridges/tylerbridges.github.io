@@ -21,19 +21,18 @@
   <main class="shell">
     <header id="site-header"></header>
     <div class="page-head">
-      <p class="kicker" id="kicker">Locating…</p>
-      <h1 id="headline">Checking current conditions…</h1>
-      <p id="last-updated" class="last-updated" aria-live="polite"></p>
+      <p class="kicker" id="kicker" style="display:none"></p>
+      <h1 id="headline">Locating…</h1>
     </div>
     <div id="loading" class="loading" role="status" aria-live="polite">Refreshing from weather.gov…</div>
     <div id="error" class="error hidden" role="alert"></div>
     <div id="content" class="hidden">
       <section class="briefs" aria-label="Forecast highlights">
-        <article class="brief"><h3 id="near-title">Near term</h3><ul id="near-list"></ul><div class="metrics" id="near-metrics"></div><hr><h3>NWS Alerts</h3><div id="alerts"></div></article>
+        <article class="brief"><h3 id="near-title">Near term</h3><p class="condition" id="current-condition"></p><p id="last-updated" class="last-updated" aria-live="polite"></p><hr><ul id="near-list"></ul><div class="metrics" id="near-metrics"></div><hr><h3>NWS Alerts</h3><div id="alerts"></div></article>
         <article class="brief"><h3 id="later-title">Later outlook</h3><ul id="later-list"></ul></article>
       </section>
       <p class="see-more"><a href="/forecast.html">See the full 7-day forecast →</a></p>
-      <section aria-labelledby="charts-title"><h2 id="charts-title">Next 48 hours</h2><p class="note">Hourly values from the NWS forecast grid. Missing gusts remain missing.</p><div class="charts"><figure class="chart"><h3>Temperature</h3><svg id="temp-chart" role="img" aria-label="Hourly temperature in degrees Fahrenheit"></svg><div class="legend"><span><i class="swatch" style="background:var(--blue)"></i>Temperature</span></div></figure><figure class="chart"><h3>Precipitation probability</h3><svg id="pop-chart" role="img" aria-label="Hourly precipitation probability in percent"></svg><div class="legend"><span><i class="swatch" style="background:var(--cyan)"></i>Probability</span></div></figure><figure class="chart"><h3>Wind and gusts</h3><svg id="wind-chart" role="img" aria-label="Hourly sustained wind and gusts in miles per hour"></svg><div class="legend"><span><i class="swatch" style="background:var(--green)"></i>Sustained</span><span><i class="swatch" style="background:var(--orange)"></i>Gust</span></div></figure></div></section>
+      <section aria-labelledby="charts-title"><h2 id="charts-title">Next 48 hours</h2><div class="charts"><figure class="chart"><h3>Temperature</h3><svg id="temp-chart" role="img" aria-label="Hourly temperature in degrees Fahrenheit"></svg><div class="legend"><span><i class="swatch" style="background:var(--blue)"></i>Temperature</span></div></figure><figure class="chart"><h3>Precipitation probability</h3><svg id="pop-chart" role="img" aria-label="Hourly precipitation probability in percent"></svg><div class="legend"><span><i class="swatch" style="background:var(--cyan)"></i>Probability</span></div></figure><figure class="chart"><h3>Wind and gusts</h3><svg id="wind-chart" role="img" aria-label="Hourly sustained wind and gusts in miles per hour"></svg><div class="legend"><span><i class="swatch" style="background:var(--green)"></i>Sustained</span><span><i class="swatch" style="background:var(--orange)"></i>Gust</span></div></figure></div></section>
       <p class="status" id="updated"></p>
       <p class="install">On iPhone: open this page in Safari, tap Share, then Add to Home Screen.</p>
       <div id="site-footer-nav"></div>
@@ -43,47 +42,52 @@
   <script>
   (()=>{
     const {el,esc,resolveLocation,resolvePoint,json,emoji,local,maxWind,gustFrom,gridValues,kphToMph,concise,listItem,
-      currentObservation,currentHeadline,alertLine,dayKey,dayRows,uvForDate,humidityForDate,dayMetrics,metricsHTML,
+      currentObservation,currentHeadline,alertLine,dayKey,startOfDay,hourLabel,dayRows,uvForDate,humidityForDate,dayMetrics,metricsHTML,
       findTodayPeriods,product,mountHeader,mountFooterNav,mountPullToRefresh,DEFAULT_LOC}=WX;
     let chartData=null,currentLoc=null;
     const header=mountHeader('today',()=>load());
     mountFooterNav('today');
-    function draw(svg,series,domain,yTitle,refs=[]){const w=Math.max(320,svg.clientWidth||320),h=195,m={l:48,r:12,t:12,b:35},x=i=>m.l+i*(w-m.l-m.r)/47,y=v=>m.t+(domain[1]-v)*(h-m.t-m.b)/(domain[1]-domain[0]),ns='http://www.w3.org/2000/svg';svg.setAttribute('viewBox',`0 0 ${w} ${h}`);svg.innerHTML='';const add=(tag,a,t)=>{const n=document.createElementNS(ns,tag);Object.entries(a||{}).forEach(([k,v])=>n.setAttribute(k,v));if(t!=null)n.textContent=t;svg.appendChild(n);return n};const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();add('rect',{x:m.l,y:m.t,width:w-m.l-m.r,height:h-m.t-m.b,fill:'none',stroke:css('--line')});for(let j=0;j<=4;j++){const v=domain[0]+(domain[1]-domain[0])*j/4,yy=y(v);add('line',{x1:m.l,y1:yy,x2:w-m.r,y2:yy,stroke:css('--line')});add('text',{x:m.l-7,y:yy+4,'text-anchor':'end',fill:css('--muted'),'font-size':11},Math.round(v))}refs.forEach(r=>{const yy=y(r.v);add('line',{x1:m.l,y1:yy,x2:w-m.r,y2:yy,stroke:css(r.color),'stroke-dasharray':'4 4'});add('text',{x:w-m.r-3,y:yy-4,'text-anchor':'end',fill:css('--muted'),'font-size':11},r.label)});(w<440?[0,16,32,47]:[0,12,24,36,47]).forEach(i=>add('text',{x:x(i),y:h-11,'text-anchor':i===0?'start':i===47?'end':'middle',fill:css('--muted'),'font-size':11},chartData.labels[i]||''));add('text',{x:11,y:(m.t+h-m.b)/2,transform:`rotate(-90 11 ${(m.t+h-m.b)/2})`,'text-anchor':'middle',fill:css('--muted'),'font-size':11},yTitle);if(svg.id==='wind-chart')for(const p of chartData.periodMax||[]){add('line',{x1:x(p.indices[0]),x2:x(p.indices.at(-1)),y1:y(p.g),y2:y(p.g),stroke:css('--orange'),'stroke-width':2,'stroke-dasharray':'3 5'});add('text',{x:x(p.indices[0]),y:y(p.g)-5,fill:css('--text'),'font-size':11},'NWS period max gust')}series.forEach(s=>{let d='',on=false;s.values.forEach((v,i)=>{if(v==null){on=false;return}d+=(on?'L':'M')+x(i).toFixed(1)+' '+y(v).toFixed(1)+' ';on=true});add('path',{d,fill:'none',stroke:css(s.color),'stroke-width':2.6,'stroke-linejoin':'round','stroke-dasharray':s.dash||''})})}
+    function draw(svg,series,domain,yTitle,refs=[]){const w=Math.max(320,svg.clientWidth||320),h=195,m={l:48,r:12,t:12,b:35},x=i=>m.l+i*(w-m.l-m.r)/47,y=v=>m.t+(domain[1]-v)*(h-m.t-m.b)/(domain[1]-domain[0]),ns='http://www.w3.org/2000/svg';svg.setAttribute('viewBox',`0 0 ${w} ${h}`);svg.innerHTML='';const add=(tag,a,t)=>{const n=document.createElementNS(ns,tag);Object.entries(a||{}).forEach(([k,v])=>n.setAttribute(k,v));if(t!=null)n.textContent=t;svg.appendChild(n);return n};const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();add('rect',{x:m.l,y:m.t,width:w-m.l-m.r,height:h-m.t-m.b,fill:'none',stroke:css('--line')});for(let j=0;j<=4;j++){const v=domain[0]+(domain[1]-domain[0])*j/4,yy=y(v);add('line',{x1:m.l,y1:yy,x2:w-m.r,y2:yy,stroke:css('--line')});add('text',{x:m.l-7,y:yy+4,'text-anchor':'end',fill:css('--muted'),'font-size':11},Math.round(v))}refs.forEach(r=>{const yy=y(r.v);add('line',{x1:m.l,y1:yy,x2:w-m.r,y2:yy,stroke:css(r.color),'stroke-dasharray':'4 4'});add('text',{x:w-m.r-3,y:yy-4,'text-anchor':'end',fill:css('--muted'),'font-size':11},r.label)});(w<440?[0,12,24,36]:[0,6,12,18,24,30,36,42]).forEach(i=>{const midnight=i%24===0;add('line',{x1:x(i),y1:m.t,x2:x(i),y2:h-m.b,stroke:css(midnight?'--line-strong':'--line'),'stroke-width':midnight?1.2:1});add('text',{x:x(i),y:h-11,'text-anchor':i===0?'start':'middle','font-weight':midnight?700:400,fill:css(midnight?'--text':'--muted'),'font-size':11},chartData.labels[i]||'')});add('text',{x:11,y:(m.t+h-m.b)/2,transform:`rotate(-90 11 ${(m.t+h-m.b)/2})`,'text-anchor':'middle',fill:css('--muted'),'font-size':11},yTitle);if(svg.id==='wind-chart')for(const p of chartData.periodMax||[]){add('line',{x1:x(p.indices[0]),x2:x(p.indices.at(-1)),y1:y(p.g),y2:y(p.g),stroke:css('--orange'),'stroke-width':2,'stroke-dasharray':'3 5'});add('text',{x:x(p.indices[0]),y:y(p.g)-5,fill:css('--text'),'font-size':11},'NWS period max gust')}series.forEach(s=>{let d='',on=false;s.values.forEach((v,i)=>{if(v==null){on=false;return}d+=(on?'L':'M')+x(i).toFixed(1)+' '+y(v).toFixed(1)+' ';on=true});add('path',{d,fill:'none',stroke:css(s.color),'stroke-width':2.6,'stroke-linejoin':'round','stroke-dasharray':s.dash||''})})}
     function redraw(){if(!chartData||!chartData.temp.length){['temp-chart','pop-chart','wind-chart'].forEach(id=>el(id).innerHTML='');return;}const temps=chartData.temp.filter(v=>v!=null),maxT=Math.max(...temps,80),minT=Math.min(...temps,30);draw(el('temp-chart'),[{values:chartData.temp,color:'--blue'}],[Math.floor((minT-5)/5)*5,Math.ceil((maxT+5)/5)*5],'°F');draw(el('pop-chart'),[{values:chartData.pop,color:'--cyan'}],[0,100],'%',[{v:50,color:'--orange',label:'50%'}]);const vals=[...chartData.wind,...chartData.gust,...(chartData.periodMax||[]).map(p=>p.g)].filter(v=>v!=null),maxW=Math.max(20,...vals);draw(el('wind-chart'),[{values:chartData.wind,color:'--green'},{values:chartData.gust,color:'--orange',dash:'6 4'}],[0,Math.ceil((maxW+3)/5)*5],'mph',[{v:10,color:'--orange',label:'10 mph'},{v:20,color:'--red',label:'20 mph'}])}
     let busy=false,lastLoad=0,hasLoaded=false;
     async function load(){if(busy)return;busy=true;lastLoad=Date.now();if(!hasLoaded){el('loading').classList.remove('hidden');el('error').classList.add('hidden');el('content').classList.add('hidden')}try{
       const loc=await resolveLocation();currentLoc=loc;
       const {point,label,tz,officeId}=await resolvePoint(loc);
-      header.setKicker(label);
+      header.setKicker('');el('headline').textContent=label;
       const results=await Promise.allSettled([json(point.properties.forecast),json(point.properties.forecastHourly),json(point.properties.forecastGridData),json(`${WX.API}/alerts/active?point=${loc.lat},${loc.lon}`),currentObservation(point)]);
       if(results[0].status!=='fulfilled')throw new Error('The current seven-day forecast is unavailable.');
       const forecast=results[0].value,hourly=results[1].value,grid=results[2].value||{properties:{}},alerts=results[3].value;
       const now=new Date(),periods=forecast.properties.periods.filter(p=>new Date(p.endTime)>now);
       if(!periods.length||!forecast.properties.updateTime||now-new Date(forecast.properties.updateTime)>36*3600000)throw new Error('NWS forecast is stale or cannot be verified.');
-      const hourlyFresh=hourly?.properties?.updateTime&&now-new Date(hourly.properties.updateTime)<36*3600000; const hours=(hourlyFresh?hourly.properties.periods:[]).filter(p=>new Date(p.endTime)>now).slice(0,48),rows=dayRows(forecast.properties.periods,grid,tz);
+      const dayStart=startOfDay(tz);
+      const hourlyFresh=hourly?.properties?.updateTime&&now-new Date(hourly.properties.updateTime)<36*3600000;
+      const hourlyPeriods=hourlyFresh?hourly.properties.periods:[];
+      const times=Array.from({length:48},(_,i)=>new Date(dayStart.getTime()+i*3600000));
+      const hours=times.map(t=>hourlyPeriods.find(p=>t>=new Date(p.startTime)&&t<new Date(p.endTime))||null);
+      const rows=dayRows(forecast.properties.periods,grid,tz);
       const today=findTodayPeriods(forecast.properties.periods,tz);
       const current=results[4].status==='fulfilled'?results[4].value:null;
-      el('headline').textContent=current?currentHeadline(current.observation):'Current conditions unavailable';
+      el('current-condition').textContent=current?currentHeadline(current.observation):'Current conditions unavailable';
       el('last-updated').textContent=current?`Last updated ${local(current.confirmedAt,tz,{year:'numeric'})}`:'';
       el('last-updated').title=current?`Latest NWS observation: ${local(current.observation.timestamp,tz)}`:'';
       el('near-title').textContent=`${emoji((today.day||today.night).shortForecast)} Today · ${now.toLocaleDateString('en-US',{timeZone:tz,month:'short',day:'numeric'})}`;
       el('near-list').innerHTML=[today.day?listItem('Today',concise(today.day)):'',today.night?listItem('Tonight',concise(today.night)):''].join('');
       const todayKey=dayKey(tz,now);
       el('near-metrics').innerHTML=metricsHTML(dayMetrics(today.day,today.night,uvForDate(grid,todayKey,tz),humidityForDate(grid,todayKey,tz)));
-      const later=rows.slice(1,3);el('later-title').textContent=later.map(r=>`${emoji((r.day||r.night).shortForecast)} ${r.date.toLocaleDateString('en-US',{weekday:'long',timeZone:tz})}`).join('–');
-      el('later-list').innerHTML=later.flatMap((r,i)=>[r.day?listItem(r.day.name,concise(r.day)):'',i===0&&r.night?listItem(r.night.name,concise(r.night)):'']).join('');
+      const tomorrow=rows[1];
+      if(tomorrow){el('later-title').textContent=`${emoji((tomorrow.day||tomorrow.night).shortForecast)} Tomorrow · ${tomorrow.date.toLocaleDateString('en-US',{timeZone:tz,month:'short',day:'numeric'})}`;el('later-list').innerHTML=[tomorrow.day?listItem(tomorrow.day.name,concise(tomorrow.day)):'',tomorrow.night?listItem(tomorrow.night.name,concise(tomorrow.night)):''].join('')}
+      else{el('later-title').textContent='Tomorrow';el('later-list').innerHTML=''}
       const active=alerts?.features||[];el('alerts').innerHTML=alerts?(active.length?active.map(a=>alertLine(a,tz)).join(''):'<p>No active NWS alerts.</p>'):'<p>Current NWS alerts could not be verified.</p>';
       const needsHazard=active.length||periods.some(p=>/thunder|snow|ice|freezing|fog|heavy rain|blizzard/i.test(p.detailedForecast)||gustFrom(p.detailedForecast)>20);
       const [hwo,afd]=needsHazard&&officeId?await Promise.all([product('HWO',officeId),product('AFD',officeId)]):[null,null];
       if(needsHazard){const hazardText=[hwo?.productText,afd?.productText].filter(Boolean).join(' ');if(/severe|tornado|hail|damaging|blizzard|flood/i.test(hazardText))el('alerts').innerHTML+='<p class="note">Regional NWS hazard guidance indicates elevated risk nearby. Regional threats may not apply to your exact location; only issued local alerts are listed above.</p>';if(!hwo||!afd)el('alerts').innerHTML+='<p class="note">Some regional hazard guidance could not be refreshed.</p>'}
-      const times=hours.map(x=>new Date(x.startTime)),gust=gridValues(grid.properties.windGust,times,v=>grid.properties.windGust.uom?.includes('km_h')?kphToMph(v):Math.round(v));
-      chartData={temp:hours.map(x=>x.temperature),pop:hours.map(x=>x.probabilityOfPrecipitation?.value??null),wind:hours.map(x=>maxWind(x.windSpeed)),gust,labels:times.map(d=>d.toLocaleString('en-US',{weekday:'short',hour:'numeric',timeZone:tz})),periodMax:[]};
+      const gust=gridValues(grid.properties.windGust,times,v=>grid.properties.windGust.uom?.includes('km_h')?kphToMph(v):Math.round(v));
+      chartData={temp:hours.map(x=>x?.temperature??null),pop:hours.map(x=>x?.probabilityOfPrecipitation?.value??null),wind:hours.map(x=>x?maxWind(x.windSpeed):null),gust,labels:times.map(d=>hourLabel(d,tz)),periodMax:[]};
       periods.forEach(p=>{const g=gustFrom(p.detailedForecast);if(g==null)return;const indices=times.map((t,i)=>t>=new Date(p.startTime)&&t<new Date(p.endTime)&&gust[i]==null?i:null).filter(i=>i!=null);if(indices.length)chartData.periodMax.push({g,indices})});
-      document.querySelector('#charts-title + .note').textContent=hours.length?`${local(hours[0].startTime,tz)}–${local(hours.at(-1).endTime,tz)} · Precipitation probability, not amount. ${chartData.periodMax.length?'NWS did not provide hour-specific gusts for dashed segments; these show period maxima, not hourly predictions.':gust.every(v=>v==null)?'Gusts: Not provided by NWS.':'Hourly gusts from the NWS grid.'}`:'Hourly forecast unavailable; chart data not shown.';
-      el('updated').textContent=`Refreshed ${local(now,tz)} · Forecast issued ${local(forecast.properties.updateTime,tz)} · Hourly issued ${local(hourly?.properties?.updateTime,tz)} · Alerts checked ${alerts?local(now,tz):'unavailable'}${hwo?' · HWO '+local(hwo.issuanceTime,tz):''}${afd?' · AFD '+local(afd.issuanceTime,tz):''}. Latest published NWS guidance; not continuous emergency monitoring.`;
+      el('updated').textContent=`Updated ${local(now,tz)} · ${label}`;
       el('loading').classList.add('hidden');el('content').classList.remove('hidden');requestAnimationFrame(redraw);hasLoaded=true;
     }catch(e){
-      if(!hasLoaded){el('loading').classList.add('hidden');el('headline').textContent='Weather update unavailable';el('last-updated').textContent='';el('error').classList.remove('hidden');el('error').textContent=e.message}
+      if(!hasLoaded){el('loading').classList.add('hidden');el('current-condition').textContent='Weather update unavailable';el('last-updated').textContent='';el('error').classList.remove('hidden');el('error').textContent=e.message}
     }finally{busy=false}}
     function autoRefresh(){if(document.visibilityState==='visible'&&Date.now()-lastLoad>5*60000)load()}
     window.addEventListener('pageshow',e=>{if(e.persisted)load()});
