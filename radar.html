@@ -36,12 +36,8 @@
     /* Mirrors the NEXRAD Level III reflectivity ramp the radar tiles use. */
     .legend-bar{flex:1;height:7px;border-radius:999px;background:linear-gradient(90deg,#04e9e7,#019ff4,#0300f4,#02fd02,#01c501,#008e00,#fdf802,#e5bc00,#fd9500,#fd0000,#bc0000,#f800fd)}
     #radar-status{margin-top:.9rem}
-    /* Plain, always-visible credit line, no toggle "i" button and no zoom rocker
-       — kept as minimal as the attribution license terms allow. */
-    .maplibregl-ctrl-bottom-right{bottom:44px}
-    .maplibregl-ctrl-attrib{font-size:9px;background:transparent!important;padding:0 6px}
-    .maplibregl-ctrl-attrib a{color:var(--muted)!important}
-    .maplibregl-ctrl-attrib-button{display:none!important}
+    .map-credit{margin-top:.55rem;font-size:.78rem;color:var(--muted)}
+    .map-credit a{color:var(--blue)}
   </style>
 </head>
 <body>
@@ -68,6 +64,7 @@
         <span>Heavy</span>
       </div>
       <p class="status" id="radar-status"></p>
+      <p class="map-credit"><a href="/credits.html">Map &amp; radar data credits</a></p>
       <div id="site-footer-nav"></div>
     </div>
   </main>
@@ -88,8 +85,9 @@
     // which raster basemaps cannot do. Raster Esri is kept only as a fallback
     // for when the vector style cannot be reached.
     const VECTOR_STYLE='https://tiles.openfreemap.org/styles/dark';
-    const RASTER_FALLBACK={version:8,sources:{esri:{type:'raster',tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}'],tileSize:256,maxzoom:16,attribution:'Tiles &copy; <a href="https://www.esri.com/" target="_blank" rel="noreferrer">Esri</a>'}},layers:[{id:'bg',type:'background',paint:{'background-color':'#000'}},{id:'esri',type:'raster',source:'esri'}]};
-    const RV_ATTRIB='Radar &copy; <a href="https://www.rainviewer.com/" target="_blank" rel="noreferrer">RainViewer</a>';
+    // Attribution for all of these lives on /credits.html, linked below the
+    // map, rather than on-map controls — see the note by attributionControl.
+    const RASTER_FALLBACK={version:8,sources:{esri:{type:'raster',tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}'],tileSize:256,maxzoom:16}},layers:[{id:'bg',type:'background',paint:{'background-color':'#000'}},{id:'esri',type:'raster',source:'esri'}]};
 
     let map=null,marker=null,frames=[],idx=0,playing=true,timer=null;
     let loading=false,onLatest=true,rvHost='',styleReady=false,usingFallback=false;
@@ -109,7 +107,7 @@
       const url=tileUrl(frames[idx]);
       const src=map.getSource('radar');
       if(src){src.setTiles([url]);return}
-      map.addSource('radar',{type:'raster',tiles:[url],tileSize:TILE_SIZE,attribution:RV_ATTRIB});
+      map.addSource('radar',{type:'raster',tiles:[url],tileSize:TILE_SIZE});
       map.addLayer({id:'radar',type:'raster',source:'radar',paint:{'raster-opacity':.85,'raster-fade-duration':0}});
     }
     function showFrame(i){
@@ -157,11 +155,22 @@
     }
     function buildMap(latlng){
       map=new maplibregl.Map({
-        container:'map',style:VECTOR_STYLE,center:[latlng[1],latlng[0]],zoom:7.5,
-        attributionControl:{compact:false},dragRotate:false,pitchWithRotate:false,
+        container:'map',style:VECTOR_STYLE,center:[latlng[1],latlng[0]],zoom:8,
+        // No on-map attribution control — credited instead on a linked
+        // /credits.html page so the map stays visually clean. All required
+        // attributions (RainViewer, OpenFreeMap/OSM, Esri, MapLibre) live there.
+        attributionControl:false,dragRotate:false,pitchWithRotate:false,
         // Vector tiles are resolution-independent; render at the device's real
         // pixel ratio so the basemap is genuinely sharp rather than upscaled.
-        pixelRatio:window.devicePixelRatio||1
+        pixelRatio:window.devicePixelRatio||1,
+        // Skip the tile crossfade so panning feels immediate rather than
+        // fading in (localIdeographFontFamily already defaults to locally
+        // rendering CJK glyphs instead of fetching them over the network).
+        fadeDuration:0,
+        minZoom:3,maxZoom:14,cooperativeGestures:false,
+        // Bound how many off-screen tiles MapLibre keeps warm; the radar map
+        // is small and short-lived, so a large cache only costs memory.
+        maxTileCacheSize:24,refreshExpiredTiles:false
       });
       map.touchZoomRotate.disableRotation();
       map.on('style.load',onStyleReady);
