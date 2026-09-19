@@ -19,6 +19,9 @@
     .radar-card{position:relative;border-radius:18px;overflow:hidden;border:1px solid var(--line);box-shadow:var(--shadow);height:min(40vh,320px);min-height:240px;background:#000}
     #map{position:absolute;inset:0;background:#000}
     .radar-overlay{position:absolute;left:0;right:0;bottom:0;z-index:1000;display:flex;align-items:center;gap:.7rem;padding:.65rem .8rem calc(env(safe-area-inset-bottom) + .65rem);background:color-mix(in srgb,var(--surface-2) 88%,transparent);backdrop-filter:saturate(180%) blur(18px);-webkit-backdrop-filter:saturate(180%) blur(18px);border-top:1px solid var(--line-strong)}
+    /* Page-local .radar-overlay would otherwise tie with .hidden on specificity
+       and win on source order, keeping the bar visible when JS hides it. */
+    .radar-overlay.hidden{display:none}
     .play-btn{flex:0 0 auto;width:36px;height:36px;border-radius:999px;border:0;background:var(--blue);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.3)}
     .play-btn:active{transform:scale(.92)}
     .radar-overlay input[type=range]{flex:1;-webkit-appearance:none;appearance:none;height:4px;border-radius:999px;background:var(--line-strong);outline:none;margin:0}
@@ -80,11 +83,15 @@
     // Tried in order; the first one reporting a usable timeExtent wins. NOAA has
     // reorganized these hosts before, so the list is deliberately longer than
     // needed — an unreachable candidate just falls through to the next.
+    // Tried in order. A service that reports a time extent wins outright, since
+    // it can drive the animation; one that merely answers is still good enough
+    // to show live reflectivity. NWS's own radar_base_reflectivity is the
+    // latter — authoritative, but not time-enabled. (idpgis.ncep.noaa.gov was
+    // decommissioned in 2023 and is deliberately not listed.)
     const SERVICE_CANDIDATES=[
       'https://nowcoast.noaa.gov/arcgis/rest/services/nowcoast/radar_meteo_imagery_nexrad_time/MapServer',
       'https://new.nowcoast.noaa.gov/arcgis/rest/services/nowcoast/radar_meteo_imagery_nexrad_time/MapServer',
-      'https://mapservices.weather.noaa.gov/eventdriven/rest/services/radar/radar_base_reflectivity_time/MapServer',
-      'https://idpgis.ncep.noaa.gov/arcgis/rest/services/NWS_Observations/radar_base_reflectivity/MapServer'
+      'https://mapservices.weather.noaa.gov/eventdriven/rest/services/radar/radar_base_reflectivity/MapServer'
     ];
     let activeService=SERVICE_CANDIDATES[0];
     let map=null,marker=null,esriLayer=null,frames=[],idx=0,playing=true,timer=null;
@@ -94,6 +101,16 @@
 
     function fmtTime(ms){return new Date(ms).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}
     function fmtFull(ms){return new Date(ms).toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}
+    // The animation timeline needs service metadata, but the radar image layer
+    // does not. When metadata is unavailable, keep showing live reflectivity
+    // and retire the scrubber rather than blanking the page with an error.
+    function liveOnly(){
+      clearInterval(timer);timer=null;
+      frames=[];
+      document.querySelector('.radar-overlay').classList.add('hidden');
+      el('error').classList.add('hidden');
+      el('radar-status').textContent='Showing the latest NOAA radar. The animation timeline is unavailable right now — pull down to retry. · Source: NOAA/NWS NEXRAD base reflectivity';
+    }
     function updateStatus(checkedNow){
       if(!frames.length){el('radar-status').textContent='';return}
       const latest=frames[frames.length-1];
@@ -114,24 +131,44 @@
     function play(){playing=true;el('play-btn').innerHTML=PAUSE_ICON;el('play-btn').setAttribute('aria-label','Pause');clearInterval(timer);timer=setInterval(()=>showFrame(idx+1),900)}
     function pause(){playing=false;el('play-btn').innerHTML=PLAY_ICON;el('play-btn').setAttribute('aria-label','Play');clearInterval(timer)}
 
+    // Ask esri-leaflet for the service metadata rather than fetch()ing it
+    // ourselves: its request layer falls back to JSONP when a service sends no
+    // CORS headers, which a plain fetch() cannot survive. The radar imagery
+    // itself loads as an <img> and never needed CORS, so a failed probe here
+    // does not mean the radar is down — see the live-only fallback below.
+    function probeService(url){
+      return new Promise(resolve=>{
+        let settled=false;
+        const done=v=>{if(!settled){settled=true;resolve(v)}};
+        setTimeout(()=>done(null),8000);
+        try{L.esri.mapService({url}).metadata((err,meta)=>{
+          if(err||!meta)return done(null);
+          done(meta.timeInfo?.timeExtent?.length?{time:meta.timeInfo}:{alive:true});
+        })}
+        catch{done(null)}
+      });
+    }
+    function useService(url){
+      if(!esriLayer||esriLayer.options.url.startsWith(url))return;
+      map.removeLayer(esriLayer);
+      esriLayer=L.esri.dynamicMapLayer({url,opacity:0.85,f:'image',attribution:'Radar © <a href="https://www.weather.gov/" target="_blank" rel="noreferrer">NOAA/NWS</a>'}).addTo(map);
+    }
     async function loadFrames(isRefresh){
       if(loading)return;
       loading=true;
       try{
-        let info=null;
+        let info=null,aliveUrl=null;
         for(const url of SERVICE_CANDIDATES){
-          try{
-            const meta=await fetch(`${url}?f=json`,{cache:'no-store'}).then(r=>r.json());
-            if(meta.timeInfo?.timeExtent?.length){info=meta.timeInfo;activeService=url;break}
-          }catch{}
+          const probe=await probeService(url);
+          if(probe?.time){info=probe.time;activeService=url;break}
+          if(probe?.alive&&!aliveUrl)aliveUrl=url;
         }
-        if(!info)throw new Error('Live NOAA radar is unavailable right now. It usually comes back on its own — pull down to retry.');
-        // esri-leaflet's RasterLayer has no setUrl(); rebuild the layer instead when
-        // failover switches to another NOAA service candidate.
-        if(esriLayer&&!esriLayer.options.url.startsWith(activeService)){
-          map.removeLayer(esriLayer);
-          esriLayer=L.esri.dynamicMapLayer({url:activeService,opacity:0.85,f:'image',attribution:'Radar © <a href="https://www.weather.gov/" target="_blank" rel="noreferrer">NOAA/NWS</a>'}).addTo(map);
-        }
+        // Nothing offered a timeline: fall back to live-only on whichever
+        // service still answers, so the map shows current radar rather than
+        // nothing at all.
+        if(!info){if(aliveUrl){activeService=aliveUrl;useService(aliveUrl)}liveOnly();return}
+        // esri-leaflet's RasterLayer has no setUrl(); rebuild the layer instead.
+        useService(activeService);
         const [rangeStart,end]=info.timeExtent;
         frameStepMs=(info.timeInterval>0&&info.timeIntervalUnits==='esriTimeUnitsMinutes'?info.timeInterval:5)*60000;
         // Step backwards from the newest scan so every frame sits on the
@@ -141,6 +178,7 @@
         const list=[];
         for(let t=end;t>=earliest&&list.length<64;t-=frameStepMs)list.unshift(t);
         frames=list.length?list:[end];
+        document.querySelector('.radar-overlay').classList.remove('hidden');
         el('frame-slider').max=frames.length-1;
         updateStatus(isRefresh);
         // Keep the viewer where they are if they deliberately scrubbed back to
