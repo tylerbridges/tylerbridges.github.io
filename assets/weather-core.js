@@ -90,7 +90,21 @@ window.WX = (function(){
   }
   function uvForDate(grid,dateKey,tz){const values=grid.properties?.maxUVIndex?.values||[];for(const row of values){if(dayKey(tz,row.validTime.split('/')[0])===dateKey&&row.value!=null)return Math.round(row.value)}return null}
   function humidityForDate(grid,dateKey,tz){const values=grid.properties?.relativeHumidity?.values||[];const vals=values.filter(row=>dayKey(tz,row.validTime.split('/')[0])===dateKey).map(r=>r.value).filter(v=>v!=null);if(!vals.length)return null;return Math.round(vals.reduce((a,b)=>a+b,0)/vals.length)}
-  function dayRows(periods,grid,tz){const rows=[];for(let i=0;i<periods.length&&rows.length<7;i++){const p=periods[i];if(!p.isDaytime&&rows.length)continue;let day=p.isDaytime?p:null,night=p.isDaytime?periods[i+1]:p;if(day&&night?.isDaytime)night=null;const base=day||night;const date=new Date(base.startTime);const key=dayKey(tz,date);const uv=uvForDate(grid,key,tz);const humidity=humidityForDate(grid,key,tz);rows.push({date,day,night,uv,humidity});if(day&&night)i++}return rows}
+  function dayRows(allPeriods,grid,tz){
+    // Group by calendar date (in the location's timezone) rather than walking
+    // day/night pairs positionally, so today's row is always complete even
+    // once its daytime period's endTime has passed, and exactly 7 calendar
+    // days are returned whenever NWS provides that much data.
+    const order=[],byKey={};
+    allPeriods.forEach(p=>{
+      const key=dayKey(tz,p.startTime);
+      if(!byKey[key]){byKey[key]={date:new Date(p.startTime),day:null,night:null};order.push(key)}
+      if(p.isDaytime)byKey[key].day=byKey[key].day||p;else byKey[key].night=byKey[key].night||p;
+    });
+    const todayKey=dayKey(tz,new Date());
+    const startIdx=Math.max(0,order.indexOf(todayKey));
+    return order.slice(startIdx,startIdx+7).map(key=>({...byKey[key],uv:uvForDate(grid,key,tz),humidity:humidityForDate(grid,key,tz)}));
+  }
   function windRange(windSpeed,gust){
     const nums=(String(windSpeed).match(/\d+/g)||[]).map(Number);
     if(!nums.length)return windSpeed;
@@ -167,8 +181,19 @@ window.WX = (function(){
     return {setKicker};
   }
 
+  function mountFooterNav(active){
+    const footer=el('site-footer-nav');
+    if(!footer)return;
+    footer.innerHTML=`
+      <nav class="tabs foot-tabs" aria-label="Pages">
+        <a href="/" class="tab${active==='today'?' active':''}">Today</a>
+        <a href="/forecast.html" class="tab${active==='forecast'?' active':''}">7-Day</a>
+        <a href="/radar.html" class="tab${active==='radar'?' active':''}">Radar</a>
+      </nav>`;
+  }
+
   return {API,DEFAULT_LOC,el,esc,getSavedLocation,saveLocation,geolocate,geocodeSearch,resolveLocation,resolvePoint,json,
     emoji,local,maxWind,gustFrom,durationMs,gridValues,kphToMph,cToF,product,listItem,shortText,concise,
     currentObservation,currentHeadline,alertLine,dayKey,dayRows,uvForDate,humidityForDate,dayMetrics,metricsHTML,
-    findTodayPeriods,renderDaysHTML,mountHeader};
+    findTodayPeriods,renderDaysHTML,mountHeader,mountFooterNav};
 })();
