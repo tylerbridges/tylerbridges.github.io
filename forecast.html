@@ -38,7 +38,7 @@
     let busy=false,lastLoad=0,hasLoaded=false;
     const header=mountHeader('forecast',()=>load());
     mountFooterNav('forecast');
-    async function load(){if(busy)return;busy=true;lastLoad=Date.now();if(!hasLoaded){el('loading').classList.remove('hidden');el('error').classList.add('hidden');el('content').classList.add('hidden')}try{
+    async function load(){if(busy)return;busy=true;lastLoad=Date.now();if(!hasLoaded){el('loading').classList.remove('hidden');el('error').classList.add('hidden');el('content').classList.add('hidden')}else{el('content').classList.add('refreshing')}try{
       const loc=await resolveLocation();
       const {point,label,tz}=await resolvePoint(loc);
       header.setKicker(label);
@@ -51,7 +51,7 @@
       el('loading').classList.add('hidden');el('content').classList.remove('hidden');hasLoaded=true;
     }catch(e){
       if(!hasLoaded){el('loading').classList.add('hidden');el('error').classList.remove('hidden');el('error').textContent=e.message}
-    }finally{busy=false}}
+    }finally{busy=false;el('content').classList.remove('refreshing')}}
     function autoRefresh(){if(document.visibilityState==='visible'&&Date.now()-lastLoad>5*60000)load()}
     window.addEventListener('pageshow',e=>{if(e.persisted)load()});
     document.addEventListener('visibilitychange',autoRefresh);
