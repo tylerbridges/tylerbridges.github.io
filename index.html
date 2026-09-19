@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Rochester Weather">
-  <meta name="description" content="A weather.gov-only forecast dashboard for Rochester, Minnesota ZIP 55901.">
+  <meta name="description" content="A weather.gov-powered forecast dashboard that auto-detects your location, refreshes automatically, and lets you switch to any US location.">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <title>Rochester Weather</title>
@@ -18,12 +18,22 @@
     /* Keep gestures on the document without the edge rubber-band pause. */
     html,body{overscroll-behavior-y:none;scroll-behavior:auto;touch-action:pan-y pinch-zoom}
     *{box-sizing:border-box}body{margin:0;background:linear-gradient(180deg,color-mix(in srgb,var(--blue) 8%,var(--bg)),var(--bg) 18rem);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",sans-serif;line-height:1.45}.shell{width:min(920px,100%);margin:auto;padding:calc(env(safe-area-inset-top) + 1rem) max(1rem,env(safe-area-inset-right)) calc(env(safe-area-inset-bottom) + 2rem) max(1rem,env(safe-area-inset-left))}header{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;padding:.5rem 0 1rem}.kicker{margin:0;color:var(--muted);font-size:.78rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase}h1{font-size:clamp(1.65rem,5vw,2.55rem);line-height:1.12;letter-spacing:-.035em;margin:.35rem 0 0;max-width:760px}h2{font-size:1.25rem;margin:1.8rem 0 .75rem}h3{font-size:1rem;margin:0}.refresh{border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:999px;padding:.6rem .85rem;font:inherit;font-weight:650;box-shadow:var(--shadow);min-height:44px}.refresh:active{transform:translateY(1px)}.briefs{display:grid;gap:.8rem}.brief{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:1rem 1.05rem;box-shadow:var(--shadow)}.brief h3{color:var(--blue)}.brief ul{margin:.55rem 0 0;padding-left:1.25rem}.brief li+li{margin-top:.28rem}.status{margin-top:.7rem;color:var(--muted);font-size:.8rem}.days{border-top:2px solid var(--line-strong)}.day{padding:1rem 0;border-bottom:2px solid var(--line-strong);text-align:left}.day-title{font-size:1.1rem;font-weight:750}.condition{color:var(--muted);font-size:.9rem;margin-top:.08rem}.metrics{display:flex;flex-wrap:wrap;gap:.42rem;margin-top:.65rem}.metric{display:inline-flex;gap:.3rem;align-items:center;background:var(--surface-2);border-radius:999px;padding:.36rem .62rem;color:var(--text);font-size:.84rem}.metric b{font-weight:750}.detail{margin-top:.7rem}.detail summary{display:flex;justify-content:space-between;align-items:center;list-style:none;background:var(--surface-2);color:var(--muted);border-radius:10px;padding:.58rem .7rem;font-weight:700;min-height:44px}.detail summary::-webkit-details-marker{display:none}.detail[open] summary .chev{transform:rotate(180deg)}.chev{transition:transform .18s}.detail ul{color:var(--muted);padding-left:1.35rem;margin:.65rem 0 .1rem}.detail li+li{margin-top:.42rem}.charts{display:grid;gap:1.35rem}.chart h3{margin-bottom:.25rem}.chart svg{display:block;width:100%;height:195px}.legend{display:flex;gap:1rem;flex-wrap:wrap;color:var(--muted);font-size:.8rem}.swatch{width:.95rem;height:.16rem;display:inline-block;vertical-align:middle;margin-right:.3rem}.note,.sources,.install{color:var(--muted);font-size:.8rem}.sources{margin-top:1.5rem}.sources a{color:var(--blue)}.install{margin-top:.8rem}.loading{padding:1rem 0;color:var(--muted)}.error{background:color-mix(in srgb,var(--red) 10%,var(--surface));border:1px solid color-mix(in srgb,var(--red) 35%,var(--line));padding:1rem;border-radius:14px}.hidden{display:none}@media(min-width:720px){.shell{padding-left:1.5rem;padding-right:1.5rem}.brief{padding:1.1rem 1.2rem}.charts{gap:1.6rem}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
-  .brief ul,.detail ul{list-style:none;padding-left:0}.days{border:0;display:grid;gap:.8rem}.day{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:1rem}hr{border:0;border-top:1px solid var(--line);margin:.85rem 0}.metric{display:inline-block}.chart{margin:0}.alert{margin:.65rem 0}.alert p{margin:.3rem 0}.brief li{margin-top:.5rem}</style>
+  .brief ul,.detail ul{list-style:none;padding-left:0}.days{border:0;display:grid;gap:.8rem}.day{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:1rem}hr{border:0;border-top:1px solid var(--line);margin:.85rem 0}.metric{display:inline-block}.chart{margin:0}.alert{margin:.65rem 0}.alert p{margin:.3rem 0}.brief li{margin-top:.5rem}
+  .location-form{display:flex;flex-wrap:wrap;gap:.4rem;margin:.6rem 0 0}.location-form input{flex:1 1 12rem;min-height:40px;border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:999px;padding:0 .85rem;font:inherit}.loc-btn{border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:999px;padding:.5rem .8rem;font:inherit;font-weight:650;min-height:40px}.loc-btn:active{transform:translateY(1px)}.kicker button{all:unset;cursor:pointer;color:var(--blue);font-weight:700}</style>
 </head>
 <body>
   <main class="shell">
     <header>
-      <div><p class="kicker">Rochester, Minnesota · ZIP 55901</p><h1 id="headline">Checking current conditions…</h1><p id="last-updated" class="last-updated" aria-live="polite"></p></div>
+      <div>
+        <p class="kicker" id="kicker">Locating…</p>
+        <h1 id="headline">Checking current conditions…</h1>
+        <p id="last-updated" class="last-updated" aria-live="polite"></p>
+        <form id="location-form" class="location-form" role="search">
+          <input id="location-input" type="text" inputmode="search" autocomplete="off" placeholder="City, state or ZIP" aria-label="Search for a location">
+          <button class="loc-btn" type="submit">Search</button>
+          <button class="loc-btn" id="locate-btn" type="button" aria-label="Use current location">📍 My location</button>
+        </form>
+      </div>
       <button class="refresh" id="refresh" type="button" aria-label="Refresh weather">Refresh</button>
     </header>
     <div id="loading" class="loading" role="status" aria-live="polite">Refreshing from weather.gov…</div>
@@ -35,16 +45,26 @@
       </section>
       <section aria-labelledby="outlook-title"><h2 id="outlook-title">Seven-day outlook</h2><div class="days" id="days"></div></section>
       <section aria-labelledby="charts-title"><h2 id="charts-title">Next 48 hours</h2><p class="note">Hourly values from the NWS forecast grid. Missing gusts remain missing.</p><div class="charts"><figure class="chart"><h3>Temperature</h3><svg id="temp-chart" role="img" aria-label="Hourly temperature in degrees Fahrenheit"></svg><div class="legend"><span><i class="swatch" style="background:var(--blue)"></i>Temperature</span></div></figure><figure class="chart"><h3>Precipitation probability</h3><svg id="pop-chart" role="img" aria-label="Hourly precipitation probability in percent"></svg><div class="legend"><span><i class="swatch" style="background:var(--cyan)"></i>Probability</span></div></figure><figure class="chart"><h3>Wind and gusts</h3><svg id="wind-chart" role="img" aria-label="Hourly sustained wind and gusts in miles per hour"></svg><div class="legend"><span><i class="swatch" style="background:var(--green)"></i>Sustained</span><span><i class="swatch" style="background:var(--orange)"></i>Gust</span></div></figure></div></section>
-      <p class="sources">NWS sources: <a id="forecast-link" target="_blank" rel="noreferrer">seven-day forecast</a> · <a id="hourly-link" target="_blank" rel="noreferrer">hourly forecast</a> · <a href="https://forecast.weather.gov/product.php?site=NWS&issuedby=ARX&product=HWO" target="_blank" rel="noreferrer">Hazardous Weather Outlook</a> · <a href="https://forecast.weather.gov/product.php?site=ARX&issuedby=ARX&product=AFD" target="_blank" rel="noreferrer">forecast discussion</a> · <a href="https://forecast.weather.gov/showsigwx.php?warnzone=MNZ087&warncounty=MNC109&lat=44.0136&lon=-92.4757" target="_blank" rel="noreferrer">local alerts</a></p>
+      <p class="sources">NWS sources: <a id="forecast-link" target="_blank" rel="noreferrer">seven-day forecast</a> · <a id="hourly-link" target="_blank" rel="noreferrer">hourly forecast</a> · <a id="hwo-link" target="_blank" rel="noreferrer">Hazardous Weather Outlook</a> · <a id="afd-link" target="_blank" rel="noreferrer">forecast discussion</a> · <a id="local-alerts-link" target="_blank" rel="noreferrer">local alerts</a></p>
       <p class="status" id="updated"></p>
       <p class="install">On iPhone: open this page in Safari, tap Share, then Add to Home Screen.</p>
     </div>
   </main>
   <script>
   (()=>{
-    const POINT='44.0136,-92.4757',API='https://api.weather.gov';
+    const API='https://api.weather.gov',LOC_KEY='weather-location',DEFAULT_LOC={lat:44.0136,lon:-92.4757,label:'Rochester, Minnesota',source:'default'};
     const el=id=>document.getElementById(id), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-    let chartData=null;
+    let chartData=null,currentLoc=null;
+    function getSavedLocation(){try{return JSON.parse(localStorage.getItem(LOC_KEY))}catch{return null}}
+    function saveLocation(loc){currentLoc=loc;try{localStorage.setItem(LOC_KEY,JSON.stringify(loc))}catch{}}
+    function geolocate(){return new Promise((resolve,reject)=>{if(!navigator.geolocation)return reject(new Error('Geolocation unsupported'));navigator.geolocation.getCurrentPosition(pos=>resolve({lat:+pos.coords.latitude.toFixed(4),lon:+pos.coords.longitude.toFixed(4)}),reject,{enableHighAccuracy:false,timeout:8000,maximumAge:600000})})}
+    async function geocodeSearch(query){const results=await json(`https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=${encodeURIComponent(query)}`);if(!results.length)throw new Error('Location not found.');return {lat:+(+results[0].lat).toFixed(4),lon:+(+results[0].lon).toFixed(4)}}
+    async function resolveLocation(){
+      const saved=getSavedLocation();
+      if(saved){currentLoc=saved;return saved}
+      try{const pos=await geolocate();const loc={...pos,label:null,source:'geo'};saveLocation(loc);return loc}
+      catch{const loc={...DEFAULT_LOC};currentLoc=loc;return loc}
+    }
     async function json(url){let last;for(let i=0;i<2;i++){try{const r=await fetch(url,{cache:'no-store',headers:{Accept:'application/geo+json, application/json'},signal:AbortSignal.timeout(20000)});if(!r.ok)throw new Error(`weather.gov returned ${r.status}`);return await r.json()}catch(e){last=e}}throw last}
     function emoji(text){const t=String(text).toLowerCase();return /thunder/.test(t)?'⛈️':/snow|blizzard/.test(t)?'🌨️':/ice|freezing|sleet/.test(t)?'🧊':/rain|shower|drizzle/.test(t)?'🌧️':/fog|mist/.test(t)?'🌫️':/partly|mostly sunny/.test(t)?'🌤️':/cloud|overcast/.test(t)?'☁️':/sun|clear/.test(t)?'☀️':'🌡️'}
     const local=(t,options={})=>t?new Date(t).toLocaleString('en-US',{timeZone:'America/Chicago',month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short',...options}):'Not provided';
@@ -54,7 +74,7 @@
     function gridValues(field,times,convert=v=>v){if(!field?.values)return times.map(()=>null);return times.map(t=>{const ms=t.getTime();for(const row of field.values){const [start,dur='PT1H']=row.validTime.split('/');const a=new Date(start).getTime();if(ms>=a&&ms<a+durationMs(dur))return row.value==null?null:convert(row.value)}return null})}
     const kphToMph=v=>Math.round(v*.621371), cToF=v=>Math.round(v*9/5+32);
     function productSentences(text){const clean=String(text||'').replace(/\s+/g,' ');return clean.split(/(?<=[.!?])\s+/).filter(s=>/tornado|hail|damaging wind|severe thunder|blizzard|snow squall|flash flood|flooding/i.test(s)&&s.length<260).slice(0,2)}
-    async function product(type){try{const list=await json(`${API}/products/types/${type}/locations/ARX`);const item=(list['@graph']||[])[0];if(!item?.id)return null;return await json(item.id.startsWith('http')?item.id:`${API}/products/${item.id}`)}catch{return null}}
+    async function product(type,officeId){try{const list=await json(`${API}/products/types/${type}/locations/${officeId}`);const item=(list['@graph']||[])[0];if(!item?.id)return null;return await json(item.id.startsWith('http')?item.id:`${API}/products/${item.id}`)}catch{return null}}
     function listItem(label,text){return `<li><strong>${esc(label)}:</strong> ${esc(text)}</li>`}
     function shortText(p){
       // Keep the forecast narrative and temperature; the chips own wind and probability.
@@ -90,9 +110,17 @@
     function renderDays(periods,grid){el('days').innerHTML=dayRows(periods,grid).map(r=>{const d=r.day,n=r.night,b=d||n,title=r.date.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric',timeZone:'America/Chicago'});const gusts=[d,n].filter(Boolean).map(p=>gustFrom(p.detailedForecast)).filter(v=>v!=null),gust=gusts.length?Math.max(...gusts):null;const pop=d?.probabilityOfPrecipitation?.value;const metrics=[['High / low',`${d?.temperature??'—'}° / ${n?.temperature??'—'}°`],[gust==null?'Wind':'Wind / peak gust',`${b.windSpeed}${gust==null?'':` / ${gust} mph`}`],pop==null?null:['Day rain chance',`${pop}%`],r.uv==null?null:['Max UV',r.uv]].filter(Boolean).map(([k,v])=>`<span class="metric"><b>${esc(k)}:</b>&nbsp;${esc(v)}</span>`).join('');return `<article class="day"><div class="day-title"><span aria-hidden="true">${emoji(b.shortForecast)}</span> ${esc(title)}</div><div class="condition">${esc(b.shortForecast)}</div><div class="metrics">${metrics}</div><hr><div class="detail"><ul>${listItem('Day',d?shortText(d):'Daytime period has ended; not included in this NWS forecast.')}${listItem('Night',n?shortText(n):'Not yet provided by NWS.')}</ul></div></article>`}).join('')}
     function draw(svg,series,domain,yTitle,refs=[]){const w=Math.max(320,svg.clientWidth||320),h=195,m={l:48,r:12,t:12,b:35},x=i=>m.l+i*(w-m.l-m.r)/47,y=v=>m.t+(domain[1]-v)*(h-m.t-m.b)/(domain[1]-domain[0]),ns='http://www.w3.org/2000/svg';svg.setAttribute('viewBox',`0 0 ${w} ${h}`);svg.innerHTML='';const add=(tag,a,t)=>{const n=document.createElementNS(ns,tag);Object.entries(a||{}).forEach(([k,v])=>n.setAttribute(k,v));if(t!=null)n.textContent=t;svg.appendChild(n);return n};const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();add('rect',{x:m.l,y:m.t,width:w-m.l-m.r,height:h-m.t-m.b,fill:'none',stroke:css('--line')});for(let j=0;j<=4;j++){const v=domain[0]+(domain[1]-domain[0])*j/4,yy=y(v);add('line',{x1:m.l,y1:yy,x2:w-m.r,y2:yy,stroke:css('--line')});add('text',{x:m.l-7,y:yy+4,'text-anchor':'end',fill:css('--muted'),'font-size':11},Math.round(v))}refs.forEach(r=>{const yy=y(r.v);add('line',{x1:m.l,y1:yy,x2:w-m.r,y2:yy,stroke:css(r.color),'stroke-dasharray':'4 4'});add('text',{x:w-m.r-3,y:yy-4,'text-anchor':'end',fill:css('--muted'),'font-size':11},r.label)});(w<440?[0,16,32,47]:[0,12,24,36,47]).forEach(i=>add('text',{x:x(i),y:h-11,'text-anchor':i===0?'start':i===47?'end':'middle',fill:css('--muted'),'font-size':11},chartData.labels[i]||''));add('text',{x:11,y:(m.t+h-m.b)/2,transform:`rotate(-90 11 ${(m.t+h-m.b)/2})`,'text-anchor':'middle',fill:css('--muted'),'font-size':11},yTitle);if(svg.id==='wind-chart')for(const p of chartData.periodMax||[]){add('line',{x1:x(p.indices[0]),x2:x(p.indices.at(-1)),y1:y(p.g),y2:y(p.g),stroke:css('--orange'),'stroke-width':2,'stroke-dasharray':'3 5'});add('text',{x:x(p.indices[0]),y:y(p.g)-5,fill:css('--text'),'font-size':11},'NWS period max gust')}series.forEach(s=>{let d='',on=false;s.values.forEach((v,i)=>{if(v==null){on=false;return}d+=(on?'L':'M')+x(i).toFixed(1)+' '+y(v).toFixed(1)+' ';on=true});add('path',{d,fill:'none',stroke:css(s.color),'stroke-width':2.6,'stroke-linejoin':'round','stroke-dasharray':s.dash||''})})}
     function redraw(){if(!chartData||!chartData.temp.length){['temp-chart','pop-chart','wind-chart'].forEach(id=>el(id).innerHTML='');return;}const temps=chartData.temp.filter(v=>v!=null),maxT=Math.max(...temps,80),minT=Math.min(...temps,30);draw(el('temp-chart'),[{values:chartData.temp,color:'--blue'}],[Math.floor((minT-5)/5)*5,Math.ceil((maxT+5)/5)*5],'°F');draw(el('pop-chart'),[{values:chartData.pop,color:'--cyan'}],[0,100],'%',[{v:50,color:'--orange',label:'50%'}]);const vals=[...chartData.wind,...chartData.gust,...(chartData.periodMax||[]).map(p=>p.g)].filter(v=>v!=null),maxW=Math.max(20,...vals);draw(el('wind-chart'),[{values:chartData.wind,color:'--green'},{values:chartData.gust,color:'--orange',dash:'6 4'}],[0,Math.ceil((maxW+3)/5)*5],'mph',[{v:10,color:'--orange',label:'10 mph'},{v:20,color:'--red',label:'20 mph'}])}
-    let busy=false;
-    async function load(){if(busy)return;busy=true;el('loading').classList.remove('hidden');el('error').classList.add('hidden');el('content').classList.add('hidden');el('refresh').disabled=true;try{
+    let busy=false,lastLoad=0;
+    async function load(){if(busy)return;busy=true;lastLoad=Date.now();el('loading').classList.remove('hidden');el('error').classList.add('hidden');el('content').classList.add('hidden');el('refresh').disabled=true;try{
+      const loc=await resolveLocation(),POINT=`${loc.lat},${loc.lon}`;
       const point=await json(`${API}/points/${POINT}`);
+      const rel=point.properties.relativeLocation?.properties;
+      const label=rel?`${rel.city}, ${rel.state}`:loc.label||'Selected location';
+      if(loc.label!==label)saveLocation({...loc,label});
+      el('kicker').textContent=label;
+      const officeId=(point.properties.forecastOffice||'').split('/').pop();
+      const countyId=(point.properties.county||'').split('/').pop();
+      const zoneId=(point.properties.forecastZone||'').split('/').pop();
       const results=await Promise.allSettled([json(point.properties.forecast),json(point.properties.forecastHourly),json(point.properties.forecastGridData),json(`${API}/alerts/active?point=${POINT}`),currentObservation(point)]);
       if(results[0].status!=='fulfilled')throw new Error('The current seven-day forecast is unavailable.');
       const forecast=results[0].value,hourly=results[1].value,grid=results[2].value||{properties:{}},alerts=results[3].value;
@@ -109,19 +137,40 @@
       el('later-list').innerHTML=later.flatMap((r,i)=>[r.day?listItem(r.day.name,concise(r.day)):'',i===0&&r.night?listItem(r.night.name,concise(r.night)):'']).join('');
       const active=alerts?.features||[];el('alerts').innerHTML=alerts?(active.length?active.map(alertLine).join(''):'<p>No active NWS alerts.</p>'):'<p>Current NWS alerts could not be verified. Check the local alerts link below.</p>';
       const needsHazard=active.length||periods.some(p=>/thunder|snow|ice|freezing|fog|heavy rain|blizzard/i.test(p.detailedForecast)||gustFrom(p.detailedForecast)>20);
-      const [hwo,afd]=needsHazard?await Promise.all([product('HWO'),product('AFD')]):[null,null];
-      if(needsHazard){const hazardText=[hwo?.productText,afd?.productText].filter(Boolean).join(' ');if(/severe|tornado|hail|damaging|blizzard|flood/i.test(hazardText))el('alerts').innerHTML+='<p class="note">Regional NWS hazard guidance is available in the <a href="https://forecast.weather.gov/product.php?site=ARX&issuedby=ARX&product=HWO" target="_blank">outlook</a> and <a href="https://forecast.weather.gov/product.php?site=ARX&issuedby=ARX&product=AFD" target="_blank">discussion</a>. Regional threats may not apply to Rochester; only issued local alerts are listed above.</p>';if(!hwo||!afd)el('alerts').innerHTML+='<p class="note">Some regional hazard guidance could not be refreshed.</p>'}
+      const [hwo,afd]=needsHazard&&officeId?await Promise.all([product('HWO',officeId),product('AFD',officeId)]):[null,null];
+      if(needsHazard){const hazardText=[hwo?.productText,afd?.productText].filter(Boolean).join(' ');if(/severe|tornado|hail|damaging|blizzard|flood/i.test(hazardText))el('alerts').innerHTML+=`<p class="note">Regional NWS hazard guidance is available in the <a href="https://forecast.weather.gov/product.php?site=NWS&issuedby=${esc(officeId)}&product=HWO" target="_blank">outlook</a> and <a href="https://forecast.weather.gov/product.php?site=${esc(officeId)}&issuedby=${esc(officeId)}&product=AFD" target="_blank">discussion</a>. Regional threats may not apply to your exact location; only issued local alerts are listed above.</p>`;if(!hwo||!afd)el('alerts').innerHTML+='<p class="note">Some regional hazard guidance could not be refreshed.</p>'}
       renderDays(periods,grid);
       const times=hours.map(x=>new Date(x.startTime)),gust=gridValues(grid.properties.windGust,times,v=>grid.properties.windGust.uom?.includes('km_h')?kphToMph(v):Math.round(v));
       chartData={temp:hours.map(x=>x.temperature),pop:hours.map(x=>x.probabilityOfPrecipitation?.value??null),wind:hours.map(x=>maxWind(x.windSpeed)),gust,labels:times.map(d=>d.toLocaleString('en-US',{weekday:'short',hour:'numeric',timeZone:'America/Chicago'})),periodMax:[]};
       periods.forEach(p=>{const g=gustFrom(p.detailedForecast);if(g==null)return;const indices=times.map((t,i)=>t>=new Date(p.startTime)&&t<new Date(p.endTime)&&gust[i]==null?i:null).filter(i=>i!=null);if(indices.length)chartData.periodMax.push({g,indices})});
       document.querySelector('#charts-title + .note').textContent=hours.length?`${local(hours[0].startTime)}–${local(hours.at(-1).endTime)} · Precipitation probability, not amount. ${chartData.periodMax.length?'NWS did not provide hour-specific gusts for dashed segments; these show period maxima, not hourly predictions.':gust.every(v=>v==null)?'Gusts: Not provided by NWS.':'Hourly gusts from the NWS grid.'}`:'Hourly forecast unavailable; chart data not shown.';
-      el('forecast-link').href='https://forecast.weather.gov/MapClick.php?lat=44.0136&lon=-92.4757';el('hourly-link').href='https://forecast.weather.gov/MapClick.php?FcstType=graphical&lat=44.0136&lon=-92.4757&unit=0';
+      el('forecast-link').href=`https://forecast.weather.gov/MapClick.php?lat=${loc.lat}&lon=${loc.lon}`;el('hourly-link').href=`https://forecast.weather.gov/MapClick.php?FcstType=graphical&lat=${loc.lat}&lon=${loc.lon}&unit=0`;
+      el('hwo-link').href=officeId?`https://forecast.weather.gov/product.php?site=NWS&issuedby=${encodeURIComponent(officeId)}&product=HWO`:'https://forecast.weather.gov/';
+      el('afd-link').href=officeId?`https://forecast.weather.gov/product.php?site=${encodeURIComponent(officeId)}&issuedby=${encodeURIComponent(officeId)}&product=AFD`:'https://forecast.weather.gov/';
+      el('local-alerts-link').href=zoneId&&countyId?`https://forecast.weather.gov/showsigwx.php?warnzone=${encodeURIComponent(zoneId)}&warncounty=${encodeURIComponent(countyId)}&lat=${loc.lat}&lon=${loc.lon}`:`https://alerts.weather.gov/`;
       el('updated').textContent=`Refreshed ${local(now)} · Forecast issued ${local(forecast.properties.updateTime)} · Hourly issued ${local(hourly?.properties?.updateTime)} · Alerts checked ${alerts?local(now):'unavailable'}${hwo?' · HWO '+local(hwo.issuanceTime):''}${afd?' · AFD '+local(afd.issuanceTime):''}. Latest published NWS guidance; not continuous emergency monitoring.`;
       el('loading').classList.add('hidden');el('content').classList.remove('hidden');requestAnimationFrame(redraw);
-    }catch(e){el('loading').classList.add('hidden');el('headline').textContent='Weather update unavailable';el('last-updated').textContent='';el('error').classList.remove('hidden');el('error').innerHTML=`${esc(e.message)} <a href="https://forecast.weather.gov/MapClick.php?lat=44.0136&lon=-92.4757">Open weather.gov</a>.`}finally{el('refresh').disabled=false;busy=false}}
+    }catch(e){const loc=currentLoc||DEFAULT_LOC;el('loading').classList.add('hidden');el('headline').textContent='Weather update unavailable';el('last-updated').textContent='';el('error').classList.remove('hidden');el('error').innerHTML=`${esc(e.message)} <a href="https://forecast.weather.gov/MapClick.php?lat=${loc.lat}&lon=${loc.lon}">Open weather.gov</a>.`}finally{el('refresh').disabled=false;busy=false}}
+    function autoRefresh(){if(document.visibilityState==='visible'&&Date.now()-lastLoad>5*60000)load()}
     window.addEventListener('pageshow',e=>{if(e.persisted)load()});
-    el('refresh').addEventListener('click',load);let chartWidth=0;new ResizeObserver(entries=>{const width=entries[0].contentRect.width;if(width>0&&width!==chartWidth){chartWidth=width;requestAnimationFrame(redraw)}}).observe(document.querySelector('.charts'));window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',redraw);if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});load();
+    document.addEventListener('visibilitychange',autoRefresh);
+    window.addEventListener('focus',autoRefresh);
+    setInterval(()=>{if(document.visibilityState==='visible')load()},10*60000);
+    el('refresh').addEventListener('click',load);
+    el('location-form').addEventListener('submit',async e=>{
+      e.preventDefault();
+      const q=el('location-input').value.trim();
+      if(!q)return;
+      el('kicker').textContent='Searching…';
+      try{const pos=await geocodeSearch(q);saveLocation({...pos,label:null,source:'search',query:q});el('location-input').value='';load()}
+      catch(err){el('kicker').textContent=err.message||'Location search failed';}
+    });
+    el('locate-btn').addEventListener('click',async()=>{
+      el('kicker').textContent='Locating…';
+      try{const pos=await geolocate();saveLocation({...pos,label:null,source:'geo'});load()}
+      catch{el('kicker').textContent='Location access denied or unavailable';}
+    });
+    let chartWidth=0;new ResizeObserver(entries=>{const width=entries[0].contentRect.width;if(width>0&&width!==chartWidth){chartWidth=width;requestAnimationFrame(redraw)}}).observe(document.querySelector('.charts'));window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',redraw);if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});load();
   })();
   </script>
 </body>
