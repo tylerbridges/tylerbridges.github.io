@@ -133,7 +133,7 @@ window.WX = (function(){
     const gust=gusts.length?Math.max(...gusts):null;
     const pop=d?.probabilityOfPrecipitation?.value;
     return [
-      ['High/Low',`${d?.temperature??'—'}°/${n?.temperature??'—'}°`],
+      ['H',`${d?.temperature??'—'}° L: ${n?.temperature??'—'}°`],
       pop==null?null:['Rain %',`${pop}%`],
       ['Wind',windRange(b.windSpeed,gust)],
       humidity==null?null:['Humidity',`${humidity}%`],
