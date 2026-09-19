@@ -17,14 +17,15 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@5.6.1/dist/maplibre-gl.css">
   <title>Radar — Rochester Weather</title>
   <style>
-    .radar-card{position:relative;border-radius:18px;overflow:hidden;border:1px solid var(--line);box-shadow:var(--shadow);height:min(46vh,380px);min-height:260px;background:#000}
+    .radar-card{position:relative;border-radius:18px;overflow:hidden;border:3px solid var(--line-strong);box-shadow:var(--shadow);height:min(46vh,380px);min-height:260px;background:#000}
     #map{position:absolute;inset:0;background:#000}
     /* Page-local .radar-overlay would otherwise tie with .hidden on specificity
        and win on source order, keeping the bar visible when JS hides it. */
     .radar-overlay.hidden{display:none}
-    .radar-overlay{position:absolute;left:0;right:0;bottom:0;z-index:1000;display:flex;align-items:center;gap:.7rem;padding:.65rem .8rem calc(env(safe-area-inset-bottom) + .65rem);background:color-mix(in srgb,var(--surface-2) 88%,transparent);backdrop-filter:saturate(180%) blur(18px);-webkit-backdrop-filter:saturate(180%) blur(18px);border-top:1px solid var(--line-strong)}
-    .play-btn{flex:0 0 auto;width:36px;height:36px;border-radius:999px;border:0;background:var(--blue);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.3)}
+    .radar-overlay{position:absolute;left:0;right:0;bottom:0;z-index:1000;display:flex;align-items:center;gap:.55rem;padding:.32rem .5rem;background:color-mix(in srgb,var(--surface-2) 88%,transparent);backdrop-filter:saturate(180%) blur(18px);-webkit-backdrop-filter:saturate(180%) blur(18px);border-top:1px solid var(--line-strong)}
+    .play-btn{flex:0 0 auto;width:28px;height:28px;border-radius:999px;border:0;background:var(--blue);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.3)}
     .play-btn:active{transform:scale(.92)}
+    .play-btn svg{width:12px;height:12px}
     .radar-overlay input[type=range]{flex:1;-webkit-appearance:none;appearance:none;height:4px;border-radius:999px;background:var(--line-strong);outline:none;margin:0}
     .radar-overlay input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:999px;background:var(--line-strong)}
     .radar-overlay input[type=range]::-moz-range-track{height:4px;border-radius:999px;background:var(--line-strong)}
@@ -35,13 +36,12 @@
     /* Mirrors the NEXRAD Level III reflectivity ramp the radar tiles use. */
     .legend-bar{flex:1;height:7px;border-radius:999px;background:linear-gradient(90deg,#04e9e7,#019ff4,#0300f4,#02fd02,#01c501,#008e00,#fdf802,#e5bc00,#fd9500,#fd0000,#bc0000,#f800fd)}
     #radar-status{margin-top:.9rem}
-    .maplibregl-ctrl-attrib{font-size:10px}
-    .maplibregl-ctrl-bottom-right{bottom:60px}
-    .maplibregl-ctrl-group{border:0!important;box-shadow:var(--shadow)!important;background:var(--surface)!important}
-    .maplibregl-ctrl-group button+button{border-top:1px solid var(--line)!important}
-    .maplibregl-ctrl-group button .maplibregl-ctrl-icon{filter:invert(1)}
-    .maplibregl-ctrl-attrib.maplibregl-compact{background:color-mix(in srgb,var(--surface) 80%,transparent)!important}
+    /* Plain, always-visible credit line, no toggle "i" button and no zoom rocker
+       — kept as minimal as the attribution license terms allow. */
+    .maplibregl-ctrl-bottom-right{bottom:44px}
+    .maplibregl-ctrl-attrib{font-size:9px;background:transparent!important;padding:0 6px}
     .maplibregl-ctrl-attrib a{color:var(--muted)!important}
+    .maplibregl-ctrl-attrib-button{display:none!important}
   </style>
 </head>
 <body>
@@ -158,13 +158,12 @@
     function buildMap(latlng){
       map=new maplibregl.Map({
         container:'map',style:VECTOR_STYLE,center:[latlng[1],latlng[0]],zoom:7.5,
-        attributionControl:{compact:true},dragRotate:false,pitchWithRotate:false,
+        attributionControl:{compact:false},dragRotate:false,pitchWithRotate:false,
         // Vector tiles are resolution-independent; render at the device's real
         // pixel ratio so the basemap is genuinely sharp rather than upscaled.
         pixelRatio:window.devicePixelRatio||1
       });
       map.touchZoomRotate.disableRotation();
-      map.addControl(new maplibregl.NavigationControl({showCompass:false}),'top-left');
       map.on('style.load',onStyleReady);
       // If the vector style can't be reached, fall back to raster rather than
       // leaving a black rectangle.
