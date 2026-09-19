@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#0b2545">
+  <meta name="theme-color" content="#071522">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="description" content="Live NOAA NEXRAD weather radar centered on your location.">
@@ -103,7 +103,7 @@
         const latlng=[loc.lat,loc.lon];
         if(!map){
           map=L.map('map',{zoomControl:true,attributionControl:true}).setView(latlng,8);
-          const dark=window.matchMedia('(prefers-color-scheme: dark)').matches;
+          const dark=document.documentElement.getAttribute('data-theme')!=='light';
           L.tileLayer(`https://{s}.basemaps.cartocdn.com/${dark?'dark_all':'voyager'}/{z}/{x}/{y}{r}.png`,{maxZoom:19,attribution:'© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>, © <a href="https://carto.com/attributions" target="_blank" rel="noreferrer">CARTO</a>'}).addTo(map);
           marker=L.marker(latlng).addTo(map);
           el('loading').classList.add('hidden');el('map').classList.remove('hidden');el('radar-controls').classList.remove('hidden');
