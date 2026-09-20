@@ -95,6 +95,15 @@ window.WX = (function(){
   function uvForDate(grid,dateKey,tz){const values=grid.properties?.maxUVIndex?.values||[];for(const row of values){if(dayKey(tz,row.validTime.split('/')[0])===dateKey&&row.value!=null)return Math.round(row.value)}return null}
   function humidityForDate(grid,dateKey,tz){const values=grid.properties?.relativeHumidity?.values||[];const vals=values.filter(row=>dayKey(tz,row.validTime.split('/')[0])===dateKey).map(r=>r.value).filter(v=>v!=null);if(!vals.length)return null;return Math.round(vals.reduce((a,b)=>a+b,0)/vals.length)}
   function gustForDate(grid,dateKey,tz){const field=grid.properties?.windGust;const values=field?.values||[];const kph=field?.uom?.includes('km_h');const vals=values.filter(row=>dayKey(tz,row.validTime.split('/')[0])===dateKey).map(r=>r.value).filter(v=>v!=null);if(!vals.length)return null;const max=Math.max(...vals);return Math.round(kph?max*.621371:max)}
+  // NWS's gridpoint maxTemperature/minTemperature cover the full calendar day
+  // regardless of the current time, unlike the text forecast's day/night
+  // periods (which disappear once that period ends). Standard practice —
+  // matching NWS's own text-forecast generator and apps like Apple Weather —
+  // is to fall back to this structured data so a day's high/low still shows
+  // after its period has passed, rather than going blank.
+  function tempForDate(grid,field,dateKey,tz){const values=grid.properties?.[field]?.values||[];for(const row of values){if(dayKey(tz,row.validTime.split('/')[0])===dateKey&&row.value!=null)return cToF(row.value)}return null}
+  const maxTempForDate=(grid,dateKey,tz)=>tempForDate(grid,'maxTemperature',dateKey,tz);
+  const minTempForDate=(grid,dateKey,tz)=>tempForDate(grid,'minTemperature',dateKey,tz);
   function dayRows(allPeriods,grid,tz){
     // Group by calendar date (in the location's timezone) rather than walking
     // day/night pairs positionally, so today's row is always complete even
@@ -108,14 +117,14 @@ window.WX = (function(){
     });
     const todayKey=dayKey(tz,new Date());
     const startIdx=Math.max(0,order.indexOf(todayKey));
-    return order.slice(startIdx,startIdx+7).map(key=>({...byKey[key],uv:uvForDate(grid,key,tz),humidity:humidityForDate(grid,key,tz),gust:gustForDate(grid,key,tz)}));
+    return order.slice(startIdx,startIdx+7).map(key=>({...byKey[key],uv:uvForDate(grid,key,tz),humidity:humidityForDate(grid,key,tz),gust:gustForDate(grid,key,tz),hi:maxTempForDate(grid,key,tz),lo:minTempForDate(grid,key,tz)}));
   }
   function windAvg(windSpeed){
     const nums=(String(windSpeed).match(/\d+/g)||[]).map(Number);
     if(!nums.length)return null;
     return Math.round(nums.reduce((a,b)=>a+b,0)/nums.length);
   }
-  function dayMetrics(d,n,uv,humidity,gridGust){
+  function dayMetrics(d,n,uv,humidity,gridGust,gridHi,gridLo){
     const b=d||n;
     const gusts=[d,n].filter(Boolean).map(p=>gustFrom(p.detailedForecast)).filter(v=>v!=null);
     const textGust=gusts.length?Math.max(...gusts):null;
@@ -123,10 +132,14 @@ window.WX = (function(){
     const pop=d?.probabilityOfPrecipitation?.value;
     const wind=windAvg(b.windSpeed);
     // Once today's daytime period has already passed, NWS stops returning it
-    // entirely (its periods only run forward from now) — d is genuinely
-    // absent, not just missing a value, so show tonight's low alone rather
-    // than a "H: —°" placeholder for a high that was never coming.
-    const hiLo=d&&n?['H',`${d.temperature}° L: ${n.temperature}°`]:d?['H',`${d.temperature}°`]:n?['L',`${n.temperature}°`]:null;
+    // entirely (its periods only run forward from now). Fall back to the
+    // gridpoint's maxTemperature/minTemperature — which cover the full
+    // calendar day regardless of the current time — so the high still shows
+    // after its period has passed, matching how NWS's own forecast text and
+    // apps like Apple Weather handle it, instead of going blank.
+    const hi=d?.temperature??gridHi;
+    const lo=n?.temperature??gridLo;
+    const hiLo=hi!=null&&lo!=null?['H',`${hi}° L: ${lo}°`]:hi!=null?['H',`${hi}°`]:lo!=null?['L',`${lo}°`]:null;
     return [
       hiLo,
       pop==null?null:['Rain %',`${pop}%`],
@@ -159,7 +172,7 @@ window.WX = (function(){
     return rows.map(r=>{
       const d=r.day,n=r.night,b=d||n;
       const title=r.date.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric',timeZone:tz});
-      const metrics=metricsHTML(dayMetrics(d,n,r.uv,r.humidity,r.gust));
+      const metrics=metricsHTML(dayMetrics(d,n,r.uv,r.humidity,r.gust,r.hi,r.lo));
       return `<article class="day"><div class="day-title"><span aria-hidden="true">${emoji(b.shortForecast)}</span> ${esc(title)}</div><hr><p class="condition">${esc(futureBrief(d,n))}</p><div class="metrics">${metrics}</div></article>`;
     }).join('');
   }
@@ -168,7 +181,7 @@ window.WX = (function(){
   // Alerts section, fetched and rendered by this one function.
   async function loadTodayCard(container,title,loc,point,officeId,todayPeriods,grid,tz){
     const todayKey=dayKey(tz,new Date());
-    const metrics=metricsHTML(dayMetrics(todayPeriods.day,todayPeriods.night,uvForDate(grid,todayKey,tz),humidityForDate(grid,todayKey,tz),gustForDate(grid,todayKey,tz)));
+    const metrics=metricsHTML(dayMetrics(todayPeriods.day,todayPeriods.night,uvForDate(grid,todayKey,tz),humidityForDate(grid,todayKey,tz),gustForDate(grid,todayKey,tz),maxTempForDate(grid,todayKey,tz),minTempForDate(grid,todayKey,tz)));
     const current=await currentObservation(point).catch(()=>null);
     const currentText=current?currentHeadline(current.observation):null;
     const brief=todayBrief(currentText,todayPeriods.day,todayPeriods.night);
@@ -416,7 +429,7 @@ window.WX = (function(){
 
   return {API,DEFAULT_LOC,el,esc,getSavedLocation,saveLocation,geolocate,geocodeSearch,resolveLocation,resolvePoint,json,
     emoji,local,maxWind,gustFrom,durationMs,gridValues,kphToMph,cToF,product,
-    currentObservation,currentHeadline,alertLine,dayKey,startOfDay,hourLabel,dayRows,uvForDate,humidityForDate,gustForDate,dayMetrics,metricsHTML,
+    currentObservation,currentHeadline,alertLine,dayKey,startOfDay,hourLabel,dayRows,uvForDate,humidityForDate,gustForDate,maxTempForDate,minTempForDate,dayMetrics,metricsHTML,
     todayBrief,futureBrief,renderFutureCardHTML,loadTodayCard,
     findTodayPeriods,renderDaysHTML,mountHeader,mountFooterNav,mountPullToRefresh,getTheme,setTheme,recolorStyleDark};
 })();
