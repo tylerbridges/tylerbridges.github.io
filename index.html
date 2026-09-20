@@ -108,7 +108,7 @@
         el('tomorrow-card').innerHTML=renderFutureCardHTML(tomorrowTitle,tomorrow.day,tomorrow.night,tomorrowMetrics);
       }else{el('tomorrow-card').innerHTML=renderFutureCardHTML('Tomorrow',null,null,'')}
       const gust=gridValues(grid.properties.windGust,times,v=>grid.properties.windGust.uom?.includes('km_h')?kphToMph(v):Math.round(v));
-      const timeTicks=Array.from({length:9},(_,n)=>{const i=n*6;return{i,label:i===0?'Today':i===24?'Tomorrow':i===48?new Intl.DateTimeFormat('en-US',{timeZone:tz,weekday:'short'}).format(times[i]):hourLabel(times[i],tz),day:i%24===0}});
+      const timeTicks=Array.from({length:9},(_,n)=>{const i=n*6;return{i,label:i===0?'Today':i===24?'Tom':i===48?new Intl.DateTimeFormat('en-US',{timeZone:tz,weekday:'short'}).format(times[i]):hourLabel(times[i],tz),day:i%24===0}});
       chartData={temp:hours.map(x=>x?.temperature??null),pop:hours.map(x=>x?.probabilityOfPrecipitation?.value??null),wind:hours.map(x=>x?maxWind(x.windSpeed):null),gust,timeTicks,windowStart,tz,spanHours:48};
       el('updated').textContent=`Updated ${local(now,tz)}`;el('updated').classList.remove('hidden');
       el('loading').classList.add('hidden');el('content').classList.remove('hidden');requestAnimationFrame(redraw);hasLoaded=true;
