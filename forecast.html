@@ -48,7 +48,7 @@
       const forecast=await json(point.properties.forecast);
       const now=new Date(),freshPeriods=forecast.properties.periods.filter(p=>new Date(p.endTime)>now);
       if(!freshPeriods.length||!forecast.properties.updateTime)throw new Error('The 7-day forecast is unavailable.');
-      const rows=dayRows(forecast.properties.periods,grid,tz);
+      const rows=dayRows(forecast.properties.periods,grid,tz,loc.lat);
       const today=findTodayPeriods(forecast.properties.periods,tz);
       const todayTitle=`${emoji((today.day||today.night).shortForecast)} Today · ${now.toLocaleDateString('en-US',{timeZone:tz,month:'short',day:'numeric'})}`;
       await loadTodayCard(el('today-card'),todayTitle,loc,point,officeId,today,grid,tz);

@@ -40,8 +40,9 @@
     /* Corner chip, like RadarScope's own legend, instead of a full-width row
        below the map competing with the radar for attention. */
     .radar-legend{position:absolute;top:10px;right:10px;z-index:1000;display:flex;align-items:center;gap:.4rem;padding:.32rem .55rem;border-radius:10px;background:rgba(20,20,20,.7);backdrop-filter:saturate(180%) blur(14px);-webkit-backdrop-filter:saturate(180%) blur(14px);box-shadow:0 2px 8px rgba(0,0,0,.35);font-size:10px;color:#aaa;text-shadow:0 1px 2px rgba(0,0,0,.4)}
-    /* Mirrors the NEXRAD Level III reflectivity ramp the radar tiles use. */
-    .legend-bar{width:44px;height:5px;border-radius:999px;background:linear-gradient(90deg,#04e9e7,#019ff4,#0300f4,#02fd02,#01c501,#008e00,#fdf802,#e5bc00,#fd9500,#fd0000,#bc0000,#f800fd)}
+    /* Approximates RainViewer's "TWC" ramp: green-yellow-orange-red for rain
+       intensity, purple for the mixed/extreme end. */
+    .legend-bar{width:44px;height:5px;border-radius:999px;background:linear-gradient(90deg,#3ec14a,#a8d33f,#f5e642,#f5a742,#e6432f,#a83fd1)}
     #radar-status{margin-top:.9rem}
   </style>
 </head>
@@ -82,10 +83,13 @@
     mountFooterNav('radar');
 
     // RainViewer serves the same NEXRAD mosaic the NWS publishes, but as plain
-    // XYZ tiles: 512px for retina sharpness, colour scheme 6 (NEXRAD Level III)
-    // for the reflectivity ramp RadarScope users expect, smoothed, snow shown.
+    // XYZ tiles: 512px for retina sharpness, colour scheme 4 ("TWC" — The
+    // Weather Channel's familiar green/yellow/orange/red rain ramp with
+    // blue/purple for snow and mixed precipitation), smoothed, snow shown —
+    // the consumer-app palette people expect, rather than the more clinical
+    // NEXRAD Level III scheme (6) meteorologists use.
     const RV_INDEX='https://api.rainviewer.com/public/weather-maps.json';
-    const TILE_SIZE=512,COLOR_SCHEME=6,TILE_OPTS='1_1';
+    const TILE_SIZE=512,COLOR_SCHEME=4,TILE_OPTS='1_1';
     // RainViewer's mosaic isn't actually tiled across the map's whole 3-14
     // zoom range — past a certain zoom in either direction it serves a PNG
     // with "Zoom Level Not Supported" rendered right into the tile instead
@@ -94,7 +98,10 @@
     // known-good zoom band means MapLibre's own raster over/underzoom
     // (scaling the nearest valid-zoom tile) kicks in beyond that band —
     // a softer image at the extremes instead of that placeholder graphic.
-    const RADAR_MIN_ZOOM=4,RADAR_MAX_ZOOM=9;
+    // Raised from the very conservative 9 once the basemap fix shipped, to
+    // give zooming in more real detail; if the placeholder tile reappears
+    // at high zoom this is the number to pull back down.
+    const RADAR_MIN_ZOOM=4,RADAR_MAX_ZOOM=11;
     // Vector tiles stay sharp at any zoom and at the device's full pixel ratio,
     // which raster basemaps cannot do. Raster Esri is kept only as a fallback
     // for when the vector style cannot be reached.
@@ -145,7 +152,7 @@
       // animated "sweep" instead of a hard cut — kept under the shortest
       // frame interval (BASE_INTERVAL at the fastest speed) so it never
       // outlasts the frame it's fading into.
-      map.addLayer({id:'radar',type:'raster',source:'radar',paint:{'raster-opacity':.85,'raster-fade-duration':RADAR_FADE_MS,'raster-saturation':.25,'raster-contrast':.15,'raster-resampling':'linear'}});
+      map.addLayer({id:'radar',type:'raster',source:'radar',paint:{'raster-opacity':.88,'raster-fade-duration':RADAR_FADE_MS,'raster-saturation':.3,'raster-contrast':.18,'raster-resampling':'linear'}});
     }
     function showFrame(i){
       if(!frames.length)return;
@@ -279,7 +286,10 @@
     window.addEventListener('focus',()=>refreshFrames());
     window.addEventListener('pageshow',e=>{if(e.persisted)refreshFrames()});
     window.addEventListener('resize',()=>{if(map)map.resize()});
-    setInterval(()=>{if(document.visibilityState==='visible')refreshFrames()},5*60000);
+    // RainViewer's mosaic itself only updates every ~10 minutes, but polling
+    // every 2 (like RadarScope's own refresh cadence) catches a new scan
+    // sooner after it's published instead of sitting on a stale one.
+    setInterval(()=>{if(document.visibilityState==='visible')refreshFrames()},2*60000);
     mountPullToRefresh(()=>map?refreshFrames(true):centerOnLocation());
     if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
     centerOnLocation();
