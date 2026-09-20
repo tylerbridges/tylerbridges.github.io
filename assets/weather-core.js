@@ -204,23 +204,40 @@ window.WX = (function(){
 
   const LOCATE_ICON='<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M12 2.3 4.4 20.2c-.18.42.27.85.68.66L12 17.8l6.92 3.06c.41.19.86-.24.68-.66L12 2.3z" fill="currentColor" transform="rotate(45 12 12)"/></svg>';
   const SEARCH_ICON='<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.2"/><line x1="15.3" y1="15.3" x2="20.5" y2="20.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>';
-  const GEAR_ICON='<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M19.14 12.94a7.07 7.07 0 0 0 0-1.88l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.3 7.3 0 0 0-1.62-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54a7.3 7.3 0 0 0-1.62.94l-2.39-.96a.5.5 0 0 0-.6.22L1.71 8.84a.5.5 0 0 0 .12.64l2.03 1.58a7.07 7.07 0 0 0 0 1.88l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.14.24.42.32.6.22l2.39-.96c.5.4 1.04.71 1.62.94l.36 2.54c.05.24.25.42.5.42h3.84c.25 0 .45-.18.5-.42l.36-2.54c.58-.23 1.12-.54 1.62-.94l2.39.96c.24.1.46 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7z" fill="currentColor"/></svg>';
+  const HAMBURGER_ICON='<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></g></svg>';
   const SUN_ICON='<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><circle cx="12" cy="12" r="4.3" fill="currentColor"/><g stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="12" y1="1.5" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22.5"/><line x1="1.5" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22.5" y2="12"/><line x1="4.2" y1="4.2" x2="6" y2="6"/><line x1="18" y1="18" x2="19.8" y2="19.8"/><line x1="19.8" y1="4.2" x2="18" y2="6"/><line x1="6" y1="18" x2="4.2" y2="19.8"/></g></svg>';
   const MOON_ICON='<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M20.5 14.5a8.5 8.5 0 1 1-9-13 7 7 0 0 0 9 13z" fill="currentColor"/></svg>';
   const THEME_KEY='weather-theme';
-  function getTheme(){return document.documentElement.getAttribute('data-theme')==='light'?'light':'dark'}
-  function setTheme(theme){
-    if(theme==='light')document.documentElement.setAttribute('data-theme','light');
-    else document.documentElement.removeAttribute('data-theme');
-    try{localStorage.setItem(THEME_KEY,theme)}catch{}
-    document.dispatchEvent(new CustomEvent('themechange',{detail:{theme}}));
+  // Stored preference is 'light' | 'dark' | 'system'; 'dark' is the fallback
+  // when nothing is stored, matching the site's existing default so nobody's
+  // appearance changes just because this option now exists. Only an explicit
+  // light/dark choice sets the data-theme attribute — 'system' clears it and
+  // leaves :root[data-theme] unset, which site.css resolves via a
+  // prefers-color-scheme media query instead.
+  function getThemeChoice(){try{const v=localStorage.getItem(THEME_KEY);return v==='light'||v==='system'?v:'dark'}catch{return 'dark'}}
+  function getTheme(){
+    const attr=document.documentElement.getAttribute('data-theme');
+    if(attr==='light'||attr==='dark')return attr;
+    try{return window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'}catch{return 'dark'}
   }
+  function setTheme(choice){
+    if(choice==='light'||choice==='dark')document.documentElement.setAttribute('data-theme',choice);
+    else document.documentElement.removeAttribute('data-theme');
+    try{localStorage.setItem(THEME_KEY,choice)}catch{}
+    document.dispatchEvent(new CustomEvent('themechange',{detail:{theme:getTheme()}}));
+  }
+  // Live-sync an open tab when the OS theme changes and the site is set to
+  // follow it, so e.g. the radar basemap recolors without a reload.
+  try{
+    window.matchMedia('(prefers-color-scheme: light)').addEventListener('change',()=>{
+      if(getThemeChoice()==='system')document.dispatchEvent(new CustomEvent('themechange',{detail:{theme:getTheme()}}));
+    });
+  }catch{}
   function mountHeader(active,onLocationChange){
     const header=el('site-header');
     header.innerHTML=`
       <div class="icon-row">
-        <button class="icon-btn ghost" id="settings-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Settings">${GEAR_ICON}</button>
-        <div class="settings-menu hidden" id="settings-menu"><a href="/credits.html">Credits</a></div>
+        <button class="icon-btn ghost hamburger-btn" id="menu-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="nav-drawer" aria-label="Menu">${HAMBURGER_ICON}</button>
         <button class="icon-btn ghost" id="theme-btn" type="button" aria-label="Switch theme"></button>
       </div>
       <form id="location-form" class="location-form" role="search">
@@ -236,6 +253,18 @@ window.WX = (function(){
         <a href="/forecast.html" class="tab${active==='forecast'?' active':''}">7-Day</a>
         <a href="/radar.html" class="tab${active==='radar'?' active':''}">Radar</a>
       </nav>`;
+    // Appended directly to <body>, not nested inside header: header has
+    // backdrop-filter, which — like transform — creates a new containing
+    // block for position:fixed descendants. Nested here, the drawer/scrim
+    // would be confined to header's own small box instead of the viewport.
+    if(!el('nav-drawer')){
+      document.body.insertAdjacentHTML('beforeend',`
+        <div class="nav-scrim" id="nav-scrim"></div>
+        <nav class="nav-drawer" id="nav-drawer" aria-label="Site menu">
+          <a href="/settings.html">Settings</a>
+          <a href="/credits.html" class="nav-drawer-bottom">Credits</a>
+        </nav>`);
+    }
     function paintThemeBtn(){
       const dark=getTheme()==='dark';
       el('theme-btn').innerHTML=dark?SUN_ICON:MOON_ICON;
@@ -243,18 +272,20 @@ window.WX = (function(){
     }
     paintThemeBtn();
     el('theme-btn').addEventListener('click',()=>{setTheme(getTheme()==='dark'?'light':'dark');paintThemeBtn()});
-    el('settings-btn').addEventListener('click',e=>{
-      e.stopPropagation();
-      const menu=el('settings-menu'),open=!menu.classList.contains('hidden');
-      menu.classList.toggle('hidden');
-      el('settings-btn').setAttribute('aria-expanded',String(!open));
-    });
-    document.addEventListener('click',e=>{
-      const menu=el('settings-menu');
-      if(menu&&!menu.classList.contains('hidden')&&!menu.contains(e.target)&&e.target!==el('settings-btn')){
-        menu.classList.add('hidden');el('settings-btn').setAttribute('aria-expanded','false');
+    let drawerOpen=false;
+    function setDrawer(open){
+      drawerOpen=open;
+      if(open){
+        const top=`${el('menu-btn').getBoundingClientRect().bottom}px`;
+        el('nav-drawer').style.top=top;
+        el('nav-scrim').style.top=top;
       }
-    });
+      el('nav-drawer').classList.toggle('open',open);
+      el('nav-scrim').classList.toggle('open',open);
+      el('menu-btn').setAttribute('aria-expanded',String(open));
+    }
+    el('menu-btn').addEventListener('click',()=>setDrawer(!drawerOpen));
+    el('nav-scrim').addEventListener('click',()=>setDrawer(false));
     let suggestionMap=new Map(),suggestTimer=null;
     function setKicker(text){const k=el('kicker');if(k){k.textContent=text;k.style.display=text?'':'none'}}
     function pick(pos,query){
@@ -431,5 +462,5 @@ window.WX = (function(){
     emoji,local,maxWind,gustFrom,durationMs,gridValues,kphToMph,cToF,product,
     currentObservation,currentHeadline,alertLine,dayKey,startOfDay,hourLabel,dayRows,uvForDate,humidityForDate,gustForDate,maxTempForDate,minTempForDate,dayMetrics,metricsHTML,
     todayBrief,futureBrief,renderFutureCardHTML,loadTodayCard,
-    findTodayPeriods,renderDaysHTML,mountHeader,mountFooterNav,mountPullToRefresh,getTheme,setTheme,recolorStyleDark};
+    findTodayPeriods,renderDaysHTML,mountHeader,mountFooterNav,mountPullToRefresh,getTheme,setTheme,getThemeChoice,recolorStyleDark};
 })();

@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <script>try{var t=localStorage.getItem('weather-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);else if(t!=='system')document.documentElement.setAttribute('data-theme','dark')}catch{}</script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="description" content="Site settings.">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="/assets/site.css">
+  <title>Settings — Rochester Weather</title>
+</head>
+<body>
+  <main class="shell">
+    <header id="site-header"></header>
+    <div class="page-head">
+      <h1>Settings</h1>
+    </div>
+    <div class="credit-list">
+      <article class="brief">
+        <h3>Appearance</h3>
+        <p>Choose how the site looks, or match your device's own setting.</p>
+        <div class="choice-group" id="theme-choice-group">
+          <button class="choice-btn" type="button" data-choice="light">Light</button>
+          <button class="choice-btn" type="button" data-choice="dark">Dark</button>
+          <button class="choice-btn" type="button" data-choice="system">System</button>
+        </div>
+      </article>
+    </div>
+    <div id="site-footer-nav"></div>
+  </main>
+  <script src="/assets/weather-core.js"></script>
+  <script>
+    WX.mountHeader('',()=>{location.href='/'});
+    WX.mountFooterNav('');
+    function paintChoice(){
+      const current=WX.getThemeChoice();
+      document.querySelectorAll('#theme-choice-group .choice-btn').forEach(b=>{
+        b.classList.toggle('active',b.dataset.choice===current);
+      });
+    }
+    paintChoice();
+    document.querySelectorAll('#theme-choice-group .choice-btn').forEach(b=>{
+      b.addEventListener('click',()=>{WX.setTheme(b.dataset.choice);paintChoice()});
+    });
+    if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
+  </script>
+</body>
+</html>
