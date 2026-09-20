@@ -57,6 +57,12 @@ hr{border:0;border-top:1px solid var(--line);margin:.85rem 0}
 .search-field input:focus{outline:none}
 .icon-btn{flex:0 0 auto;width:30px;height:30px;padding:0;border:0;border-radius:8px;background:var(--blue);color:#fff;display:flex;align-items:center;justify-content:center}
 .icon-btn:active{transform:scale(.92)}
+.icon-row{display:flex;justify-content:space-between;align-items:center;position:relative}
+.icon-btn.ghost{width:26px;height:26px;background:transparent;border:1px solid var(--line);color:var(--muted)}
+.settings-menu{position:absolute;top:calc(100% + .35rem);left:0;z-index:20;min-width:150px;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:.35rem}
+.settings-menu.hidden{display:none}
+.settings-menu a{display:block;padding:.5rem .6rem;border-radius:8px;color:var(--text);font-size:.88rem;text-decoration:none}
+.settings-menu a:hover{background:var(--surface-2)}
 .foot-tabs{margin-top:2rem}
 .ptr-indicator{position:fixed;top:0;left:50%;z-index:50;width:34px;height:34px;border-radius:50%;background:var(--surface);box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;color:var(--blue);opacity:0;pointer-events:none}
 .ptr-indicator.spinning .ptr-icon{animation:ptr-spin .8s linear infinite}
