@@ -43,12 +43,43 @@
   <script>
   (()=>{
     const {el,resolveLocation,resolvePoint,json,emoji,local,maxWind,gridValues,kphToMph,
-      dayKey,hourLabel,dayRows,uvForDate,humidityForDate,gustForDate,maxTempForDate,minTempForDate,dayMetrics,metricsHTML,
+      dayKey,hourLabel,dayPartLabel,dayRows,uvForDate,humidityForDate,gustForDate,maxTempForDate,minTempForDate,dayMetrics,metricsHTML,
       findTodayPeriods,renderFutureCardHTML,loadTodayCard,mountHeader,mountFooterNav,mountPullToRefresh,DEFAULT_LOC}=WX;
     let chartData=null,currentLoc=null;
     const header=mountHeader('today',()=>load());
     mountFooterNav('today');
-    function draw(svg,series,domain,yTitle){const w=Math.max(320,svg.clientWidth||320),h=195,m={l:48,r:12,t:12,b:35},x=i=>m.l+i*(w-m.l-m.r)/47,y=v=>m.t+(domain[1]-v)*(h-m.t-m.b)/(domain[1]-domain[0]),ns='http://www.w3.org/2000/svg';svg.setAttribute('viewBox',`0 0 ${w} ${h}`);svg.innerHTML='';const add=(tag,a,t)=>{const n=document.createElementNS(ns,tag);Object.entries(a||{}).forEach(([k,v])=>n.setAttribute(k,v));if(t!=null)n.textContent=t;svg.appendChild(n);return n};const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();add('rect',{x:m.l,y:m.t,width:w-m.l-m.r,height:h-m.t-m.b,fill:'none',stroke:css('--line')});for(let j=0;j<=4;j++){const v=domain[0]+(domain[1]-domain[0])*j/4,yy=y(v);add('text',{x:m.l-7,y:yy+4,'text-anchor':'end',fill:css('--muted'),'font-size':11},Math.round(v))}const allTicks=chartData.tickIndices||[];(w<440?allTicks.filter(i=>chartData.labels[i]==='12a'||chartData.labels[i]==='12p'):allTicks).forEach(i=>{const midnight=chartData.labels[i]==='12a';const label=midnight&&chartData.dayLabels?.[i]?chartData.dayLabels[i]:chartData.labels[i];add('text',{x:x(i),y:h-11,'text-anchor':i<3?'start':i>44?'end':'middle','font-weight':midnight?700:400,fill:css(midnight?'--blue':'--muted'),'font-size':11},label||'')});add('text',{x:11,y:(m.t+h-m.b)/2,transform:`rotate(-90 11 ${(m.t+h-m.b)/2})`,'text-anchor':'middle',fill:css('--muted'),'font-size':11},yTitle);series.forEach(s=>{let d='',on=false;s.values.forEach((v,i)=>{if(v==null){on=false;return}d+=(on?'L':'M')+x(i).toFixed(1)+' '+y(v).toFixed(1)+' ';on=true});add('path',{d,fill:'none',stroke:css(s.color),'stroke-width':2.6,'stroke-linejoin':'round'})})}
+    function draw(svg,series,domain,yTitle){
+      const w=Math.max(320,svg.clientWidth||320),h=195,m={l:48,r:12,t:12,b:40},
+        x=i=>m.l+i*(w-m.l-m.r)/47,
+        y=v=>m.t+(domain[1]-v)*(h-m.t-m.b)/(domain[1]-domain[0]),
+        ns='http://www.w3.org/2000/svg';
+      svg.setAttribute('viewBox',`0 0 ${w} ${h}`);svg.innerHTML='';
+      const add=(tag,a,t)=>{const n=document.createElementNS(ns,tag);Object.entries(a||{}).forEach(([k,v])=>n.setAttribute(k,v));if(t!=null)n.textContent=t;svg.appendChild(n);return n};
+      const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+      add('rect',{x:m.l,y:m.t,width:w-m.l-m.r,height:h-m.t-m.b,fill:'none',stroke:css('--line')});
+      for(let j=0;j<=4;j++){const v=domain[0]+(domain[1]-domain[0])*j/4,yy=y(v);add('text',{x:m.l-7,y:yy+4,'text-anchor':'end',fill:css('--muted'),'font-size':11},Math.round(v))}
+      // Named dayparts (Evening/Overnight/Morning/Afternoon) replace raw hour
+      // ticks along the bottom, the way Apple/Carrot-style hourly charts group
+      // the timeline into blocks instead of just clock times.
+      (chartData.segments||[]).forEach(seg=>{
+        const x0=x(seg.start),x1=x(seg.end+1),cx=(x0+x1)/2;
+        if(x1-x0<34)return;
+        add('text',{x:cx,y:h-22,'text-anchor':'middle',fill:css('--muted'),'font-size':10,'font-weight':600},seg.label);
+      });
+      // A dashed divider + weekday name at each day boundary (midnight).
+      (chartData.dayBoundaries||[]).forEach(b=>{
+        const xx=x(b.i);
+        add('line',{x1:xx,x2:xx,y1:m.t,y2:h-m.b,stroke:css('--line-strong'),'stroke-dasharray':'2,3'});
+        add('text',{x:xx,y:h-6,'text-anchor':b.i<3?'start':b.i>44?'end':'middle',fill:css('--blue'),'font-size':10,'font-weight':700},b.label);
+      });
+      // Index 0 is always the current hour — mark it like the day boundaries
+      // above, so it's clear where "now" sits on the timeline.
+      const nowX=x(0);
+      add('line',{x1:nowX,x2:nowX,y1:m.t,y2:h-m.b,stroke:css('--orange'),'stroke-dasharray':'2,3'});
+      add('text',{x:nowX,y:h-6,'text-anchor':'start',fill:css('--orange'),'font-size':10,'font-weight':700},'Now');
+      add('text',{x:11,y:(m.t+h-m.b)/2,transform:`rotate(-90 11 ${(m.t+h-m.b)/2})`,'text-anchor':'middle',fill:css('--muted'),'font-size':11},yTitle);
+      series.forEach(s=>{let d='',on=false;s.values.forEach((v,i)=>{if(v==null){on=false;return}d+=(on?'L':'M')+x(i).toFixed(1)+' '+y(v).toFixed(1)+' ';on=true});add('path',{d,fill:'none',stroke:css(s.color),'stroke-width':2.6,'stroke-linejoin':'round'})})
+    }
     function redraw(){if(!chartData||!chartData.temp.length){['temp-chart','pop-chart','wind-chart'].forEach(id=>el(id).innerHTML='');return;}const temps=chartData.temp.filter(v=>v!=null),maxT=Math.max(...temps,80),minT=Math.min(...temps,30);draw(el('temp-chart'),[{values:chartData.temp,color:'--blue'}],[Math.floor((minT-5)/5)*5,Math.ceil((maxT+5)/5)*5],'°F');draw(el('pop-chart'),[{values:chartData.pop,color:'--cyan'}],[0,100],'%');const vals=[...chartData.wind,...chartData.gust].filter(v=>v!=null),maxW=Math.max(20,...vals);draw(el('wind-chart'),[{values:chartData.wind,color:'--green'},{values:chartData.gust,color:'--orange'}],[0,Math.ceil((maxW+3)/5)*5],'mph')}
     let busy=false,lastLoad=0,hasLoaded=false;
     async function load(){if(busy)return;busy=true;lastLoad=Date.now();if(!hasLoaded){el('loading').classList.remove('hidden');el('error').classList.add('hidden');el('content').classList.add('hidden')}else{el('content').classList.add('refreshing')}try{
@@ -79,8 +110,13 @@
       const gust=gridValues(grid.properties.windGust,times,v=>grid.properties.windGust.uom?.includes('km_h')?kphToMph(v):Math.round(v));
       const labels=times.map(d=>hourLabel(d,tz));
       const dayLabels=times.map(d=>new Intl.DateTimeFormat('en-US',{timeZone:tz,weekday:'short'}).format(d));
-      const tickIndices=labels.map((l,i)=>({l,i})).filter(o=>['12a','6a','12p','6p'].includes(o.l)).map(o=>o.i);
-      chartData={temp:hours.map(x=>x?.temperature??null),pop:hours.map(x=>x?.probabilityOfPrecipitation?.value??null),wind:hours.map(x=>x?maxWind(x.windSpeed):null),gust,labels,dayLabels,tickIndices};
+      const dayParts=times.map(d=>dayPartLabel(d,tz));
+      const segments=[];
+      for(let i=0,start=0;i<=dayParts.length;i++){
+        if(i===dayParts.length||dayParts[i]!==dayParts[start]){segments.push({start,end:i-1,label:dayParts[start]});start=i}
+      }
+      const dayBoundaries=labels.map((l,i)=>({l,i})).filter(o=>o.l==='12a').map(o=>({i:o.i,label:dayLabels[o.i]}));
+      chartData={temp:hours.map(x=>x?.temperature??null),pop:hours.map(x=>x?.probabilityOfPrecipitation?.value??null),wind:hours.map(x=>x?maxWind(x.windSpeed):null),gust,segments,dayBoundaries};
       el('updated').textContent=`Updated ${local(now,tz)} · ${label}`;
       el('loading').classList.add('hidden');el('content').classList.remove('hidden');requestAnimationFrame(redraw);hasLoaded=true;
     }catch(e){
