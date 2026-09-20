@@ -338,15 +338,23 @@ window.WX = (function(){
         <a href="/radar.html" class="tab${active==='radar'?' active':''}">Radar</a>
       </nav>`;
     // Appended directly to <body> because the header's backdrop-filter creates
-    // a containing block that would confine a fixed dialog to the header.
+    // a containing block that would confine fixed navigation to the header.
     if(!el('nav-drawer')){
       document.body.insertAdjacentHTML('beforeend',`
         <div class="nav-scrim" id="nav-scrim" aria-hidden="true"></div>
-        <nav class="nav-drawer" id="nav-drawer" aria-labelledby="nav-drawer-title" aria-modal="true" aria-hidden="true" role="dialog">
-          <div class="nav-drawer-head"><span class="nav-drawer-title" id="nav-drawer-title">Menu</span><button class="nav-close" id="nav-close" type="button" aria-label="Close menu">×</button></div>
-          <a href="/settings.html">Settings</a>
-          <a href="/credits.html">Credits</a>
-        </nav>`);
+        <nav class="nav-drawer" id="nav-drawer" aria-label="Site menu" aria-hidden="true">
+          <a href="/settings.html" data-subpage="settings">Settings</a>
+          <a href="/credits.html" class="nav-drawer-bottom" data-subpage="credits">Credits</a>
+        </nav>
+        <dialog class="nav-subpage" id="nav-subpage" aria-labelledby="nav-subpage-title">
+          <div class="nav-subpage-shell">
+            <div class="nav-subpage-head">
+              <button class="nav-subpage-close" id="nav-subpage-close" type="button" aria-label="Close secondary page">‹ Weather</button>
+              <h1 class="nav-subpage-title" id="nav-subpage-title"></h1>
+            </div>
+            <div class="nav-subpage-content" id="nav-subpage-content"></div>
+          </div>
+        </dialog>`);
     }
     function paintThemeBtn(){
       const dark=getTheme()==='dark';
@@ -356,27 +364,58 @@ window.WX = (function(){
     paintThemeBtn();
     el('theme-btn').addEventListener('click',()=>{setTheme(getTheme()==='dark'?'light':'dark');paintThemeBtn()});
     let drawerOpen=false;
-    function setDrawer(open){
+    function setDrawer(open,restoreFocus=true){
       drawerOpen=open;
+      if(open){
+        const top=`${el('menu-btn').getBoundingClientRect().bottom}px`;
+        el('nav-drawer').style.top=top;
+        el('nav-scrim').style.top=top;
+      }
       el('nav-drawer').classList.toggle('open',open);
       el('nav-scrim').classList.toggle('open',open);
       el('nav-drawer').setAttribute('aria-hidden',String(!open));
-      document.body.classList.toggle('nav-open',open);
-      document.querySelector('main')?.toggleAttribute('inert',open);
       el('menu-btn').setAttribute('aria-expanded',String(open));
-      if(open)el('nav-close').focus();else el('menu-btn').focus();
+      if(open)el('nav-drawer').querySelector('a')?.focus();else if(restoreFocus)el('menu-btn').focus();
     }
     el('menu-btn').addEventListener('click',()=>setDrawer(!drawerOpen));
-    el('nav-close').addEventListener('click',()=>setDrawer(false));
     el('nav-scrim').addEventListener('click',()=>setDrawer(false));
-    document.addEventListener('keydown',e=>{
-      if(e.key==='Escape'&&drawerOpen)setDrawer(false);
-      if(e.key==='Tab'&&drawerOpen){
-        const focusable=[...el('nav-drawer').querySelectorAll('button,a')];
-        const edge=e.shiftKey?focusable[0]:focusable.at(-1);
-        if(document.activeElement===edge){e.preventDefault();focusable.at(e.shiftKey?-1:0).focus()}
+    const subpage=el('nav-subpage'),subpageContent=el('nav-subpage-content');
+    let subpageTrigger=null,subpageCloseTimer=null;
+    const subpageCache=new Map();
+    function paintSubpageTheme(){subpageContent.querySelectorAll('[data-choice]').forEach(b=>b.classList.toggle('active',b.dataset.choice===getThemeChoice()))}
+    async function openSubpage(name,href){
+      clearTimeout(subpageCloseTimer);subpageTrigger=el('menu-btn');setDrawer(false,false);
+      el('nav-subpage-title').textContent=name[0].toUpperCase()+name.slice(1);subpageContent.innerHTML='<div class="loading" role="status">Loading…</div>';
+      subpage.showModal();document.body.classList.add('subpage-open');requestAnimationFrame(()=>subpage.classList.add('open'));el('nav-subpage-close').focus();
+      try{
+        let content=subpageCache.get(name);
+        if(!content){
+          const response=await fetch(href);if(!response.ok)throw new Error('Secondary page unavailable');
+          const page=new DOMParser().parseFromString(await response.text(),'text/html');
+          content=page.querySelector('.credit-list')?.outerHTML;if(!content)throw new Error('Secondary page unavailable');
+          subpageCache.set(name,content);
+        }
+        if(!subpage.open)return;
+        subpageContent.innerHTML=content;
+        if(name==='settings'){
+          paintSubpageTheme();
+          subpageContent.querySelectorAll('[data-choice]').forEach(b=>b.addEventListener('click',()=>{setTheme(b.dataset.choice);paintThemeBtn();paintSubpageTheme()}));
+        }
+      }catch{
+        if(!subpage.open)return;
+        subpage.close();document.body.classList.remove('subpage-open');location.href=href;
       }
-    });
+    }
+    function closeSubpage(){
+      if(!subpage.open)return;
+      subpage.classList.remove('open');document.body.classList.remove('subpage-open');
+      const finish=()=>{if(subpage.open)subpage.close();subpageTrigger?.focus();subpageTrigger=null};
+      if(matchMedia('(prefers-reduced-motion: reduce)').matches)finish();else subpageCloseTimer=setTimeout(finish,200);
+    }
+    el('nav-drawer').querySelectorAll('[data-subpage]').forEach(a=>a.addEventListener('click',e=>{e.preventDefault();openSubpage(a.dataset.subpage,a.href)}));
+    el('nav-subpage-close').addEventListener('click',closeSubpage);
+    subpage.addEventListener('cancel',e=>{e.preventDefault();closeSubpage()});
+    document.addEventListener('keydown',e=>{if(e.key==='Escape'&&drawerOpen)setDrawer(false)});
     let suggestionMap=new Map(),suggestTimer=null;
     function setKicker(text){const k=el('kicker');if(k){k.textContent=text;k.style.display=text?'':'none'}}
     function pick(pos,query){
