@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
+  <script>try{if(localStorage.getItem('weather-theme')==='light')document.documentElement.setAttribute('data-theme','light')}catch{}</script>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#000000">
@@ -72,7 +73,7 @@
   <script src="/assets/weather-core.js"></script>
   <script>
   (()=>{
-    const {el,resolveLocation,resolvePoint,mountHeader,mountFooterNav,mountPullToRefresh}=WX;
+    const {el,resolveLocation,resolvePoint,mountHeader,mountFooterNav,mountPullToRefresh,getTheme,recolorStyleDark}=WX;
     const header=mountHeader('radar',()=>centerOnLocation());
     mountFooterNav('radar');
 
@@ -84,7 +85,13 @@
     // Vector tiles stay sharp at any zoom and at the device's full pixel ratio,
     // which raster basemaps cannot do. Raster Esri is kept only as a fallback
     // for when the vector style cannot be reached.
-    const VECTOR_STYLE='https://tiles.openfreemap.org/styles/dark';
+    //
+    // OpenFreeMap's own "dark" style is a fork of an abandoned upstream
+    // project; "liberty" is their actively-maintained default (same tiles,
+    // same CDN). recolorStyleDark() turns its light palette into a dark one
+    // client-side, so the map tracks the site's light/dark theme using only
+    // the maintained style, instead of depending on the unmaintained one.
+    const VECTOR_STYLE='https://tiles.openfreemap.org/styles/liberty';
     // Attribution for all of these lives on /credits.html, linked below the
     // map, rather than on-map controls — see the note by attributionControl.
     const RASTER_FALLBACK={version:8,sources:{esri:{type:'raster',tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}'],tileSize:256,maxzoom:16}},layers:[{id:'bg',type:'background',paint:{'background-color':'#000'}},{id:'esri',type:'raster',source:'esri'}]};
@@ -153,9 +160,20 @@
       // setStyle() discards layers, so the radar layer is re-added per style.
       paintFrame();
     }
-    function buildMap(latlng){
+    // Cache the fetched liberty style JSON so switching themes only recolors
+    // it locally, without a second network round trip.
+    let libertyStyle=null;
+    async function themedStyle(){
+      if(usingFallback)return RASTER_FALLBACK;
+      if(!libertyStyle)libertyStyle=await fetch(VECTOR_STYLE,{cache:'no-store'}).then(r=>r.json());
+      return getTheme()==='dark'?recolorStyleDark(libertyStyle):libertyStyle;
+    }
+    async function buildMap(latlng){
+      let initialStyle;
+      try{initialStyle=await themedStyle()}
+      catch{usingFallback=true;initialStyle=RASTER_FALLBACK}
       map=new maplibregl.Map({
-        container:'map',style:VECTOR_STYLE,center:[latlng[1],latlng[0]],zoom:8,
+        container:'map',style:initialStyle,center:[latlng[1],latlng[0]],zoom:8,
         // No on-map attribution control — credited instead on a linked
         // /credits.html page so the map stays visually clean. All required
         // attributions (RainViewer, OpenFreeMap/OSM, Esri, MapLibre) live there.
@@ -182,6 +200,10 @@
       });
       setTimeout(()=>{if(!styleReady&&!usingFallback){usingFallback=true;map.setStyle(RASTER_FALLBACK)}},7000);
       marker=new maplibregl.Marker({color:'#0a84ff'}).setLngLat([latlng[1],latlng[0]]).addTo(map);
+      document.addEventListener('themechange',async()=>{
+        styleReady=false;
+        try{map.setStyle(await themedStyle())}catch{}
+      });
     }
 
     function centerOnLocation(){

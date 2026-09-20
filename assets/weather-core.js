@@ -186,9 +186,25 @@ window.WX = (function(){
 
   const LOCATE_ICON='<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M12 2.3 4.4 20.2c-.18.42.27.85.68.66L12 17.8l6.92 3.06c.41.19.86-.24.68-.66L12 2.3z" fill="currentColor" transform="rotate(45 12 12)"/></svg>';
   const SEARCH_ICON='<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.2"/><line x1="15.3" y1="15.3" x2="20.5" y2="20.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>';
+  const GEAR_ICON='<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M19.14 12.94a7.07 7.07 0 0 0 0-1.88l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.3 7.3 0 0 0-1.62-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54a7.3 7.3 0 0 0-1.62.94l-2.39-.96a.5.5 0 0 0-.6.22L1.71 8.84a.5.5 0 0 0 .12.64l2.03 1.58a7.07 7.07 0 0 0 0 1.88l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.14.24.42.32.6.22l2.39-.96c.5.4 1.04.71 1.62.94l.36 2.54c.05.24.25.42.5.42h3.84c.25 0 .45-.18.5-.42l.36-2.54c.58-.23 1.12-.54 1.62-.94l2.39.96c.24.1.46 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7z" fill="currentColor"/></svg>';
+  const SUN_ICON='<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><circle cx="12" cy="12" r="4.3" fill="currentColor"/><g stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="12" y1="1.5" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22.5"/><line x1="1.5" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22.5" y2="12"/><line x1="4.2" y1="4.2" x2="6" y2="6"/><line x1="18" y1="18" x2="19.8" y2="19.8"/><line x1="19.8" y1="4.2" x2="18" y2="6"/><line x1="6" y1="18" x2="4.2" y2="19.8"/></g></svg>';
+  const MOON_ICON='<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M20.5 14.5a8.5 8.5 0 1 1-9-13 7 7 0 0 0 9 13z" fill="currentColor"/></svg>';
+  const THEME_KEY='weather-theme';
+  function getTheme(){return document.documentElement.getAttribute('data-theme')==='light'?'light':'dark'}
+  function setTheme(theme){
+    if(theme==='light')document.documentElement.setAttribute('data-theme','light');
+    else document.documentElement.removeAttribute('data-theme');
+    try{localStorage.setItem(THEME_KEY,theme)}catch{}
+    document.dispatchEvent(new CustomEvent('themechange',{detail:{theme}}));
+  }
   function mountHeader(active,onLocationChange){
     const header=el('site-header');
     header.innerHTML=`
+      <div class="icon-row">
+        <button class="icon-btn ghost" id="settings-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Settings">${GEAR_ICON}</button>
+        <div class="settings-menu hidden" id="settings-menu"><a href="/credits.html">Credits</a></div>
+        <button class="icon-btn ghost" id="theme-btn" type="button" aria-label="Switch theme"></button>
+      </div>
       <form id="location-form" class="location-form" role="search">
         <div class="search-field">
           <button class="icon-btn" id="locate-btn" type="button" aria-label="Use current location">${LOCATE_ICON}</button>
@@ -202,6 +218,25 @@ window.WX = (function(){
         <a href="/forecast.html" class="tab${active==='forecast'?' active':''}">7-Day</a>
         <a href="/radar.html" class="tab${active==='radar'?' active':''}">Radar</a>
       </nav>`;
+    function paintThemeBtn(){
+      const dark=getTheme()==='dark';
+      el('theme-btn').innerHTML=dark?SUN_ICON:MOON_ICON;
+      el('theme-btn').setAttribute('aria-label',dark?'Switch to light mode':'Switch to dark mode');
+    }
+    paintThemeBtn();
+    el('theme-btn').addEventListener('click',()=>{setTheme(getTheme()==='dark'?'light':'dark');paintThemeBtn()});
+    el('settings-btn').addEventListener('click',e=>{
+      e.stopPropagation();
+      const menu=el('settings-menu'),open=!menu.classList.contains('hidden');
+      menu.classList.toggle('hidden');
+      el('settings-btn').setAttribute('aria-expanded',String(!open));
+    });
+    document.addEventListener('click',e=>{
+      const menu=el('settings-menu');
+      if(menu&&!menu.classList.contains('hidden')&&!menu.contains(e.target)&&e.target!==el('settings-btn')){
+        menu.classList.add('hidden');el('settings-btn').setAttribute('aria-expanded','false');
+      }
+    });
     let suggestionMap=new Map(),suggestTimer=null;
     function setKicker(text){const k=el('kicker');if(k){k.textContent=text;k.style.display=text?'':'none'}}
     function pick(pos,query){
@@ -249,6 +284,81 @@ window.WX = (function(){
         <a href="/forecast.html" class="tab${active==='forecast'?' active':''}">7-Day</a>
         <a href="/radar.html" class="tab${active==='radar'?' active':''}">Radar</a>
       </nav>`;
+  }
+
+  // Turns any light MapLibre/OpenMapTiles-schema style into a dark one by
+  // inverting the lightness of every paint color it finds, recursively (so
+  // colors nested inside zoom-interpolated expressions get caught too), while
+  // leaving hue and saturation alone. This lets a map basemap use OpenFreeMap's
+  // actively-maintained "liberty" style/tiles even in dark mode, instead of
+  // depending on their separate, unmaintained "dark" style.
+  function hexToRgb(hex){
+    hex=hex.replace('#','');
+    if(hex.length===3||hex.length===4)hex=hex.split('').map(c=>c+c).join('');
+    const num=parseInt(hex.slice(0,6),16);
+    return [(num>>16)&255,(num>>8)&255,num&255];
+  }
+  function rgbToHsl(r,g,b){
+    r/=255;g/=255;b/=255;
+    const max=Math.max(r,g,b),min=Math.min(r,g,b);
+    let h=0,s=0;const l=(max+min)/2;
+    if(max!==min){
+      const d=max-min;
+      s=l>0.5?d/(2-max-min):d/(max+min);
+      if(max===r)h=(g-b)/d+(g<b?6:0);
+      else if(max===g)h=(b-r)/d+2;
+      else h=(r-g)/d+4;
+      h/=6;
+    }
+    return [h*360,s*100,l*100];
+  }
+  function hslToRgb(h,s,l){
+    h/=360;s/=100;l/=100;
+    let r,g,b;
+    if(s===0){r=g=b=l}
+    else{
+      const hue2rgb=(p,q,t)=>{if(t<0)t+=1;if(t>1)t-=1;if(t<1/6)return p+(q-p)*6*t;if(t<1/2)return q;if(t<2/3)return p+(q-p)*(2/3-t)*6;return p};
+      const q=l<0.5?l*(1+s):l+s-l*s,p=2*l-q;
+      r=hue2rgb(p,q,h+1/3);g=hue2rgb(p,q,h);b=hue2rgb(p,q,h-1/3);
+    }
+    return [Math.round(r*255),Math.round(g*255),Math.round(b*255)];
+  }
+  const rgbToHex=(r,g,b)=>'#'+[r,g,b].map(v=>Math.max(0,Math.min(255,v)).toString(16).padStart(2,'0')).join('');
+  function colorToHex(v){
+    if(v[0]==='#')return v.length>7?v.slice(0,7):v;
+    let m=v.match(/rgba?\(([^)]+)\)/i);
+    if(m){const p=m[1].split(',').map(parseFloat);return rgbToHex(p[0],p[1],p[2])}
+    m=v.match(/hsla?\(([^)]+)\)/i);
+    if(m){const p=m[1].split(',').map(parseFloat);return rgbToHex(...hslToRgb(p[0],p[1],p[2]))}
+    return null;
+  }
+  function invertLightness(hex,minL=6,maxL=92){
+    try{
+      const [r,g,b]=hexToRgb(hex);
+      const [h,s,l]=rgbToHsl(r,g,b);
+      const newL=Math.max(minL,Math.min(maxL,100-l));
+      return rgbToHex(...hslToRgb(h,s,newL));
+    }catch{return hex}
+  }
+  function isColorString(v){return typeof v==='string'&&(/^#[0-9a-f]{3,8}$/i.test(v)||/^rgba?\(/i.test(v)||/^hsla?\(/i.test(v))}
+  function darkenColorValue(value){
+    if(Array.isArray(value))return value.map(darkenColorValue);
+    if(isColorString(value)){const hex=colorToHex(value);return hex?invertLightness(hex):value}
+    return value;
+  }
+  function recolorStyleDark(style){
+    const clone=JSON.parse(JSON.stringify(style));
+    for(const layer of clone.layers||[]){
+      if(!layer.paint)continue;
+      for(const key of Object.keys(layer.paint)){
+        if(/color$/i.test(key))layer.paint[key]=darkenColorValue(layer.paint[key]);
+      }
+    }
+    // Force a true black background regardless of the computed inversion, to
+    // match the site's own dark palette exactly rather than an inverted tint.
+    const bg=(clone.layers||[]).find(l=>l.type==='background');
+    if(bg){bg.paint=bg.paint||{};bg.paint['background-color']='#000'}
+    return clone;
   }
 
   // iOS Safari has no built-in pull-to-refresh gesture (unlike some Android
@@ -303,5 +413,5 @@ window.WX = (function(){
     emoji,local,maxWind,gustFrom,durationMs,gridValues,kphToMph,cToF,product,
     currentObservation,currentHeadline,alertLine,dayKey,startOfDay,hourLabel,dayRows,uvForDate,humidityForDate,gustForDate,dayMetrics,metricsHTML,
     todayBrief,futureBrief,renderFutureCardHTML,loadTodayCard,
-    findTodayPeriods,renderDaysHTML,mountHeader,mountFooterNav,mountPullToRefresh};
+    findTodayPeriods,renderDaysHTML,mountHeader,mountFooterNav,mountPullToRefresh,getTheme,setTheme,recolorStyleDark};
 })();
