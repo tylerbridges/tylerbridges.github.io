@@ -30,6 +30,17 @@ h3{font-size:1rem;margin:0}
 #alerts>p{margin:0}
 .status{margin-top:.7rem;color:var(--muted);font-size:.8rem}
 .days{border:0;display:grid;gap:.8rem}
+.hourly-days{display:grid;gap:1.35rem}
+.hourly-day h2{margin:0 0 .55rem;font-size:1.08rem;color:var(--blue)}
+.hourly-list{overflow:hidden;background:var(--surface);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow)}
+.hourly-row{display:grid;grid-template-columns:3.7rem 1.7rem minmax(0,1fr) auto;column-gap:.55rem;align-items:center;padding:.72rem 1rem}
+.hourly-row+.hourly-row{border-top:1px solid var(--line)}
+.hourly-time{font-size:.82rem;font-weight:700;white-space:nowrap}
+.hourly-icon{font-size:1.15rem;line-height:1;text-align:center}
+.hourly-condition{min-width:0;font-size:.86rem;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hourly-temp{font-size:1.05rem;font-weight:750;text-align:right}
+.hourly-meta{grid-column:3/5;color:var(--muted);font-size:.73rem;margin-top:.14rem;white-space:normal}
+.hourly-now{display:block;color:var(--blue);font-size:.67rem;font-weight:750;text-transform:uppercase;letter-spacing:.04em}
 .now-line{color:var(--text);font-size:.95rem;font-weight:750;margin:.08rem 0 0;text-align:justify;text-align-last:left}
 .condition{color:var(--muted);font-size:.9rem;margin:.15rem 0 0;font-style:italic;text-align:justify;text-align-last:left}
 .metrics{display:flex;flex-wrap:wrap;gap:.36rem;margin-top:.4rem}
@@ -105,5 +116,5 @@ body.subpage-open{overflow:hidden}
 .ptr-indicator{position:fixed;top:0;left:50%;z-index:50;width:34px;height:34px;border-radius:50%;background:var(--surface);box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;color:var(--blue);opacity:0;pointer-events:none}
 .ptr-indicator.spinning .ptr-icon{animation:ptr-spin .8s linear infinite}
 @keyframes ptr-spin{to{transform:rotate(360deg)}}
-@media(min-width:720px){.shell{padding-left:1.5rem;padding-right:1.5rem}.brief{padding:1.1rem 1.2rem}.charts{gap:1.6rem}}
+@media(min-width:720px){.shell{padding-left:1.5rem;padding-right:1.5rem}.brief{padding:1.1rem 1.2rem}.charts{gap:1.6rem}.hourly-row{grid-template-columns:4.5rem 1.8rem minmax(0,1fr) minmax(15rem,auto) 3.5rem}.hourly-meta{grid-column:4;margin-top:0}.hourly-temp{grid-column:5}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}

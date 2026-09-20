@@ -13,6 +13,8 @@
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="preconnect" href="https://api.weather.gov">
   <link rel="dns-prefetch" href="https://api.weather.gov">
+  <link rel="preconnect" href="https://api.open-meteo.com" crossorigin>
+  <link rel="dns-prefetch" href="https://api.open-meteo.com">
   <link rel="preconnect" href="https://nominatim.openstreetmap.org" crossorigin>
   <link rel="dns-prefetch" href="https://nominatim.openstreetmap.org">
   <link rel="stylesheet" href="/assets/site.css">
@@ -40,11 +42,14 @@
   <script src="/assets/weather-core.js"></script>
   <script>
   (()=>{
-    const {el,resolveLocation,resolvePoint,json,emoji,local,maxWind,gridValues,kphToMph,
+    const {el,resolveLocation,resolvePoint,json,emoji,local,maxWind,gridValues,kphToMph,cToF,
       dayKey,startOfDay,hourLabel,dayRows,uvForDate,humidityForDate,gustForDate,maxTempForDate,minTempForDate,dayMetrics,metricsHTML,sunMetrics,
       findTodayPeriods,renderFutureCardHTML,loadTodayCard,mountHeader,mountPullToRefresh,DEFAULT_LOC}=WX;
     let chartData=null,currentLoc=null;
     const header=mountHeader('today',()=>load());
+    function localHourKey(date,tz){const parts=Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:tz,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).formatToParts(date).filter(part=>part.type!=='literal').map(part=>[part.type,part.value]));return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:00`}
+    function modeledValues(payload,field,times,tz){if(!payload?.hourly?.time||!payload.hourly[field])return times.map(()=>null);const values=new Map(payload.hourly.time.map((key,index)=>[key,payload.hourly[field][index]]));return times.map(time=>{const value=values.get(localHourKey(time,tz));return value==null?null:Math.round(value)})}
+    function mergeChartSeries(history,nws,times,now){return times.map((time,index)=>time<now?(history[index]??nws[index]):(nws[index]??history[index]))}
     function draw(svg,series,domain,yTitle){
       const w=Math.max(320,svg.clientWidth||320),h=215,m={l:64,r:32,t:12,b:28},span=chartData.spanHours||48,
         x=i=>m.l+i*(w-m.l-m.r)/span,
@@ -86,9 +91,10 @@
       const loc=await resolveLocation();currentLoc=loc;
       const {point,label,tz,officeId}=await resolvePoint(loc);
       header.setKicker('');el('headline').textContent=label;
-      const results=await Promise.allSettled([json(point.properties.forecast),json(point.properties.forecastHourly),json(point.properties.forecastGridData)]);
+      const chartHistoryURL=`https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}&hourly=temperature_2m,precipitation_probability,wind_speed_10m,wind_gusts_10m&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=${encodeURIComponent(tz)}&past_days=1&forecast_days=3`;
+      const results=await Promise.allSettled([json(point.properties.forecast),json(point.properties.forecastHourly),json(point.properties.forecastGridData),json(chartHistoryURL)]);
       if(results[0].status!=='fulfilled')throw new Error('The current seven-day forecast is unavailable.');
-      const forecast=results[0].value,hourly=results[1].value,grid=results[2].value||{properties:{}};
+      const forecast=results[0].value,hourly=results[1].value,grid=results[2].value||{properties:{}},modeled=results[3].value||null;
       const now=new Date(),periods=forecast.properties.periods.filter(p=>new Date(p.endTime)>now);
       if(!periods.length||!forecast.properties.updateTime||now-new Date(forecast.properties.updateTime)>36*3600000)throw new Error('NWS forecast is stale or cannot be verified.');
       const windowStart=startOfDay(tz);
@@ -107,9 +113,14 @@
         const tomorrowMetrics=metricsHTML([...dayMetrics(tomorrow.day,tomorrow.night,uvForDate(tomorrowKey,loc.lat),humidityForDate(grid,tomorrowKey,tz),gustForDate(grid,tomorrowKey,tz),maxTempForDate(grid,tomorrowKey,tz),minTempForDate(grid,tomorrowKey,tz)),...sunMetrics(tomorrow.date,loc.lat,loc.lon,tz)]);
         el('tomorrow-card').innerHTML=renderFutureCardHTML(tomorrowTitle,tomorrow.day,tomorrow.night,tomorrowMetrics);
       }else{el('tomorrow-card').innerHTML=renderFutureCardHTML('Tomorrow',null,null,'')}
-      const gust=gridValues(grid.properties.windGust,times,v=>grid.properties.windGust.uom?.includes('km_h')?kphToMph(v):Math.round(v));
+      const gridTemp=gridValues(grid.properties.temperature,times,v=>grid.properties.temperature.uom?.includes('degC')?cToF(v):Math.round(v));
+      const gridPop=gridValues(grid.properties.probabilityOfPrecipitation,times,v=>Math.round(v));
+      const gridWind=gridValues(grid.properties.windSpeed,times,v=>grid.properties.windSpeed.uom?.includes('km_h')?kphToMph(v):Math.round(v));
+      const gridGust=gridValues(grid.properties.windGust,times,v=>grid.properties.windGust.uom?.includes('km_h')?kphToMph(v):Math.round(v));
+      const nwsTemp=hours.map((hour,index)=>hour?.temperature??gridTemp[index]),nwsPop=hours.map((hour,index)=>hour?.probabilityOfPrecipitation?.value??gridPop[index]),nwsWind=hours.map((hour,index)=>hour?maxWind(hour.windSpeed):gridWind[index]);
+      const temp=mergeChartSeries(modeledValues(modeled,'temperature_2m',times,tz),nwsTemp,times,now),pop=mergeChartSeries(modeledValues(modeled,'precipitation_probability',times,tz),nwsPop,times,now),wind=mergeChartSeries(modeledValues(modeled,'wind_speed_10m',times,tz),nwsWind,times,now),gust=mergeChartSeries(modeledValues(modeled,'wind_gusts_10m',times,tz),gridGust,times,now);
       const timeTicks=Array.from({length:9},(_,n)=>{const i=n*6;return{i,label:i===0?'Today':i===24?'Tom':i===48?new Intl.DateTimeFormat('en-US',{timeZone:tz,weekday:'short'}).format(times[i]):hourLabel(times[i],tz),day:i%24===0}});
-      chartData={temp:hours.map(x=>x?.temperature??null),pop:hours.map(x=>x?.probabilityOfPrecipitation?.value??null),wind:hours.map(x=>x?maxWind(x.windSpeed):null),gust,timeTicks,windowStart,tz,spanHours:48};
+      chartData={temp,pop,wind,gust,timeTicks,windowStart,tz,spanHours:48};
       el('updated').textContent=`Updated ${local(now,tz)}`;el('updated').classList.remove('hidden');
       el('loading').classList.add('hidden');el('content').classList.remove('hidden');requestAnimationFrame(redraw);hasLoaded=true;
     }catch(e){

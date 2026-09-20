@@ -370,6 +370,7 @@ window.WX = (function(){
       </form>
       <nav class="tabs" aria-label="Pages">
         <a href="/" class="tab${active==='today'?' active':''}">Today</a>
+        <a href="/hourly.html" class="tab${active==='hourly'?' active':''}">Hourly</a>
         <a href="/forecast.html" class="tab${active==='forecast'?' active':''}">7-Day</a>
         <a href="/radar.html" class="tab${active==='radar'?' active':''}">Radar</a>
       </nav>`;

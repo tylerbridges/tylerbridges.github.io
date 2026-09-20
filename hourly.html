@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <script>try{var t=localStorage.getItem('weather-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);else if(t!=='system')document.documentElement.setAttribute('data-theme','dark')}catch{}</script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#071522">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="description" content="Hourly weather forecast for your selected location.">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="preconnect" href="https://api.weather.gov">
+  <link rel="dns-prefetch" href="https://api.weather.gov">
+  <link rel="preconnect" href="https://nominatim.openstreetmap.org" crossorigin>
+  <link rel="dns-prefetch" href="https://nominatim.openstreetmap.org">
+  <link rel="stylesheet" href="/assets/site.css">
+  <title>Hourly Forecast — Rochester Weather</title>
+</head>
+<body>
+  <main class="shell">
+    <header id="site-header"></header>
+    <div class="page-head">
+      <p class="kicker" id="kicker" hidden></p>
+      <h1 id="headline">Locating…</h1>
+      <p class="last-updated hidden" id="updated" aria-live="polite"></p>
+    </div>
+    <div id="loading" class="loading" role="status" aria-live="polite">Loading hourly forecast…</div>
+    <div id="error" class="error hidden" role="alert"></div>
+    <div id="content" class="hidden">
+      <div class="hourly-days" id="hourly-days"></div>
+    </div>
+  </main>
+  <script src="/assets/weather-core.js"></script>
+  <script>
+  (()=>{
+    const {el,esc,resolveLocation,resolvePoint,json,local,emoji,dayKey,mountHeader,mountPullToRefresh}=WX;
+    let busy=false,lastLoad=0,hasLoaded=false;
+    const header=mountHeader('hourly',()=>load());
+    const hourText=(value,tz)=>new Intl.DateTimeFormat('en-US',{timeZone:tz,hour:'numeric'}).format(new Date(value));
+    function renderHours(periods,tz){
+      const current=new Date(),future=periods.filter(period=>new Date(period.endTime)>current).slice(0,48),groups=[];
+      future.forEach(period=>{
+        const key=dayKey(tz,period.startTime),last=groups[groups.length-1];
+        if(last?.key===key)last.periods.push(period);else groups.push({key,date:new Date(period.startTime),periods:[period]});
+      });
+      return groups.map((group,groupIndex)=>{
+        const day=groupIndex===0?'Today':groupIndex===1?'Tomorrow':new Intl.DateTimeFormat('en-US',{timeZone:tz,weekday:'long'}).format(group.date);
+        const date=new Intl.DateTimeFormat('en-US',{timeZone:tz,month:'short',day:'numeric'}).format(group.date);
+        const rows=group.periods.map((period,index)=>{
+          const rain=period.probabilityOfPrecipitation?.value,humidity=period.relativeHumidity?.value;
+          const details=[rain==null?null:`Rain: ${Math.round(rain)}%`,humidity==null?null:`Humidity: ${Math.round(humidity)}%`,period.windSpeed?`Wind: ${period.windDirection||''} ${period.windSpeed}`.replace(/\s+/g,' ').trim():null].filter(Boolean).join(' · ');
+          return `<article class="hourly-row"><time class="hourly-time" datetime="${esc(period.startTime)}">${esc(hourText(period.startTime,tz))}${groupIndex===0&&index===0?' <span class="hourly-now">Now</span>':''}</time><span class="hourly-icon" aria-hidden="true">${emoji(period.shortForecast)}</span><span class="hourly-condition">${esc(period.shortForecast)}</span><strong class="hourly-temp">${Math.round(period.temperature)}°</strong><span class="hourly-meta">${esc(details)}</span></article>`;
+        }).join('');
+        return `<section class="hourly-day" aria-labelledby="hourly-day-${groupIndex}"><h2 id="hourly-day-${groupIndex}">${day} · ${date}</h2><div class="hourly-list">${rows}</div></section>`;
+      }).join('');
+    }
+    async function load(){if(busy)return;busy=true;lastLoad=Date.now();if(!hasLoaded){el('loading').classList.remove('hidden');el('error').classList.add('hidden');el('content').classList.add('hidden')}else{el('content').classList.add('refreshing')}try{
+      const loc=await resolveLocation();
+      const {point,label,tz}=await resolvePoint(loc);
+      header.setKicker('');el('headline').textContent=label;
+      const hourly=await json(point.properties.forecastHourly),now=new Date();
+      if(!hourly.properties?.periods?.length||!hourly.properties.updateTime||now-new Date(hourly.properties.updateTime)>36*3600000)throw new Error('The hourly forecast is stale or unavailable.');
+      el('hourly-days').innerHTML=renderHours(hourly.properties.periods,tz);
+      el('updated').textContent=`Updated ${local(now,tz)}`;el('updated').classList.remove('hidden');
+      el('loading').classList.add('hidden');el('content').classList.remove('hidden');hasLoaded=true;
+    }catch(e){if(!hasLoaded){el('loading').classList.add('hidden');el('error').classList.remove('hidden');el('error').textContent=e.message}}
+    finally{busy=false;el('content').classList.remove('refreshing')}}
+    function autoRefresh(){if(document.visibilityState==='visible'&&Date.now()-lastLoad>5*60000)load()}
+    window.addEventListener('pageshow',e=>{if(e.persisted)load()});
+    document.addEventListener('visibilitychange',autoRefresh);
+    document.addEventListener('timezonechange',()=>load());
+    window.addEventListener('focus',autoRefresh);
+    setInterval(()=>{if(document.visibilityState==='visible')load()},10*60000);
+    mountPullToRefresh(load);
+    if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
+    load();
+  })();
+  </script>
+</body>
+</html>
