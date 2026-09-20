@@ -86,6 +86,15 @@
     // for the reflectivity ramp RadarScope users expect, smoothed, snow shown.
     const RV_INDEX='https://api.rainviewer.com/public/weather-maps.json';
     const TILE_SIZE=512,COLOR_SCHEME=6,TILE_OPTS='1_1';
+    // RainViewer's mosaic isn't actually tiled across the map's whole 3-14
+    // zoom range — past a certain zoom in either direction it serves a PNG
+    // with "Zoom Level Not Supported" rendered right into the tile instead
+    // of a normal error response, so MapLibre has no way to detect and
+    // retry it. Keeping the raster *source* itself inside a narrower,
+    // known-good zoom band means MapLibre's own raster over/underzoom
+    // (scaling the nearest valid-zoom tile) kicks in beyond that band —
+    // a softer image at the extremes instead of that placeholder graphic.
+    const RADAR_MIN_ZOOM=4,RADAR_MAX_ZOOM=9;
     // Vector tiles stay sharp at any zoom and at the device's full pixel ratio,
     // which raster basemaps cannot do. Raster Esri is kept only as a fallback
     // for when the vector style cannot be reached.
@@ -128,7 +137,7 @@
       const url=tileUrl(frames[idx]);
       const src=map.getSource('radar');
       if(src){src.setTiles([url]);return}
-      map.addSource('radar',{type:'raster',tiles:[url],tileSize:TILE_SIZE});
+      map.addSource('radar',{type:'raster',tiles:[url],tileSize:TILE_SIZE,minzoom:RADAR_MIN_ZOOM,maxzoom:RADAR_MAX_ZOOM});
       // Saturation/contrast bumps make the reflectivity ramp read as vivid
       // against the near-black basemap instead of flat, like RadarScope's.
       // A non-zero fade duration dissolves each new frame's tiles in rather
