@@ -1,18 +1,38 @@
 window.WX = (function(){
   const API='https://api.weather.gov',LOC_KEY='weather-location',POINT_CACHE_KEY='weather-point-cache',POINT_TTL=6*3600000,TIME_ZONE_KEY='weather-time-zone',DEFAULT_TIME_ZONE='America/Chicago',DEFAULT_LOC={lat:44.0136,lon:-92.4757,label:'Rochester, Minnesota',source:'default'};
+  const TIME_ZONES=['America/New_York','America/Chicago','America/Denver','America/Phoenix','America/Los_Angeles','America/Anchorage','America/Adak','Pacific/Honolulu','America/Puerto_Rico','Pacific/Guam','Pacific/Pago_Pago'];
   const el=id=>document.getElementById(id);
   const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  let currentLoc=null;
+  let currentLoc=null,sessionTimeZone=null,timeZoneSetupPromise=null;
 
   function getSavedLocation(){try{return JSON.parse(localStorage.getItem(LOC_KEY))}catch{return null}}
   function saveLocation(loc){currentLoc=loc;try{localStorage.setItem(LOC_KEY,JSON.stringify(loc))}catch{}}
   function validTimeZone(zone){try{new Intl.DateTimeFormat('en-US',{timeZone:zone}).format();return true}catch{return false}}
-  function getTimeZone(){try{const zone=localStorage.getItem(TIME_ZONE_KEY);return zone&&validTimeZone(zone)?zone:DEFAULT_TIME_ZONE}catch{return DEFAULT_TIME_ZONE}}
-  function setTimeZone(zone){if(!validTimeZone(zone))return;try{localStorage.setItem(TIME_ZONE_KEY,zone)}catch{}document.dispatchEvent(new CustomEvent('timezonechange',{detail:{timeZone:zone}}))}
+  function storedTimeZone(){try{const zone=localStorage.getItem(TIME_ZONE_KEY);return zone&&validTimeZone(zone)?zone:null}catch{return null}}
+  function getTimeZone(){return storedTimeZone()||sessionTimeZone||DEFAULT_TIME_ZONE}
+  function setTimeZone(zone){if(!validTimeZone(zone))return;sessionTimeZone=zone;try{localStorage.setItem(TIME_ZONE_KEY,zone)}catch{}document.dispatchEvent(new CustomEvent('timezonechange',{detail:{timeZone:zone}}))}
   function timeZoneLabel(zone){
     const known={'America/New_York':'Eastern Time','America/Chicago':'Central Time','America/Denver':'Mountain Time','America/Phoenix':'Arizona Time','America/Los_Angeles':'Pacific Time','America/Anchorage':'Alaska Time','America/Adak':'Hawaii–Aleutian Time','Pacific/Honolulu':'Hawaii Time','America/Puerto_Rico':'Atlantic Time','Pacific/Guam':'Chamorro Time','Pacific/Pago_Pago':'Samoa Time'};
     if(known[zone])return known[zone];
     try{return new Intl.DateTimeFormat('en-US',{timeZone:zone,timeZoneName:'longGeneric'}).formatToParts(new Date()).find(p=>p.type==='timeZoneName')?.value||zone}catch{return zone}
+  }
+  function deviceTimeZone(){try{const zone=Intl.DateTimeFormat().resolvedOptions().timeZone;return validTimeZone(zone)?zone:DEFAULT_TIME_ZONE}catch{return DEFAULT_TIME_ZONE}}
+  function ensureTimeZone(){
+    const saved=storedTimeZone();if(saved)return Promise.resolve(saved);
+    if(timeZoneSetupPromise)return timeZoneSetupPromise;
+    const detected=deviceTimeZone(),zones=TIME_ZONES.includes(detected)?TIME_ZONES:[detected,...TIME_ZONES];
+    timeZoneSetupPromise=new Promise(resolve=>{
+      const id='time-zone-prompt';el(id)?.remove();
+      const options=zones.map(zone=>`<option value="${esc(zone)}"${zone===detected?' selected':''}>${esc(timeZoneLabel(zone))}</option>`).join('');
+      document.body.insertAdjacentHTML('beforeend',`<dialog class="timezone-dialog" id="${id}" aria-labelledby="time-zone-prompt-title" aria-describedby="time-zone-prompt-copy"><div class="timezone-dialog-card"><h2 id="time-zone-prompt-title">Choose your time zone</h2><p id="time-zone-prompt-copy">Your device suggests <strong>${esc(timeZoneLabel(detected))}</strong>. This setting controls every weather date and time and will stay the same when you view another location.</p><label class="sr-only" for="time-zone-setup-choice">Weather time zone</label><select class="setting-select" id="time-zone-setup-choice">${options}</select><div class="timezone-dialog-actions"><button class="choice-btn active" type="button" data-time-zone-confirm>Continue</button></div></div></dialog>`);
+      const dialog=el(id),select=el('time-zone-setup-choice');let finished=false;
+      function finish(){if(finished)return;finished=true;setTimeZone(select.value||detected);if(dialog.open)dialog.close();dialog.remove();resolve(getTimeZone())}
+      dialog.querySelector('[data-time-zone-confirm]').addEventListener('click',finish);
+      dialog.addEventListener('cancel',e=>{e.preventDefault();finish()});
+      dialog.addEventListener('click',e=>{if(e.target===dialog)finish()});
+      dialog.showModal();select.focus();
+    });
+    return timeZoneSetupPromise;
   }
   function pointCacheKey(lat,lon){return `${lat.toFixed(2)},${lon.toFixed(2)}`}
   function getCachedPoint(lat,lon){try{const all=JSON.parse(localStorage.getItem(POINT_CACHE_KEY)||'{}');const entry=all[pointCacheKey(lat,lon)];if(entry&&Date.now()-entry.ts<POINT_TTL)return entry.point}catch{}return null}
@@ -28,46 +48,29 @@ window.WX = (function(){
   }
   function refreshGeoInBackground(saved){geolocate({maximumAge:0}).then(pos=>{const sameSpot=saved.lat===pos.lat&&saved.lon===pos.lon;saveLocation({...pos,label:sameSpot?saved.label:null,source:'geo'})}).catch(()=>{})}
   async function resolveLocation(){
+    await ensureTimeZone();
     const saved=getSavedLocation();
     if(saved){
       currentLoc=saved;
       if(saved.source==='geo')refreshGeoInBackground(saved);
       return saved;
     }
-    try{const pos=await geolocate();const loc={...pos,label:null,source:'geo',tzPromptPending:true};saveLocation(loc);return loc}
+    try{const pos=await geolocate();const loc={...pos,label:null,source:'geo'};saveLocation(loc);return loc}
     catch{const loc={...DEFAULT_LOC};currentLoc=loc;return loc}
   }
   async function json(url){let last;for(let i=0;i<2;i++){try{const r=await fetch(url,{cache:'no-store',headers:{Accept:'application/geo+json, application/json'},signal:AbortSignal.timeout(20000)});if(!r.ok)throw new Error(`weather.gov returned ${r.status}`);return await r.json()}catch(e){last=e}}throw last}
 
-  function recommendTimeZone(locationTimeZone,loc){
-    const current=getTimeZone(),saved=getSavedLocation()||loc;
-    if(!loc?.tzPromptPending)return Promise.resolve(current);
-    const clearPending=()=>saveLocation({...saved,tzPromptPending:false});
-    if(!locationTimeZone||locationTimeZone===current){clearPending();return Promise.resolve(current)}
-    return new Promise(resolve=>{
-      const id='time-zone-prompt';el(id)?.remove();
-      document.body.insertAdjacentHTML('beforeend',`<dialog class="timezone-dialog" id="${id}" aria-labelledby="time-zone-prompt-title" aria-describedby="time-zone-prompt-copy"><div class="timezone-dialog-card"><h2 id="time-zone-prompt-title">Switch time zone?</h2><p id="time-zone-prompt-copy">This location uses <strong>${esc(timeZoneLabel(locationTimeZone))}</strong>. Weather times are currently shown in ${esc(timeZoneLabel(current))}.</p><div class="timezone-dialog-actions"><button class="choice-btn active" type="button" data-time-zone-accept>Switch to ${esc(timeZoneLabel(locationTimeZone))}</button><button class="choice-btn" type="button" data-time-zone-decline>Keep ${esc(timeZoneLabel(current))}</button></div></div></dialog>`);
-      const dialog=el(id);let finished=false;
-      function finish(accept){if(finished)return;finished=true;clearPending();if(accept)setTimeZone(locationTimeZone);if(dialog.open)dialog.close();dialog.remove();resolve(getTimeZone())}
-      dialog.querySelector('[data-time-zone-accept]').addEventListener('click',()=>finish(true));
-      dialog.querySelector('[data-time-zone-decline]').addEventListener('click',()=>finish(false));
-      dialog.addEventListener('cancel',e=>{e.preventDefault();finish(false)});
-      dialog.addEventListener('click',e=>{if(e.target===dialog)finish(false)});
-      dialog.showModal();dialog.querySelector('[data-time-zone-accept]').focus();
-    });
-  }
   async function resolvePoint(loc){
     let point=getCachedPoint(loc.lat,loc.lon);
     if(!point){point=await json(`${API}/points/${loc.lat},${loc.lon}`);setCachedPoint(loc.lat,loc.lon,point)}
     const rel=point.properties.relativeLocation?.properties;
     const label=rel?`${rel.city}, ${rel.state}`:loc.label||'Selected location';
     if(loc.label!==label)saveLocation({...loc,label});
-    const locationTimeZone=point.properties.timeZone||DEFAULT_TIME_ZONE;
-    const tz=await recommendTimeZone(locationTimeZone,loc);
+    const tz=getTimeZone();
     const officeId=(point.properties.forecastOffice||'').split('/').pop();
     const countyId=(point.properties.county||'').split('/').pop();
     const zoneId=(point.properties.forecastZone||'').split('/').pop();
-    return {point,label,tz,locationTimeZone,officeId,countyId,zoneId};
+    return {point,label,tz,officeId,countyId,zoneId};
   }
 
   function emoji(text){const t=String(text).toLowerCase();return /thunder/.test(t)?'⛈️':/snow|blizzard/.test(t)?'🌨️':/ice|freezing|sleet/.test(t)?'🧊':/rain|shower|drizzle/.test(t)?'🌧️':/fog|mist/.test(t)?'☁️':/partly|mostly sunny/.test(t)?'🌤️':/cloud|overcast/.test(t)?'☁️':/sun|clear/.test(t)?'☀️':'🌡️'}
@@ -468,7 +471,7 @@ window.WX = (function(){
       suggestions.classList.remove('hidden');locationInput.setAttribute('aria-expanded','true');activeSuggestion=-1;
     }
     function pick(pos,query){
-      saveLocation({...pos,label:null,source:'search',query,tzPromptPending:true});
+      saveLocation({...pos,label:null,source:'search',query});
       locationInput.value='';closeSuggestions();suggestionMap.clear();
       locationInput.blur();
       onLocationChange();
@@ -507,7 +510,7 @@ window.WX = (function(){
     });
     el('locate-btn').addEventListener('click',async()=>{
       setKicker('Locating…');
-      try{const pos=await geolocate();saveLocation({...pos,label:null,source:'geo',tzPromptPending:true});onLocationChange()}
+      try{const pos=await geolocate();saveLocation({...pos,label:null,source:'geo'});onLocationChange()}
       catch{setKicker('Location access denied or unavailable')}
     });
     return {setKicker};
