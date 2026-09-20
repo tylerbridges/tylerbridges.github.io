@@ -20,24 +20,28 @@
   <style>
     .radar-card{position:relative;border-radius:18px;overflow:hidden;border:3px solid var(--line-strong);box-shadow:var(--shadow);height:min(46vh,380px);min-height:260px;background:#000}
     #map{position:absolute;inset:0;background:#000}
-    /* Page-local .radar-overlay would otherwise tie with .hidden on specificity
-       and win on source order, keeping the bar visible when JS hides it. */
-    .radar-overlay.hidden{display:none}
-    .radar-overlay{position:absolute;left:0;right:0;bottom:0;z-index:1000;display:flex;align-items:center;gap:.55rem;padding:.32rem .5rem;background:color-mix(in srgb,var(--surface-2) 88%,transparent);backdrop-filter:saturate(180%) blur(18px);-webkit-backdrop-filter:saturate(180%) blur(18px);border-top:1px solid var(--line-strong)}
-    .play-btn{flex:0 0 auto;width:28px;height:28px;border-radius:999px;border:0;background:var(--blue);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.3)}
+    /* Both floating panels use the same frosted-glass treatment: a fixed dark
+       tint (not a theme var, since the radar map itself is always dark) with
+       backdrop-blur, so controls stay legible over any reflectivity color
+       without needing an opaque box. */
+    .radar-overlay.hidden,.radar-legend.hidden{display:none}
+    .radar-overlay{position:absolute;left:10px;right:10px;bottom:10px;z-index:1000;display:flex;align-items:center;gap:.55rem;padding:.4rem .6rem;border-radius:13px;background:rgba(20,20,20,.7);backdrop-filter:saturate(180%) blur(18px);-webkit-backdrop-filter:saturate(180%) blur(18px);box-shadow:0 2px 10px rgba(0,0,0,.35)}
+    .play-btn{flex:0 0 auto;width:28px;height:28px;border-radius:999px;border:0;background:var(--blue);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.3);transition:transform .15s ease-out}
     .play-btn:active{transform:scale(.92)}
     .play-btn svg{width:12px;height:12px}
-    .radar-overlay input[type=range]{flex:1;-webkit-appearance:none;appearance:none;height:4px;border-radius:999px;background:var(--line-strong);outline:none;margin:0}
-    .radar-overlay input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:999px;background:var(--line-strong)}
-    .radar-overlay input[type=range]::-moz-range-track{height:4px;border-radius:999px;background:var(--line-strong)}
+    .radar-overlay input[type=range]{flex:1;-webkit-appearance:none;appearance:none;height:4px;border-radius:999px;background:rgba(255,255,255,.25);outline:none;margin:0}
+    .radar-overlay input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:999px;background:rgba(255,255,255,.25)}
+    .radar-overlay input[type=range]::-moz-range-track{height:4px;border-radius:999px;background:rgba(255,255,255,.25)}
     .radar-overlay input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:16px;height:16px;margin-top:-6px;border-radius:50%;background:var(--blue);box-shadow:0 1px 4px rgba(0,0,0,.45);cursor:pointer}
     .radar-overlay input[type=range]::-moz-range-thumb{width:16px;height:16px;border:0;border-radius:50%;background:var(--blue);box-shadow:0 1px 4px rgba(0,0,0,.45);cursor:pointer}
-    .radar-time{flex:0 0 auto;min-width:4rem;text-align:right;font-size:.76rem;color:var(--muted);font-variant-numeric:tabular-nums}
-    .speed-btn{flex:0 0 auto;min-width:2.4rem;padding:.25rem .45rem;border-radius:999px;border:1px solid var(--line-strong);background:transparent;color:var(--text);font-size:.72rem;font-weight:650}
-    .speed-btn:active{transform:scale(.94)}
-    .radar-legend{display:flex;align-items:center;gap:.55rem;margin-top:1rem;font-size:.78rem;color:var(--muted)}
+    .radar-time{flex:0 0 auto;min-width:4rem;text-align:right;font-size:11px;color:#aaa;font-variant-numeric:tabular-nums;text-shadow:0 1px 3px rgba(0,0,0,.4)}
+    .speed-btn{flex:0 0 auto;min-width:2.4rem;padding:.25rem .45rem;border-radius:999px;border:1px solid rgba(255,255,255,.2);background:transparent;color:#ddd;font-size:11px;font-weight:650;transition:transform .15s ease-out,background-color .15s ease-out}
+    .speed-btn:active{transform:scale(.94);background-color:rgba(255,255,255,.1)}
+    /* Corner chip, like RadarScope's own legend, instead of a full-width row
+       below the map competing with the radar for attention. */
+    .radar-legend{position:absolute;top:10px;right:10px;z-index:1000;display:flex;align-items:center;gap:.4rem;padding:.32rem .55rem;border-radius:10px;background:rgba(20,20,20,.7);backdrop-filter:saturate(180%) blur(14px);-webkit-backdrop-filter:saturate(180%) blur(14px);box-shadow:0 2px 8px rgba(0,0,0,.35);font-size:10px;color:#aaa;text-shadow:0 1px 2px rgba(0,0,0,.4)}
     /* Mirrors the NEXRAD Level III reflectivity ramp the radar tiles use. */
-    .legend-bar{flex:1;height:7px;border-radius:999px;background:linear-gradient(90deg,#04e9e7,#019ff4,#0300f4,#02fd02,#01c501,#008e00,#fdf802,#e5bc00,#fd9500,#fd0000,#bc0000,#f800fd)}
+    .legend-bar{width:44px;height:5px;border-radius:999px;background:linear-gradient(90deg,#04e9e7,#019ff4,#0300f4,#02fd02,#01c501,#008e00,#fdf802,#e5bc00,#fd9500,#fd0000,#bc0000,#f800fd)}
     #radar-status{margin-top:.9rem}
   </style>
 </head>
@@ -53,17 +57,17 @@
     <div id="content" class="hidden">
       <div class="radar-card">
         <div id="map"></div>
+        <div class="radar-legend hidden" aria-hidden="true">
+          <span>Light</span>
+          <span class="legend-bar"></span>
+          <span>Heavy</span>
+        </div>
         <div class="radar-overlay">
           <button id="play-btn" class="play-btn" type="button" aria-label="Pause"><svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor"/></svg></button>
           <input id="frame-slider" type="range" min="0" value="0" step="1" aria-label="Radar frame">
           <span id="radar-time" class="radar-time"></span>
           <button id="speed-btn" class="speed-btn" type="button" aria-label="Playback speed"></button>
         </div>
-      </div>
-      <div class="radar-legend" aria-hidden="true">
-        <span>Light</span>
-        <span class="legend-bar"></span>
-        <span>Heavy</span>
       </div>
       <p class="status" id="radar-status"></p>
       <div id="site-footer-nav"></div>
@@ -102,6 +106,10 @@
     // Playback speed: a multiplier on the base frame interval, remembered
     // per-device so a preference sticks across visits.
     const SPEED_KEY='radar-speed',SPEEDS=[0.5,1,2,3],BASE_INTERVAL=700;
+    // Fastest speed (3x) yields a ~233ms frame interval; keep the fade
+    // comfortably under that so one frame finishes dissolving in before the
+    // next one starts loading.
+    const RADAR_FADE_MS=200;
     let speed=(()=>{try{const v=parseFloat(localStorage.getItem(SPEED_KEY));return SPEEDS.includes(v)?v:1}catch{return 1}})();
     function paintSpeedBtn(){el('speed-btn').textContent=`${speed}×`}
     const PLAY_ICON='<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>';
@@ -123,7 +131,12 @@
       map.addSource('radar',{type:'raster',tiles:[url],tileSize:TILE_SIZE});
       // Saturation/contrast bumps make the reflectivity ramp read as vivid
       // against the near-black basemap instead of flat, like RadarScope's.
-      map.addLayer({id:'radar',type:'raster',source:'radar',paint:{'raster-opacity':.85,'raster-fade-duration':0,'raster-saturation':.25,'raster-contrast':.15,'raster-resampling':'linear'}});
+      // A non-zero fade duration dissolves each new frame's tiles in rather
+      // than swapping instantly, which is what turns the loop into a smooth
+      // animated "sweep" instead of a hard cut — kept under the shortest
+      // frame interval (BASE_INTERVAL at the fastest speed) so it never
+      // outlasts the frame it's fading into.
+      map.addLayer({id:'radar',type:'raster',source:'radar',paint:{'raster-opacity':.85,'raster-fade-duration':RADAR_FADE_MS,'raster-saturation':.25,'raster-contrast':.15,'raster-resampling':'linear'}});
     }
     function showFrame(i){
       if(!frames.length)return;
@@ -154,6 +167,7 @@
         frames=pastFrames.concat(nowcast);
         el('frame-slider').max=frames.length-1;
         document.querySelector('.radar-overlay').classList.remove('hidden');
+        document.querySelector('.radar-legend').classList.remove('hidden');
         el('error').classList.add('hidden');
         updateStatus(isRefresh);
         // Hold position when the viewer deliberately scrubbed back; only follow
@@ -164,6 +178,7 @@
         clearInterval(timer);timer=null;
         frames=[];
         document.querySelector('.radar-overlay').classList.add('hidden');
+        document.querySelector('.radar-legend').classList.add('hidden');
         el('radar-status').textContent='';
         el('error').classList.remove('hidden');
         el('error').textContent='Radar imagery is unavailable right now. The map still works — pull down to retry.';

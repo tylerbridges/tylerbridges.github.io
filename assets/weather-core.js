@@ -481,9 +481,18 @@ window.WX = (function(){
       if(layer.type==='line'&&sl==='boundary'){layer.paint['line-color']='rgba(150,150,155,0.35)';layer.paint['line-opacity']=1;continue}
       if(layer.type==='line'&&sl==='transportation'){layer.paint['line-color']=/motorway/i.test(JSON.stringify(layer))?'#6a6a6a':'#4a4a4a';layer.paint['line-opacity']=1;continue}
       if(layer.type==='symbol'){
-        layer.paint['text-color']='#c7c7cc';layer.paint['text-halo-color']='#0a0a0a';layer.paint['text-halo-width']=1.1;
+        // Small, low-contrast labels so they read as a quiet reference layer
+        // rather than competing with the radar colors for attention. The
+        // glyph set itself (whichever font OpenFreeMap's "liberty" style
+        // already points at) is left alone: MapLibre labels are pre-rendered
+        // SDF glyphs fetched from the style's own glyphs URL, not arbitrary
+        // system fonts, so swapping in "SF Pro"/"Inter" here would 404
+        // instead of just changing the typeface.
+        layer.paint['text-color']='#999';layer.paint['text-halo-color']='#0a0a0a';layer.paint['text-halo-width']=1.1;
         delete layer.paint['icon-color'];
-        if(layer.layout){delete layer.layout['icon-image']}
+        layer.layout=layer.layout||{};
+        layer.layout['text-size']=sl==='place'?11:10;
+        delete layer.layout['icon-image'];
         continue;
       }
     }
