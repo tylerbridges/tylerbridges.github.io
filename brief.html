@@ -41,12 +41,12 @@
   <script>
   (()=>{
     const {el,resolveLocation,resolvePoint,json,emoji,local,maxWind,gridValues,kphToMph,
-      dayKey,startOfDay,hourLabel,dayPartLabel,dayRows,uvForDate,humidityForDate,gustForDate,maxTempForDate,minTempForDate,dayMetrics,metricsHTML,sunMetrics,
+      dayKey,startOfDay,hourLabel,dayRows,uvForDate,humidityForDate,gustForDate,maxTempForDate,minTempForDate,dayMetrics,metricsHTML,sunMetrics,
       findTodayPeriods,renderFutureCardHTML,loadTodayCard,mountHeader,mountPullToRefresh,DEFAULT_LOC}=WX;
     let chartData=null,currentLoc=null;
     const header=mountHeader('today',()=>load());
     function draw(svg,series,domain,yTitle){
-      const w=Math.max(320,svg.clientWidth||320),h=215,m={l:64,r:32,t:30,b:28},span=chartData.spanHours||48,
+      const w=Math.max(320,svg.clientWidth||320),h=215,m={l:64,r:32,t:12,b:28},span=chartData.spanHours||48,
         x=i=>m.l+i*(w-m.l-m.r)/span,
         y=v=>m.t+(domain[1]-v)*(h-m.t-m.b)/(domain[1]-domain[0]),
         ns='http://www.w3.org/2000/svg';
@@ -57,13 +57,6 @@
       const scrubLabel=(date,offset)=>`${offset<24?'Today':offset<48?'Tomorrow':new Intl.DateTimeFormat('en-US',{timeZone:chartData.tz,weekday:'short'}).format(date)} · ${timeLabel(date)}`;
       add('rect',{x:m.l,y:m.t,width:w-m.l-m.r,height:h-m.t-m.b,fill:'none',stroke:css('--line')});
       for(let j=0;j<=4;j++){const v=domain[0]+(domain[1]-domain[0])*j/4,yy=y(v);add('text',{x:m.l-7,y:yy+4,'text-anchor':'end',fill:css('--muted'),'font-size':11},Math.round(v))}
-      // Dayparts sit above the plot so the six-hour clock ticks below stay
-      // evenly spaced and independently scannable.
-      (chartData.segments||[]).forEach(seg=>{
-        const x0=x(seg.start),x1=x(seg.end+1),cx=(x0+x1)/2;
-        if(x1-x0<34)return;
-        add('text',{x:cx,y:15,'text-anchor':'middle',fill:css('--muted'),'font-size':10,'font-weight':600},seg.label);
-      });
       (chartData.timeTicks||[]).forEach(t=>{
         const xx=x(t.i);
         if(t.i>0&&t.i<span)add('line',{x1:xx,x2:xx,y1:m.t,y2:h-m.b,stroke:t.day?css('--line-strong'):css('--line'),'stroke-dasharray':t.day?'2,3':'1,4'});
@@ -115,13 +108,8 @@
         el('tomorrow-card').innerHTML=renderFutureCardHTML(tomorrowTitle,tomorrow.day,tomorrow.night,tomorrowMetrics);
       }else{el('tomorrow-card').innerHTML=renderFutureCardHTML('Tomorrow',null,null,'')}
       const gust=gridValues(grid.properties.windGust,times,v=>grid.properties.windGust.uom?.includes('km_h')?kphToMph(v):Math.round(v));
-      const dayParts=times.slice(0,-1).map(d=>dayPartLabel(d,tz));
-      const segments=[];
-      for(let i=0,start=0;i<=dayParts.length;i++){
-        if(i===dayParts.length||dayParts[i]!==dayParts[start]){segments.push({start,end:i-1,label:dayParts[start]});start=i}
-      }
       const timeTicks=Array.from({length:9},(_,n)=>{const i=n*6;return{i,label:i===0?'Today':i===24?'Tomorrow':i===48?new Intl.DateTimeFormat('en-US',{timeZone:tz,weekday:'short'}).format(times[i]):hourLabel(times[i],tz),day:i%24===0}});
-      chartData={temp:hours.map(x=>x?.temperature??null),pop:hours.map(x=>x?.probabilityOfPrecipitation?.value??null),wind:hours.map(x=>x?maxWind(x.windSpeed):null),gust,segments,timeTicks,windowStart,tz,spanHours:48};
+      chartData={temp:hours.map(x=>x?.temperature??null),pop:hours.map(x=>x?.probabilityOfPrecipitation?.value??null),wind:hours.map(x=>x?maxWind(x.windSpeed):null),gust,timeTicks,windowStart,tz,spanHours:48};
       el('updated').textContent=`Updated ${local(now,tz)}`;el('updated').classList.remove('hidden');
       el('loading').classList.add('hidden');el('content').classList.remove('hidden');requestAnimationFrame(redraw);hasLoaded=true;
     }catch(e){
