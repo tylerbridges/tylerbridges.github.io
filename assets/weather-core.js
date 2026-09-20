@@ -443,6 +443,53 @@ window.WX = (function(){
     return clone;
   }
 
+  // Radar apps (RadarScope, Apple Weather) always show reflectivity against a
+  // near-black, roads-only basemap regardless of the app's own light/dark
+  // setting — busy terrain/landuse/building/POI layers compete with the
+  // radar colors instead of receding behind them. Rather than recolor the
+  // full "liberty" style (which keeps every layer, just inverted), this
+  // strips it down to only what a radar basemap needs, filtering by the
+  // vector tiles' OpenMapTiles source-layer names (stable across whichever
+  // cartographic style OpenFreeMap serves them through, unlike its own
+  // layer ids). Everything else — landcover, landuse, parks, buildings,
+  // POIs, minor roads, small-place labels — is dropped outright.
+  function minimalDarkRadarStyle(style){
+    const clone=JSON.parse(JSON.stringify(style));
+    const KEEP_SOURCE_LAYERS=new Set(['water','waterway','boundary','transportation','transportation_name','place']);
+    const MAJOR_ROAD=/motorway|trunk|primary/i;
+    const MINOR_ROAD=/path|footway|steps|cycleway|track|service|pedestrian|rail/i;
+    const MINOR_PLACE=/village|hamlet|suburb|neighbourhood|neighborhood|quarter|isolated_dwelling|housenumber/i;
+    clone.layers=(clone.layers||[]).filter(l=>{
+      if(l.type==='background')return true;
+      const sl=l['source-layer'];
+      if(!sl||!KEEP_SOURCE_LAYERS.has(sl))return false;
+      if(sl==='transportation'||sl==='transportation_name'){
+        const blob=JSON.stringify(l);
+        return MAJOR_ROAD.test(blob)&&!MINOR_ROAD.test(blob);
+      }
+      if(sl==='place'){
+        return !MINOR_PLACE.test(JSON.stringify(l));
+      }
+      return true;
+    });
+    for(const layer of clone.layers){
+      layer.paint=layer.paint||{};
+      const sl=layer['source-layer'];
+      if(layer.type==='background'){layer.paint['background-color']='#0a0a0a';continue}
+      if(layer.type==='fill'&&(sl==='water')){layer.paint['fill-color']='#0d1117';layer.paint['fill-opacity']=1;delete layer.paint['fill-pattern'];continue}
+      if(layer.type==='line'&&sl==='waterway'){layer.paint['line-color']='#0d1117';continue}
+      if(layer.type==='line'&&sl==='boundary'){layer.paint['line-color']='rgba(150,150,155,0.35)';layer.paint['line-opacity']=1;continue}
+      if(layer.type==='line'&&sl==='transportation'){layer.paint['line-color']=/motorway/i.test(JSON.stringify(layer))?'#6a6a6a':'#4a4a4a';layer.paint['line-opacity']=1;continue}
+      if(layer.type==='symbol'){
+        layer.paint['text-color']='#c7c7cc';layer.paint['text-halo-color']='#0a0a0a';layer.paint['text-halo-width']=1.1;
+        delete layer.paint['icon-color'];
+        if(layer.layout){delete layer.layout['icon-image']}
+        continue;
+      }
+    }
+    return clone;
+  }
+
   // iOS Safari has no built-in pull-to-refresh gesture (unlike some Android
   // browsers), so this reproduces the native-feeling gesture by hand: drag
   // down from the top of the page, release past a threshold, refresh.
@@ -495,5 +542,5 @@ window.WX = (function(){
     emoji,local,maxWind,gustFrom,durationMs,gridValues,kphToMph,cToF,product,
     currentObservation,currentHeadline,alertLine,dayKey,startOfDay,hourLabel,dayRows,uvForDate,humidityForDate,gustForDate,maxTempForDate,minTempForDate,dayMetrics,metricsHTML,
     todayBrief,futureBrief,renderFutureCardHTML,loadTodayCard,
-    findTodayPeriods,renderDaysHTML,mountHeader,mountFooterNav,mountPullToRefresh,getTheme,setTheme,getThemeChoice,recolorStyleDark};
+    findTodayPeriods,renderDaysHTML,mountHeader,mountFooterNav,mountPullToRefresh,getTheme,setTheme,getThemeChoice,recolorStyleDark,minimalDarkRadarStyle};
 })();

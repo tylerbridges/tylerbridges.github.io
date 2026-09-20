@@ -73,7 +73,7 @@
   <script src="/assets/weather-core.js"></script>
   <script>
   (()=>{
-    const {el,resolveLocation,resolvePoint,mountHeader,mountFooterNav,mountPullToRefresh,getTheme,recolorStyleDark}=WX;
+    const {el,resolveLocation,resolvePoint,mountHeader,mountFooterNav,mountPullToRefresh,minimalDarkRadarStyle}=WX;
     const header=mountHeader('radar',()=>centerOnLocation());
     mountFooterNav('radar');
 
@@ -86,17 +86,18 @@
     // which raster basemaps cannot do. Raster Esri is kept only as a fallback
     // for when the vector style cannot be reached.
     //
-    // OpenFreeMap's own "dark" style is a fork of an abandoned upstream
-    // project; "liberty" is their actively-maintained default (same tiles,
-    // same CDN). recolorStyleDark() turns its light palette into a dark one
-    // client-side, so the map tracks the site's light/dark theme using only
-    // the maintained style, instead of depending on the unmaintained one.
+    // The radar basemap always renders in a minimal, near-black roads-only
+    // style — like RadarScope/Apple Weather/MyRadar — regardless of the
+    // site's own light/dark toggle, so reflectivity colors stay high-contrast
+    // against it. minimalDarkRadarStyle() strips OpenFreeMap's actively
+    // maintained "liberty" style (OpenMapTiles schema) down to background,
+    // water, boundaries, major roads and city labels.
     const VECTOR_STYLE='https://tiles.openfreemap.org/styles/liberty';
     // Attribution for all of these lives on /credits.html, linked below the
     // map, rather than on-map controls — see the note by attributionControl.
     const RASTER_FALLBACK={version:8,sources:{esri:{type:'raster',tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}'],tileSize:256,maxzoom:16}},layers:[{id:'bg',type:'background',paint:{'background-color':'#000'}},{id:'esri',type:'raster',source:'esri'}]};
 
-    let map=null,marker=null,frames=[],idx=0,playing=true,timer=null;
+    let map=null,marker=null,frames=[],pastCount=0,idx=0,playing=true,timer=null;
     let loading=false,onLatest=true,rvHost='',styleReady=false,usingFallback=false;
     // Playback speed: a multiplier on the base frame interval, remembered
     // per-device so a preference sticks across visits.
@@ -112,7 +113,7 @@
 
     function updateStatus(checkedNow){
       if(!frames.length){el('radar-status').textContent='';return}
-      el('radar-status').textContent=`Latest radar scan: ${fmtFull(frames[frames.length-1].time*1000)}${checkedNow?' · just refreshed':''} · NEXRAD mosaic via RainViewer`;
+      el('radar-status').textContent=`Latest radar scan: ${fmtFull(frames[pastCount-1].time*1000)}${checkedNow?' · just refreshed':''} · NEXRAD mosaic via RainViewer`;
     }
     function paintFrame(){
       if(!map||!styleReady||!frames.length)return;
@@ -120,14 +121,17 @@
       const src=map.getSource('radar');
       if(src){src.setTiles([url]);return}
       map.addSource('radar',{type:'raster',tiles:[url],tileSize:TILE_SIZE});
-      map.addLayer({id:'radar',type:'raster',source:'radar',paint:{'raster-opacity':.85,'raster-fade-duration':0}});
+      // Saturation/contrast bumps make the reflectivity ramp read as vivid
+      // against the near-black basemap instead of flat, like RadarScope's.
+      map.addLayer({id:'radar',type:'raster',source:'radar',paint:{'raster-opacity':.85,'raster-fade-duration':0,'raster-saturation':.25,'raster-contrast':.15,'raster-resampling':'linear'}});
     }
     function showFrame(i){
       if(!frames.length)return;
       idx=((i%frames.length)+frames.length)%frames.length;
-      onLatest=idx===frames.length-1;
+      onLatest=idx===pastCount-1;
       el('frame-slider').value=idx;
-      el('radar-time').textContent=onLatest?`${fmtTime(frames[idx].time*1000)} · latest`:fmtTime(frames[idx].time*1000);
+      const label=fmtTime(frames[idx].time*1000);
+      el('radar-time').textContent=onLatest?`${label} · latest`:idx>=pastCount?`${label} · forecast`:label;
       paintFrame();
     }
     function play(){playing=true;el('play-btn').innerHTML=PAUSE_ICON;el('play-btn').setAttribute('aria-label','Pause');clearInterval(timer);timer=setInterval(()=>showFrame(idx+1),BASE_INTERVAL/speed)}
@@ -141,14 +145,20 @@
         const past=data?.radar?.past||[];
         if(!data?.host||!past.length)throw new Error('no frames');
         rvHost=data.host;
-        frames=past.slice(-13);
+        const pastFrames=past.slice(-10);
+        // Nowcast is RainViewer's short forward extrapolation (~30-60min, 10min
+        // steps) — appending it makes the loop feel like it's tracking a live
+        // system through "now" rather than stopping dead at the last scan.
+        const nowcast=(data?.radar?.nowcast||[]).slice(0,6);
+        pastCount=pastFrames.length;
+        frames=pastFrames.concat(nowcast);
         el('frame-slider').max=frames.length-1;
         document.querySelector('.radar-overlay').classList.remove('hidden');
         el('error').classList.add('hidden');
         updateStatus(isRefresh);
         // Hold position when the viewer deliberately scrubbed back; only follow
-        // the newest scan for someone already watching the live edge.
-        showFrame(onLatest?frames.length-1:Math.min(idx,frames.length-1));
+        // the newest observed scan for someone already watching the live edge.
+        showFrame(onLatest?pastCount-1:Math.min(idx,frames.length-1));
         if(playing&&!timer)play();
       }catch(e){
         clearInterval(timer);timer=null;
@@ -165,17 +175,14 @@
       // setStyle() discards layers, so the radar layer is re-added per style.
       paintFrame();
     }
-    // Cache the fetched liberty style JSON so switching themes only recolors
-    // it locally, without a second network round trip.
-    let libertyStyle=null;
-    async function themedStyle(){
+    async function radarStyle(){
       if(usingFallback)return RASTER_FALLBACK;
-      if(!libertyStyle)libertyStyle=await fetch(VECTOR_STYLE,{cache:'no-store'}).then(r=>r.json());
-      return getTheme()==='dark'?recolorStyleDark(libertyStyle):libertyStyle;
+      const libertyStyle=await fetch(VECTOR_STYLE,{cache:'no-store'}).then(r=>r.json());
+      return minimalDarkRadarStyle(libertyStyle);
     }
     async function buildMap(latlng){
       let initialStyle;
-      try{initialStyle=await themedStyle()}
+      try{initialStyle=await radarStyle()}
       catch{usingFallback=true;initialStyle=RASTER_FALLBACK}
       map=new maplibregl.Map({
         container:'map',style:initialStyle,center:[latlng[1],latlng[0]],zoom:8,
@@ -205,10 +212,6 @@
       });
       setTimeout(()=>{if(!styleReady&&!usingFallback){usingFallback=true;map.setStyle(RASTER_FALLBACK)}},7000);
       marker=new maplibregl.Marker({color:'#0a84ff'}).setLngLat([latlng[1],latlng[0]]).addTo(map);
-      document.addEventListener('themechange',async()=>{
-        styleReady=false;
-        try{map.setStyle(await themedStyle())}catch{}
-      });
     }
 
     function centerOnLocation(){
