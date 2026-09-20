@@ -1,11 +1,19 @@
 window.WX = (function(){
-  const API='https://api.weather.gov',LOC_KEY='weather-location',POINT_CACHE_KEY='weather-point-cache',POINT_TTL=6*3600000,DEFAULT_LOC={lat:44.0136,lon:-92.4757,label:'Rochester, Minnesota',source:'default'};
+  const API='https://api.weather.gov',LOC_KEY='weather-location',POINT_CACHE_KEY='weather-point-cache',POINT_TTL=6*3600000,TIME_ZONE_KEY='weather-time-zone',DEFAULT_TIME_ZONE='America/Chicago',DEFAULT_LOC={lat:44.0136,lon:-92.4757,label:'Rochester, Minnesota',source:'default'};
   const el=id=>document.getElementById(id);
   const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   let currentLoc=null;
 
   function getSavedLocation(){try{return JSON.parse(localStorage.getItem(LOC_KEY))}catch{return null}}
   function saveLocation(loc){currentLoc=loc;try{localStorage.setItem(LOC_KEY,JSON.stringify(loc))}catch{}}
+  function validTimeZone(zone){try{new Intl.DateTimeFormat('en-US',{timeZone:zone}).format();return true}catch{return false}}
+  function getTimeZone(){try{const zone=localStorage.getItem(TIME_ZONE_KEY);return zone&&validTimeZone(zone)?zone:DEFAULT_TIME_ZONE}catch{return DEFAULT_TIME_ZONE}}
+  function setTimeZone(zone){if(!validTimeZone(zone))return;try{localStorage.setItem(TIME_ZONE_KEY,zone)}catch{}document.dispatchEvent(new CustomEvent('timezonechange',{detail:{timeZone:zone}}))}
+  function timeZoneLabel(zone){
+    const known={'America/New_York':'Eastern Time','America/Chicago':'Central Time','America/Denver':'Mountain Time','America/Phoenix':'Arizona Time','America/Los_Angeles':'Pacific Time','America/Anchorage':'Alaska Time','America/Adak':'Hawaii–Aleutian Time','Pacific/Honolulu':'Hawaii Time','America/Puerto_Rico':'Atlantic Time','Pacific/Guam':'Chamorro Time','Pacific/Pago_Pago':'Samoa Time'};
+    if(known[zone])return known[zone];
+    try{return new Intl.DateTimeFormat('en-US',{timeZone:zone,timeZoneName:'longGeneric'}).formatToParts(new Date()).find(p=>p.type==='timeZoneName')?.value||zone}catch{return zone}
+  }
   function pointCacheKey(lat,lon){return `${lat.toFixed(2)},${lon.toFixed(2)}`}
   function getCachedPoint(lat,lon){try{const all=JSON.parse(localStorage.getItem(POINT_CACHE_KEY)||'{}');const entry=all[pointCacheKey(lat,lon)];if(entry&&Date.now()-entry.ts<POINT_TTL)return entry.point}catch{}return null}
   function setCachedPoint(lat,lon,point){try{const all=JSON.parse(localStorage.getItem(POINT_CACHE_KEY)||'{}');all[pointCacheKey(lat,lon)]={point,ts:Date.now()};const keys=Object.keys(all);if(keys.length>5){keys.sort((a,b)=>all[a].ts-all[b].ts);delete all[keys[0]]}localStorage.setItem(POINT_CACHE_KEY,JSON.stringify(all))}catch{}}
@@ -26,26 +34,44 @@ window.WX = (function(){
       if(saved.source==='geo')refreshGeoInBackground(saved);
       return saved;
     }
-    try{const pos=await geolocate();const loc={...pos,label:null,source:'geo'};saveLocation(loc);return loc}
+    try{const pos=await geolocate();const loc={...pos,label:null,source:'geo',tzPromptPending:true};saveLocation(loc);return loc}
     catch{const loc={...DEFAULT_LOC};currentLoc=loc;return loc}
   }
   async function json(url){let last;for(let i=0;i<2;i++){try{const r=await fetch(url,{cache:'no-store',headers:{Accept:'application/geo+json, application/json'},signal:AbortSignal.timeout(20000)});if(!r.ok)throw new Error(`weather.gov returned ${r.status}`);return await r.json()}catch(e){last=e}}throw last}
 
+  function recommendTimeZone(locationTimeZone,loc){
+    const current=getTimeZone(),saved=getSavedLocation()||loc;
+    if(!loc?.tzPromptPending)return Promise.resolve(current);
+    const clearPending=()=>saveLocation({...saved,tzPromptPending:false});
+    if(!locationTimeZone||locationTimeZone===current){clearPending();return Promise.resolve(current)}
+    return new Promise(resolve=>{
+      const id='time-zone-prompt';el(id)?.remove();
+      document.body.insertAdjacentHTML('beforeend',`<dialog class="timezone-dialog" id="${id}" aria-labelledby="time-zone-prompt-title" aria-describedby="time-zone-prompt-copy"><div class="timezone-dialog-card"><h2 id="time-zone-prompt-title">Switch time zone?</h2><p id="time-zone-prompt-copy">This location uses <strong>${esc(timeZoneLabel(locationTimeZone))}</strong>. Weather times are currently shown in ${esc(timeZoneLabel(current))}.</p><div class="timezone-dialog-actions"><button class="choice-btn active" type="button" data-time-zone-accept>Switch to ${esc(timeZoneLabel(locationTimeZone))}</button><button class="choice-btn" type="button" data-time-zone-decline>Keep ${esc(timeZoneLabel(current))}</button></div></div></dialog>`);
+      const dialog=el(id);let finished=false;
+      function finish(accept){if(finished)return;finished=true;clearPending();if(accept)setTimeZone(locationTimeZone);if(dialog.open)dialog.close();dialog.remove();resolve(getTimeZone())}
+      dialog.querySelector('[data-time-zone-accept]').addEventListener('click',()=>finish(true));
+      dialog.querySelector('[data-time-zone-decline]').addEventListener('click',()=>finish(false));
+      dialog.addEventListener('cancel',e=>{e.preventDefault();finish(false)});
+      dialog.addEventListener('click',e=>{if(e.target===dialog)finish(false)});
+      dialog.showModal();dialog.querySelector('[data-time-zone-accept]').focus();
+    });
+  }
   async function resolvePoint(loc){
     let point=getCachedPoint(loc.lat,loc.lon);
     if(!point){point=await json(`${API}/points/${loc.lat},${loc.lon}`);setCachedPoint(loc.lat,loc.lon,point)}
     const rel=point.properties.relativeLocation?.properties;
     const label=rel?`${rel.city}, ${rel.state}`:loc.label||'Selected location';
     if(loc.label!==label)saveLocation({...loc,label});
-    const tz=point.properties.timeZone||'America/Chicago';
+    const locationTimeZone=point.properties.timeZone||DEFAULT_TIME_ZONE;
+    const tz=await recommendTimeZone(locationTimeZone,loc);
     const officeId=(point.properties.forecastOffice||'').split('/').pop();
     const countyId=(point.properties.county||'').split('/').pop();
     const zoneId=(point.properties.forecastZone||'').split('/').pop();
-    return {point,label,tz,officeId,countyId,zoneId};
+    return {point,label,tz,locationTimeZone,officeId,countyId,zoneId};
   }
 
   function emoji(text){const t=String(text).toLowerCase();return /thunder/.test(t)?'⛈️':/snow|blizzard/.test(t)?'🌨️':/ice|freezing|sleet/.test(t)?'🧊':/rain|shower|drizzle/.test(t)?'🌧️':/fog|mist/.test(t)?'☁️':/partly|mostly sunny/.test(t)?'🌤️':/cloud|overcast/.test(t)?'☁️':/sun|clear/.test(t)?'☀️':'🌡️'}
-  const local=(t,tz,options={})=>t?new Date(t).toLocaleString('en-US',{timeZone:tz||'America/Chicago',month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short',...options}):'Not provided';
+  const local=(t,tz,options={})=>t?new Date(t).toLocaleString('en-US',{timeZone:tz||getTimeZone(),month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short',...options}):'Not provided';
   function maxWind(s){const n=(String(s).match(/\d+/g)||[]).map(Number);return n.length?Math.max(...n):null}
   function gustFrom(text){const m=String(text).match(/gusts?(?: as high as| up to| near| to)?\s*(\d+)\s*mph/i);return m?+m[1]:null}
   function durationMs(iso){const m=iso.match(/P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?)?/);return m?((+m[1]||0)*864e5+(+m[2]||0)*36e5+(+m[3]||0)*6e4):36e5}
@@ -155,7 +181,7 @@ window.WX = (function(){
   const maxTempForDate=(grid,dateKey,tz)=>tempForDate(grid,'maxTemperature',dateKey,tz);
   const minTempForDate=(grid,dateKey,tz)=>tempForDate(grid,'minTemperature',dateKey,tz);
   function dayRows(allPeriods,grid,tz,lat){
-    // Group by calendar date (in the location's timezone) rather than walking
+    // Group by calendar date in the selected display time zone rather than walking
     // day/night pairs positionally, so today's row is always complete even
     // once its daytime period's endTime has passed, and exactly 7 calendar
     // days are returned whenever NWS provides that much data.
@@ -382,7 +408,11 @@ window.WX = (function(){
     const subpage=el('nav-subpage'),subpageContent=el('nav-subpage-content');
     let subpageTrigger=null,subpageCloseTimer=null;
     const subpageCache=new Map();
-    function paintSubpageTheme(){subpageContent.querySelectorAll('[data-choice]').forEach(b=>b.classList.toggle('active',b.dataset.choice===getThemeChoice()))}
+    function paintSubpageSettings(){
+      subpageContent.querySelectorAll('[data-choice]').forEach(b=>b.classList.toggle('active',b.dataset.choice===getThemeChoice()));
+      const select=subpageContent.querySelector('#time-zone-choice'),current=getTimeZone();
+      if(select){if(![...select.options].some(option=>option.value===current))select.add(new Option(timeZoneLabel(current),current),0);select.value=current}
+    }
     async function openSubpage(name,href){
       clearTimeout(subpageCloseTimer);subpageTrigger=el('menu-btn');setDrawer(false,false);
       el('nav-subpage-title').textContent=name[0].toUpperCase()+name.slice(1);subpageContent.innerHTML='<div class="loading" role="status">Loading…</div>';
@@ -398,8 +428,9 @@ window.WX = (function(){
         if(!subpage.open)return;
         subpageContent.innerHTML=content;
         if(name==='settings'){
-          paintSubpageTheme();
-          subpageContent.querySelectorAll('[data-choice]').forEach(b=>b.addEventListener('click',()=>{setTheme(b.dataset.choice);paintThemeBtn();paintSubpageTheme()}));
+          paintSubpageSettings();
+          subpageContent.querySelectorAll('[data-choice]').forEach(b=>b.addEventListener('click',()=>{setTheme(b.dataset.choice);paintThemeBtn();paintSubpageSettings()}));
+          subpageContent.querySelector('#time-zone-choice')?.addEventListener('change',e=>setTimeZone(e.target.value));
         }
       }catch{
         if(!subpage.open)return;
@@ -435,7 +466,7 @@ window.WX = (function(){
       suggestions.classList.remove('hidden');locationInput.setAttribute('aria-expanded','true');activeSuggestion=-1;
     }
     function pick(pos,query){
-      saveLocation({...pos,label:null,source:'search',query});
+      saveLocation({...pos,label:null,source:'search',query,tzPromptPending:true});
       locationInput.value='';closeSuggestions();suggestionMap.clear();
       locationInput.blur();
       onLocationChange();
@@ -474,7 +505,7 @@ window.WX = (function(){
     });
     el('locate-btn').addEventListener('click',async()=>{
       setKicker('Locating…');
-      try{const pos=await geolocate();saveLocation({...pos,label:null,source:'geo'});onLocationChange()}
+      try{const pos=await geolocate();saveLocation({...pos,label:null,source:'geo',tzPromptPending:true});onLocationChange()}
       catch{setKicker('Location access denied or unavailable')}
     });
     return {setKicker};
@@ -666,7 +697,7 @@ window.WX = (function(){
     });
   }
 
-  return {API,DEFAULT_LOC,el,esc,getSavedLocation,saveLocation,geolocate,geocodeSearch,resolveLocation,resolvePoint,json,
+  return {API,DEFAULT_LOC,DEFAULT_TIME_ZONE,el,esc,getSavedLocation,saveLocation,getTimeZone,setTimeZone,timeZoneLabel,geolocate,geocodeSearch,resolveLocation,resolvePoint,json,
     emoji,local,maxWind,gustFrom,durationMs,gridValues,kphToMph,cToF,product,
     currentObservation,currentHeadline,alertLine,dayKey,startOfDay,hourLabel,dayPartLabel,dayRows,uvForDate,humidityForDate,gustForDate,maxTempForDate,minTempForDate,dayMetrics,metricsHTML,
     todayBrief,futureBrief,renderFutureCardHTML,loadTodayCard,sunMetrics,

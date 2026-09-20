@@ -29,6 +29,24 @@
           <button class="choice-btn" type="button" data-choice="system">System</button>
         </div>
       </article>
+      <article class="brief">
+        <h3>Time zone</h3>
+        <p>All forecast dates and times use this setting. Central Time is the default on a first visit.</p>
+        <label class="sr-only" for="time-zone-choice">Weather time zone</label>
+        <select class="setting-select" id="time-zone-choice">
+          <option value="America/New_York">Eastern Time</option>
+          <option value="America/Chicago">Central Time</option>
+          <option value="America/Denver">Mountain Time</option>
+          <option value="America/Phoenix">Arizona Time</option>
+          <option value="America/Los_Angeles">Pacific Time</option>
+          <option value="America/Anchorage">Alaska Time</option>
+          <option value="America/Adak">Hawaii–Aleutian Time</option>
+          <option value="Pacific/Honolulu">Hawaii Time</option>
+          <option value="America/Puerto_Rico">Atlantic Time</option>
+          <option value="Pacific/Guam">Chamorro Time</option>
+          <option value="Pacific/Pago_Pago">Samoa Time</option>
+        </select>
+      </article>
     </div>
   </main>
   <script src="/assets/weather-core.js"></script>
@@ -44,6 +62,13 @@
     document.querySelectorAll('#theme-choice-group .choice-btn').forEach(b=>{
       b.addEventListener('click',()=>{WX.setTheme(b.dataset.choice);paintChoice()});
     });
+    function paintTimeZone(){
+      const select=document.getElementById('time-zone-choice'),current=WX.getTimeZone();
+      if(![...select.options].some(option=>option.value===current))select.add(new Option(WX.timeZoneLabel(current),current),0);
+      select.value=current;
+    }
+    paintTimeZone();
+    document.getElementById('time-zone-choice').addEventListener('change',e=>WX.setTimeZone(e.target.value));
     if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
   </script>
 </body>

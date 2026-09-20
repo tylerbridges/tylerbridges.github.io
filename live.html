@@ -46,13 +46,14 @@
     let chartData=null,currentLoc=null;
     const header=mountHeader('today',()=>load());
     function draw(svg,series,domain,yTitle){
-      const w=Math.max(320,svg.clientWidth||320),h=215,m={l:64,r:24,t:30,b:28},span=chartData.spanHours||48,
+      const w=Math.max(320,svg.clientWidth||320),h=215,m={l:64,r:32,t:30,b:28},span=chartData.spanHours||48,
         x=i=>m.l+i*(w-m.l-m.r)/span,
         y=v=>m.t+(domain[1]-v)*(h-m.t-m.b)/(domain[1]-domain[0]),
         ns='http://www.w3.org/2000/svg';
       svg.setAttribute('viewBox',`0 0 ${w} ${h}`);svg.innerHTML='';
-      const add=(tag,a,t)=>{const n=document.createElementNS(ns,tag);Object.entries(a||{}).forEach(([k,v])=>n.setAttribute(k,v));if(t!=null)n.textContent=t;svg.appendChild(n);return n};
-      const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+      const make=(parent,tag,a,t)=>{const n=document.createElementNS(ns,tag);Object.entries(a||{}).forEach(([k,v])=>n.setAttribute(k,v));if(t!=null)n.textContent=t;parent.appendChild(n);return n};
+      const add=(tag,a,t)=>make(svg,tag,a,t),css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+      const markerLabel=date=>new Intl.DateTimeFormat('en-US',{timeZone:chartData.tz,month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}).format(date).replace(',',' ·').replace(/\b(AM|PM)\b/g,value=>value.toLowerCase());
       add('rect',{x:m.l,y:m.t,width:w-m.l-m.r,height:h-m.t-m.b,fill:'none',stroke:css('--line')});
       for(let j=0;j<=4;j++){const v=domain[0]+(domain[1]-domain[0])*j/4,yy=y(v);add('text',{x:m.l-7,y:yy+4,'text-anchor':'end',fill:css('--muted'),'font-size':11},Math.round(v))}
       // Dayparts sit above the plot so the six-hour clock ticks below stay
@@ -67,10 +68,23 @@
         if(t.i>0&&t.i<span)add('line',{x1:xx,x2:xx,y1:m.t,y2:h-m.b,stroke:t.day?css('--line-strong'):css('--line'),'stroke-dasharray':t.day?'2,3':'1,4'});
         add('text',{x:xx,y:h-6,'text-anchor':'middle',fill:t.day?css('--blue'):css('--muted'),'font-size':10,'font-weight':t.day?700:500},t.label);
       });
-      const current=new Date(),nowOffset=(current-chartData.windowStart)/3600000;
-      if(nowOffset>=0&&nowOffset<=span){const nowX=x(nowOffset),nowLabel=new Intl.DateTimeFormat('en-US',{timeZone:chartData.tz,hour:'numeric',minute:'2-digit'}).format(current).toLowerCase();add('line',{x1:nowX,x2:nowX,y1:m.t,y2:h-m.b,stroke:css('--orange'),'stroke-dasharray':'2,3'});add('text',{x:nowX+4,y:m.t+12,'text-anchor':'start',fill:css('--orange'),'font-size':10,'font-weight':700},nowLabel)}
       add('text',{x:12,y:(m.t+h-m.b)/2+4,'text-anchor':'start',fill:css('--muted'),'font-size':11},yTitle);
-      series.forEach(s=>{let d='',on=false;s.values.forEach((v,i)=>{if(v==null){on=false;return}d+=(on?'L':'M')+x(i).toFixed(1)+' '+y(v).toFixed(1)+' ';on=true});add('path',{d,fill:'none',stroke:css(s.color),'stroke-width':2.6,'stroke-linejoin':'round'})})
+      series.forEach(s=>{let d='',on=false;s.values.forEach((v,i)=>{if(v==null){on=false;return}d+=(on?'L':'M')+x(i).toFixed(1)+' '+y(v).toFixed(1)+' ';on=true});add('path',{d,fill:'none',stroke:css(s.color),'stroke-width':2.6,'stroke-linejoin':'round'})});
+      const current=new Date(),nowOffset=(current-chartData.windowStart)/3600000;
+      let currentMarker=null;
+      if(nowOffset>=0&&nowOffset<=span){const nowX=x(nowOffset);currentMarker=add('g',{'aria-hidden':'true','pointer-events':'none'});make(currentMarker,'line',{x1:nowX,x2:nowX,y1:m.t,y2:h-m.b,stroke:css('--orange'),'stroke-dasharray':'2,3'});make(currentMarker,'text',{x:nowX+4,y:m.t+12,'text-anchor':'start',fill:css('--orange'),'font-size':10,'font-weight':700},markerLabel(current))}
+      const scrubMarker=add('g',{'aria-hidden':'true','pointer-events':'none',display:'none'}),scrubLine=make(scrubMarker,'line',{y1:m.t,y2:h-m.b,stroke:css('--muted'),'stroke-dasharray':'2,3'}),scrubText=make(scrubMarker,'text',{y:m.t+12,fill:css('--muted'),'font-size':10,'font-weight':700});
+      const hit=add('rect',{x:m.l,y:m.t,width:w-m.l-m.r,height:h-m.t-m.b,fill:'transparent','pointer-events':'all',cursor:'crosshair','aria-hidden':'true'});
+      function showScrub(clientX){const bounds=svg.getBoundingClientRect(),px=(clientX-bounds.left)*w/bounds.width,offset=Math.max(0,Math.min(span,(px-m.l)*span/(w-m.l-m.r))),xx=x(offset),anchor=offset>span-8?'end':'start',date=new Date(chartData.windowStart.getTime()+offset*3600000);scrubLine.setAttribute('x1',xx);scrubLine.setAttribute('x2',xx);scrubText.setAttribute('x',xx+(anchor==='end'?-4:4));scrubText.setAttribute('text-anchor',anchor);scrubText.textContent=markerLabel(date);scrubMarker.removeAttribute('display');currentMarker?.setAttribute('display','none')}
+      function restoreNow(){scrubMarker.setAttribute('display','none');currentMarker?.removeAttribute('display')}
+      hit.addEventListener('pointermove',e=>{if(e.pointerType!=='touch')showScrub(e.clientX)});
+      hit.addEventListener('pointerleave',e=>{if(e.pointerType!=='touch')restoreNow()});
+      let holdTimer=null,touchScrubbing=false,touchStart=null;
+      hit.addEventListener('touchstart',e=>{if(e.touches.length!==1)return;const touch=e.touches[0],startX=touch.clientX;touchStart={x:startX,y:touch.clientY};clearTimeout(holdTimer);holdTimer=setTimeout(()=>{touchScrubbing=true;showScrub(startX);try{navigator.vibrate?.(10)}catch{}},500)},{passive:true});
+      hit.addEventListener('touchmove',e=>{if(!touchStart||e.touches.length!==1)return;const touch=e.touches[0];if(!touchScrubbing&&Math.hypot(touch.clientX-touchStart.x,touch.clientY-touchStart.y)>10){clearTimeout(holdTimer);touchStart=null;return}if(touchScrubbing){e.preventDefault();showScrub(touch.clientX)}},{passive:false});
+      const endTouchScrub=e=>{clearTimeout(holdTimer);if(touchScrubbing)e.preventDefault();touchScrubbing=false;touchStart=null;restoreNow()};
+      hit.addEventListener('contextmenu',e=>{if(touchScrubbing)e.preventDefault()});
+      hit.addEventListener('touchend',endTouchScrub,{passive:false});hit.addEventListener('touchcancel',endTouchScrub,{passive:false})
     }
     function redraw(){if(!chartData||!chartData.temp.length){['temp-chart','pop-chart','wind-chart'].forEach(id=>el(id).innerHTML='');return;}const temps=chartData.temp.filter(v=>v!=null),maxT=Math.max(...temps,80),minT=Math.min(...temps,30);draw(el('temp-chart'),[{values:chartData.temp,color:'--blue'}],[Math.floor((minT-5)/5)*5,Math.ceil((maxT+5)/5)*5],'°F');draw(el('pop-chart'),[{values:chartData.pop,color:'--cyan'}],[0,100],'%');const vals=[...chartData.wind,...chartData.gust].filter(v=>v!=null),maxW=Math.max(20,...vals);draw(el('wind-chart'),[{values:chartData.wind,color:'--green'},{values:chartData.gust,color:'--orange'}],[0,Math.ceil((maxW+3)/5)*5],'mph')}
     let busy=false,lastLoad=0,hasLoaded=false;
@@ -105,7 +119,7 @@
       for(let i=0,start=0;i<=dayParts.length;i++){
         if(i===dayParts.length||dayParts[i]!==dayParts[start]){segments.push({start,end:i-1,label:dayParts[start]});start=i}
       }
-      const timeTicks=Array.from({length:8},(_,n)=>{const i=n*6;return{i,label:i===0?'Today':i===24?'Tomorrow':hourLabel(times[i],tz),day:i%24===0}});
+      const timeTicks=Array.from({length:9},(_,n)=>{const i=n*6;return{i,label:i===0?'Today':i===24?'Tomorrow':i===48?new Intl.DateTimeFormat('en-US',{timeZone:tz,weekday:'short'}).format(times[i]):hourLabel(times[i],tz),day:i%24===0}});
       chartData={temp:hours.map(x=>x?.temperature??null),pop:hours.map(x=>x?.probabilityOfPrecipitation?.value??null),wind:hours.map(x=>x?maxWind(x.windSpeed):null),gust,segments,timeTicks,windowStart,tz,spanHours:48};
       el('updated').textContent=`Updated ${local(now,tz)}`;el('updated').classList.remove('hidden');
       el('loading').classList.add('hidden');el('content').classList.remove('hidden');requestAnimationFrame(redraw);hasLoaded=true;
@@ -115,6 +129,7 @@
     function autoRefresh(){if(document.visibilityState==='visible'&&Date.now()-lastLoad>5*60000)load()}
     window.addEventListener('pageshow',e=>{if(e.persisted)load()});
     document.addEventListener('visibilitychange',autoRefresh);
+    document.addEventListener('timezonechange',()=>load());
     window.addEventListener('focus',autoRefresh);
     setInterval(()=>{if(document.visibilityState==='visible')load()},10*60000);
     setInterval(()=>{if(document.visibilityState==='visible')redraw()},60000);

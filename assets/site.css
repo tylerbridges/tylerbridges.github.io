@@ -11,6 +11,7 @@
 .last-updated{margin:.45rem 0 0;color:var(--muted);font-size:.78rem;font-weight:400;line-height:1.5}
 html,body{overscroll-behavior-y:none;scroll-behavior:auto;touch-action:pan-y pinch-zoom}
 *{box-sizing:border-box}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",sans-serif;line-height:1.45}
 .shell{width:min(920px,100%);margin:auto;padding:calc(env(safe-area-inset-top) + .4rem) max(1rem,env(safe-area-inset-right)) calc(env(safe-area-inset-bottom) + 2rem) max(1rem,env(safe-area-inset-left))}
 header{display:flex;flex-direction:column;gap:.55rem;position:sticky;top:0;z-index:5;padding:.5rem 0;background:color-mix(in srgb,var(--bg) 82%,transparent);backdrop-filter:saturate(180%) blur(16px);-webkit-backdrop-filter:saturate(180%) blur(16px)}
@@ -33,7 +34,7 @@ h3{font-size:1rem;margin:0}
 .day-title{font-weight:750}
 .now-line{color:var(--text);font-size:.95rem;font-weight:750;margin:.08rem 0 0;text-align:justify;text-align-last:left}
 .condition{color:var(--muted);font-size:.9rem;margin:.15rem 0 0;font-style:italic;text-align:justify;text-align-last:left}
-.metrics{display:flex;flex-wrap:wrap;gap:.36rem;margin-top:.15rem}
+.metrics{display:flex;flex-wrap:wrap;gap:.36rem;margin-top:.4rem}
 .metric{display:inline-flex;gap:.25rem;align-items:center;white-space:nowrap;background:var(--surface-2);border-radius:999px;padding:.26rem .65rem;color:var(--text);font-size:.75rem}
 .metric b{font-weight:750}
 .credit-list{display:grid;gap:.8rem}
@@ -43,11 +44,18 @@ h3{font-size:1rem;margin:0}
 .choice-group{display:flex;gap:.5rem;margin-top:.6rem}
 .choice-btn{flex:1;padding:.6rem;border-radius:10px;border:1px solid var(--line);background:var(--surface-2);color:var(--text);font-weight:650;font-size:.85rem;transition:background-color .15s ease-out,border-color .15s ease-out,color .15s ease-out}
 .choice-btn.active{background:var(--blue);color:#fff;border-color:var(--blue)}
+.setting-select{width:100%;margin-top:.65rem;padding:.62rem .75rem;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);color:var(--text);font:inherit;font-size:.88rem}
+.timezone-dialog{width:min(420px,calc(100% - 2rem));padding:0;border:0;border-radius:18px;background:var(--surface);color:var(--text);box-shadow:var(--shadow)}
+.timezone-dialog::backdrop{background:rgba(0,0,0,.58);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+.timezone-dialog-card{padding:1.15rem}
+.timezone-dialog-card h2{margin:0 0 .5rem;font-size:1.15rem}
+.timezone-dialog-card p{margin:0;color:var(--muted);font-size:.9rem}
+.timezone-dialog-actions{display:grid;gap:.5rem;margin-top:1rem}
 hr{border:0;border-top:1px solid var(--line);margin:.85rem 0}
 .charts{display:grid;gap:1.35rem}
 .chart{margin:0}
 .chart h3{margin-bottom:.25rem}
-.chart svg{display:block;width:100%;height:215px}
+.chart svg{display:block;width:100%;height:215px;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .legend{display:flex;gap:1rem;flex-wrap:wrap;margin-left:64px;color:var(--muted);font-size:.8rem}
 .swatch{width:.95rem;height:.16rem;display:inline-block;vertical-align:middle;margin-right:.3rem}
 .note{color:var(--muted);font-size:.8rem}

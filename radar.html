@@ -77,7 +77,7 @@
   <script src="/assets/weather-core.js"></script>
   <script>
   (()=>{
-    const {el,resolveLocation,resolvePoint,mountHeader,mountPullToRefresh,minimalDarkRadarStyle}=WX;
+    const {el,resolveLocation,resolvePoint,getTimeZone,mountHeader,mountPullToRefresh,minimalDarkRadarStyle}=WX;
     const header=mountHeader('radar',()=>centerOnLocation());
 
     // RainViewer serves the same NEXRAD mosaic the NWS publishes, but as plain
@@ -129,8 +129,8 @@
     const PLAY_ICON='<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>';
     const PAUSE_ICON='<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor"/></svg>';
 
-    const fmtTime=ms=>new Date(ms).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
-    const fmtFull=ms=>new Date(ms).toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+    const fmtTime=ms=>new Date(ms).toLocaleTimeString([],{timeZone:getTimeZone(),hour:'numeric',minute:'2-digit'});
+    const fmtFull=ms=>new Date(ms).toLocaleString([],{timeZone:getTimeZone(),month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'});
     const tileUrl=frame=>`${rvHost}${frame.path}/${TILE_SIZE}/{z}/{x}/{y}/${COLOR_SCHEME}/${TILE_OPTS}.png`;
 
     function updateStatus(checkedNow){
@@ -247,7 +247,7 @@
       if(typeof maplibregl==='undefined'){el('loading').classList.add('hidden');el('error').classList.remove('hidden');el('error').textContent='Map library failed to load. Check your connection and reload.';return}
       resolveLocation().then(loc=>{
         header.setKicker(loc.label||'Locating…');
-        resolvePoint(loc).then(({label})=>header.setKicker(label)).catch(()=>header.setKicker(loc.label||'Your location'));
+        resolvePoint(loc).then(({label})=>{header.setKicker(label);if(frames.length){updateStatus(false);showFrame(idx)}}).catch(()=>header.setKicker(loc.label||'Your location'));
         const latlng=[loc.lat,loc.lon];
         if(!map){
           el('loading').classList.add('hidden');el('content').classList.remove('hidden');
@@ -271,6 +271,7 @@
       paintSpeedBtn();
       if(playing)play();
     });
+    document.addEventListener('timezonechange',()=>{if(frames.length){updateStatus(false);showFrame(idx)}});
     let lastRefresh=0;
     function refreshFrames(force){
       if(!map)return Promise.resolve();
