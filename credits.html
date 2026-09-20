@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <script>try{if(localStorage.getItem('weather-theme')==='light')document.documentElement.setAttribute('data-theme','light')}catch{}</script>
+  <script>try{var t=localStorage.getItem('weather-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);else if(t!=='system')document.documentElement.setAttribute('data-theme','dark')}catch{}</script>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#000000">
@@ -12,15 +12,10 @@
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="stylesheet" href="/assets/site.css">
   <title>Credits — Rochester Weather</title>
-  <style>
-    .credit-list{display:grid;gap:.8rem}
-    .credit-list h3{color:var(--blue);font-size:1.05rem}
-    .credit-list p{margin:.4rem 0 0;color:var(--muted);font-size:.9rem}
-    .credit-list a{color:var(--blue)}
-  </style>
 </head>
 <body>
   <main class="shell">
+    <header id="site-header"></header>
     <div class="page-head">
       <h1>Credits</h1>
     </div>
@@ -48,6 +43,7 @@
   </main>
   <script src="/assets/weather-core.js"></script>
   <script>
+    WX.mountHeader('',()=>{location.href='/'});
     WX.mountFooterNav('');
     if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
   </script>
