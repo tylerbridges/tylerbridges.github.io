@@ -185,6 +185,33 @@ window.WX = (function(){
     ].filter(Boolean);
   }
   function metricsHTML(pairs){return pairs.map(([k,v])=>`<span class="metric"><b>${esc(k)}:</b> ${v}</span>`).join('')}
+  // Sunrise/sunset equation (Wikipedia "Sunrise equation" / NOAA solar
+  // calculator), accurate to within a minute or two — no API, no key,
+  // computed entirely from lat/lon/date the way Apple Weather's astro data
+  // is, just without needing a bundled library like SunCalc.
+  function sunTimes(date,lat,lon){
+    const rad=Math.PI/180;
+    const toJulian=d=>d.getTime()/86400000+2440587.5;
+    const fromJulian=j=>new Date((j-2440587.5)*86400000);
+    const J2000=2451545.0;
+    const n=Math.ceil(toJulian(date)-J2000+0.0008);
+    const meanSolarNoon=n-lon/360;
+    const M=(357.5291+0.98560028*meanSolarNoon)%360;
+    const C=1.9148*Math.sin(M*rad)+0.02*Math.sin(2*M*rad)+0.0003*Math.sin(3*M*rad);
+    const lambda=(M+C+180+102.9372)%360;
+    const Jtransit=J2000+meanSolarNoon+0.0053*Math.sin(M*rad)-0.0069*Math.sin(2*lambda*rad);
+    const sinDelta=Math.sin(lambda*rad)*Math.sin(23.44*rad);
+    const cosH=(Math.sin(-0.83*rad)-Math.sin(lat*rad)*sinDelta)/(Math.cos(lat*rad)*Math.cos(Math.asin(sinDelta)));
+    if(cosH>1||cosH<-1)return{sunrise:null,sunset:null}; // polar night / midnight sun
+    const H=Math.acos(cosH)/rad;
+    return{sunrise:fromJulian(Jtransit-H/360),sunset:fromJulian(Jtransit+H/360)};
+  }
+  function sunMetrics(date,lat,lon,tz){
+    if(lat==null||lon==null||!date)return[];
+    const{sunrise,sunset}=sunTimes(date,lat,lon);
+    const fmt=d=>new Intl.DateTimeFormat('en-US',{timeZone:tz,hour:'numeric',minute:'2-digit'}).format(d);
+    return[sunrise?['Sunrise',fmt(sunrise)]:null,sunset?['Sunset',fmt(sunset)]:null].filter(Boolean);
+  }
   // Punchy one-line summaries replacing the old Today/Tonight (or Day/Night)
   // bullet breakdown. todayBrief leads with the live observation since "now"
   // is known; futureBrief leads with the H/L range since a future day has no
@@ -205,11 +232,11 @@ window.WX = (function(){
   function renderFutureCardHTML(title,d,n,metrics){
     return `<article class="brief"><h3>${esc(title)}</h3><hr><p class="condition">${esc(futureBrief(d,n))}</p><div class="metrics">${metrics}</div></article>`;
   }
-  function renderDaysHTML(rows,tz){
+  function renderDaysHTML(rows,tz,loc){
     return rows.map(r=>{
       const d=r.day,n=r.night,b=d||n;
       const title=r.date.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric',timeZone:tz});
-      const metrics=metricsHTML(dayMetrics(d,n,r.uv,r.humidity,r.gust,r.hi,r.lo));
+      const metrics=metricsHTML([...dayMetrics(d,n,r.uv,r.humidity,r.gust,r.hi,r.lo),...sunMetrics(r.date,loc?.lat,loc?.lon,tz)]);
       return `<article class="day"><div class="day-title"><span aria-hidden="true">${emoji(b.shortForecast)}</span> ${esc(title)}</div><hr><p class="condition">${esc(futureBrief(d,n))}</p><div class="metrics">${metrics}</div></article>`;
     }).join('');
   }
@@ -218,7 +245,7 @@ window.WX = (function(){
   // Alerts section, fetched and rendered by this one function.
   async function loadTodayCard(container,title,loc,point,officeId,todayPeriods,grid,tz){
     const todayKey=dayKey(tz,new Date());
-    const metrics=metricsHTML(dayMetrics(todayPeriods.day,todayPeriods.night,uvForDate(grid,todayKey,tz),humidityForDate(grid,todayKey,tz),gustForDate(grid,todayKey,tz),maxTempForDate(grid,todayKey,tz),minTempForDate(grid,todayKey,tz)));
+    const metrics=metricsHTML([...dayMetrics(todayPeriods.day,todayPeriods.night,uvForDate(grid,todayKey,tz),humidityForDate(grid,todayKey,tz),gustForDate(grid,todayKey,tz),maxTempForDate(grid,todayKey,tz),minTempForDate(grid,todayKey,tz)),...sunMetrics(new Date(),loc.lat,loc.lon,tz)]);
     const current=await currentObservation(point).catch(()=>null);
     const currentText=current?currentHeadline(current.observation):null;
     const brief=todayBrief(currentText,todayPeriods.day,todayPeriods.night);
@@ -559,6 +586,6 @@ window.WX = (function(){
   return {API,DEFAULT_LOC,el,esc,getSavedLocation,saveLocation,geolocate,geocodeSearch,resolveLocation,resolvePoint,json,
     emoji,local,maxWind,gustFrom,durationMs,gridValues,kphToMph,cToF,product,
     currentObservation,currentHeadline,alertLine,dayKey,startOfDay,hourLabel,dayPartLabel,dayRows,uvForDate,humidityForDate,gustForDate,maxTempForDate,minTempForDate,dayMetrics,metricsHTML,
-    todayBrief,futureBrief,renderFutureCardHTML,loadTodayCard,
+    todayBrief,futureBrief,renderFutureCardHTML,loadTodayCard,sunMetrics,
     findTodayPeriods,renderDaysHTML,mountHeader,mountFooterNav,mountPullToRefresh,getTheme,setTheme,getThemeChoice,recolorStyleDark,minimalDarkRadarStyle};
 })();
