@@ -274,11 +274,13 @@ window.WX = (function(){
     return `<article class="brief"><h3>${esc(title)}</h3><hr><p class="condition">${esc(futureBrief(d,n))}</p><div class="metrics">${metrics}</div></article>`;
   }
   function renderDaysHTML(rows,tz,loc){
-    return rows.map(r=>{
+    return rows.map((r,index)=>{
       const d=r.day,n=r.night,b=d||n;
-      const title=r.date.toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric',timeZone:tz});
+      const date=r.date.toLocaleDateString('en-US',{month:'short',day:'numeric',timeZone:tz});
+      const day=index===0?'Tomorrow':r.date.toLocaleDateString('en-US',{weekday:'long',timeZone:tz});
+      const title=`${emoji(b.shortForecast)} ${day} · ${date}`;
       const metrics=metricsHTML([...dayMetrics(d,n,r.uv,r.humidity,r.gust,r.hi,r.lo),...sunMetrics(r.date,loc?.lat,loc?.lon,tz)]);
-      return `<article class="day"><div class="day-title"><span aria-hidden="true">${emoji(b.shortForecast)}</span> ${esc(title)}</div><hr><p class="condition">${esc(futureBrief(d,n))}</p><div class="metrics">${metrics}</div></article>`;
+      return renderFutureCardHTML(title,d,n,metrics);
     }).join('');
   }
   // Shared by the Today page and the 7-day page's first (today) card so the

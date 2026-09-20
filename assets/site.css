@@ -25,13 +25,11 @@ h2{font-size:1.25rem;margin:1.8rem 0 .75rem}
 h3{font-size:1rem;margin:0}
 .briefs{display:grid;gap:.8rem}
 .brief{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:1rem 1.05rem;box-shadow:var(--shadow)}
-.brief h3,.day-title{color:var(--blue);font-size:1.15rem}
+.brief h3{color:var(--blue);font-size:1.15rem}
 #alerts{margin-top:.55rem}
 #alerts>p{margin:0}
 .status{margin-top:.7rem;color:var(--muted);font-size:.8rem}
 .days{border:0;display:grid;gap:.8rem}
-.day{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:1rem 1.05rem}
-.day-title{font-weight:750}
 .now-line{color:var(--text);font-size:.95rem;font-weight:750;margin:.08rem 0 0;text-align:justify;text-align-last:left}
 .condition{color:var(--muted);font-size:.9rem;margin:.15rem 0 0;font-style:italic;text-align:justify;text-align-last:left}
 .metrics{display:flex;flex-wrap:wrap;gap:.36rem;margin-top:.4rem}

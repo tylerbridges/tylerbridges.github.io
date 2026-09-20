@@ -21,15 +21,15 @@
   <main class="shell">
     <header id="site-header"></header>
     <div class="page-head">
-      <p class="kicker" id="kicker">Locating…</p>
-      <h1>7-Day Forecast</h1>
+      <p class="kicker" id="kicker" hidden></p>
+      <h1 id="headline">Locating…</h1>
+      <p class="last-updated hidden" id="updated" aria-live="polite"></p>
     </div>
     <div id="loading" class="loading" role="status" aria-live="polite">Loading forecast…</div>
     <div id="error" class="error hidden" role="alert"></div>
     <div id="content" class="hidden">
       <div id="today-card"></div>
       <div class="days" id="days"></div>
-      <p class="status" id="updated"></p>
     </div>
   </main>
   <script src="/assets/weather-core.js"></script>
@@ -41,7 +41,7 @@
     async function load(){if(busy)return;busy=true;lastLoad=Date.now();if(!hasLoaded){el('loading').classList.remove('hidden');el('error').classList.add('hidden');el('content').classList.add('hidden')}else{el('content').classList.add('refreshing')}try{
       const loc=await resolveLocation();
       const {point,label,tz,officeId}=await resolvePoint(loc);
-      header.setKicker(label);
+      header.setKicker('');el('headline').textContent=label;
       const grid=await json(point.properties.forecastGridData).catch(()=>({properties:{}}));
       const forecast=await json(point.properties.forecast);
       const now=new Date(),freshPeriods=forecast.properties.periods.filter(p=>new Date(p.endTime)>now);
@@ -51,7 +51,7 @@
       const todayTitle=`${emoji((today.day||today.night).shortForecast)} Today · ${now.toLocaleDateString('en-US',{timeZone:tz,month:'short',day:'numeric'})}`;
       await loadTodayCard(el('today-card'),todayTitle,loc,point,officeId,today,grid,tz);
       el('days').innerHTML=renderDaysHTML(rows.slice(1),tz,loc);
-      el('updated').textContent=`Forecast issued ${local(forecast.properties.updateTime,tz)} · Refreshed ${local(now,tz)}.`;
+      el('updated').textContent=`Updated ${local(now,tz)}`;el('updated').classList.remove('hidden');
       el('loading').classList.add('hidden');el('content').classList.remove('hidden');hasLoaded=true;
     }catch(e){
       if(!hasLoaded){el('loading').classList.add('hidden');el('error').classList.remove('hidden');el('error').textContent=e.message}
