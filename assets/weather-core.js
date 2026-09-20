@@ -454,17 +454,6 @@ window.WX = (function(){
     return {setKicker};
   }
 
-  function mountFooterNav(active){
-    const footer=el('site-footer-nav');
-    if(!footer)return;
-    footer.innerHTML=`
-      <nav class="tabs foot-tabs" aria-label="Pages">
-        <a href="/" class="tab${active==='today'?' active':''}">Today</a>
-        <a href="/forecast.html" class="tab${active==='forecast'?' active':''}">7-Day</a>
-        <a href="/radar.html" class="tab${active==='radar'?' active':''}">Radar</a>
-      </nav>`;
-  }
-
   // Turns any light MapLibre/OpenMapTiles-schema style into a dark one by
   // inverting the lightness of every paint color it finds, recursively (so
   // colors nested inside zoom-interpolated expressions get caught too), while
@@ -655,5 +644,5 @@ window.WX = (function(){
     emoji,local,maxWind,gustFrom,durationMs,gridValues,kphToMph,cToF,product,
     currentObservation,currentHeadline,alertLine,dayKey,startOfDay,hourLabel,dayPartLabel,dayRows,uvForDate,humidityForDate,gustForDate,maxTempForDate,minTempForDate,dayMetrics,metricsHTML,
     todayBrief,futureBrief,renderFutureCardHTML,loadTodayCard,sunMetrics,
-    findTodayPeriods,renderDaysHTML,mountHeader,mountFooterNav,mountPullToRefresh,getTheme,setTheme,getThemeChoice,recolorStyleDark,minimalDarkRadarStyle};
+    findTodayPeriods,renderDaysHTML,mountHeader,mountPullToRefresh,getTheme,setTheme,getThemeChoice,recolorStyleDark,minimalDarkRadarStyle};
 })();

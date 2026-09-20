@@ -24,6 +24,7 @@
     <div class="page-head">
       <p class="kicker" id="kicker" style="display:none"></p>
       <h1 id="headline">Locating…</h1>
+      <p class="last-updated hidden" id="updated" aria-live="polite"></p>
     </div>
     <div id="loading" class="loading" role="status" aria-live="polite">Refreshing from weather.gov…</div>
     <div id="error" class="error hidden" role="alert"></div>
@@ -33,10 +34,7 @@
         <div id="tomorrow-card"></div>
       </section>
       <p class="see-more"><a href="/forecast.html">See the full 7-day forecast →</a></p>
-      <section aria-labelledby="charts-title"><h2 id="charts-title">Next 48 hours</h2><div class="charts"><figure class="chart"><h3>Temperature</h3><svg id="temp-chart" role="img" aria-label="Hourly temperature in degrees Fahrenheit"></svg><div class="legend"><span><i class="swatch" style="background:var(--blue)"></i>Temperature</span></div></figure><figure class="chart"><h3>Precipitation probability</h3><svg id="pop-chart" role="img" aria-label="Hourly precipitation probability in percent"></svg><div class="legend"><span><i class="swatch" style="background:var(--cyan)"></i>Probability</span></div></figure><figure class="chart"><h3>Wind and gusts</h3><svg id="wind-chart" role="img" aria-label="Hourly sustained wind and gusts in miles per hour"></svg><div class="legend"><span><i class="swatch" style="background:var(--green)"></i>Sustained</span><span><i class="swatch" style="background:var(--orange)"></i>Gust</span></div></figure></div></section>
-      <p class="status" id="updated"></p>
-      <p class="install">On iPhone: open this page in Safari, tap Share, then Add to Home Screen.</p>
-      <div id="site-footer-nav"></div>
+      <section aria-labelledby="charts-title"><h2 id="charts-title">Next 48 hours</h2><div class="charts"><figure class="chart"><h3>Temperature</h3><svg id="temp-chart" role="img" aria-label="Hourly temperature in degrees Fahrenheit"></svg></figure><figure class="chart"><h3>Precipitation probability</h3><svg id="pop-chart" role="img" aria-label="Hourly precipitation probability in percent"></svg></figure><figure class="chart"><h3>Wind and gusts</h3><svg id="wind-chart" role="img" aria-label="Hourly sustained wind and gusts in miles per hour"></svg><div class="legend"><span><i class="swatch" style="background:var(--green)"></i>Sustained</span><span><i class="swatch" style="background:var(--orange)"></i>Gust</span></div></figure></div></section>
     </div>
   </main>
   <script src="/assets/weather-core.js"></script>
@@ -44,12 +42,11 @@
   (()=>{
     const {el,resolveLocation,resolvePoint,json,emoji,local,maxWind,gridValues,kphToMph,
       dayKey,startOfDay,hourLabel,dayPartLabel,dayRows,uvForDate,humidityForDate,gustForDate,maxTempForDate,minTempForDate,dayMetrics,metricsHTML,sunMetrics,
-      findTodayPeriods,renderFutureCardHTML,loadTodayCard,mountHeader,mountFooterNav,mountPullToRefresh,DEFAULT_LOC}=WX;
+      findTodayPeriods,renderFutureCardHTML,loadTodayCard,mountHeader,mountPullToRefresh,DEFAULT_LOC}=WX;
     let chartData=null,currentLoc=null;
     const header=mountHeader('today',()=>load());
-    mountFooterNav('today');
     function draw(svg,series,domain,yTitle){
-      const w=Math.max(320,svg.clientWidth||320),h=215,m={l:48,r:12,t:30,b:28},span=chartData.spanHours||48,
+      const w=Math.max(320,svg.clientWidth||320),h=215,m={l:64,r:24,t:30,b:28},span=chartData.spanHours||48,
         x=i=>m.l+i*(w-m.l-m.r)/span,
         y=v=>m.t+(domain[1]-v)*(h-m.t-m.b)/(domain[1]-domain[0]),
         ns='http://www.w3.org/2000/svg';
@@ -66,14 +63,13 @@
         add('text',{x:cx,y:15,'text-anchor':'middle',fill:css('--muted'),'font-size':10,'font-weight':600},seg.label);
       });
       (chartData.timeTicks||[]).forEach(t=>{
-        const xx=x(t.i),anchor=t.i===0?'start':t.i===span?'end':'middle';
+        const xx=x(t.i);
         if(t.i>0&&t.i<span)add('line',{x1:xx,x2:xx,y1:m.t,y2:h-m.b,stroke:t.day?css('--line-strong'):css('--line'),'stroke-dasharray':t.day?'2,3':'1,4'});
-        add('text',{x:xx,y:h-6,'text-anchor':anchor,fill:t.day?css('--blue'):css('--muted'),'font-size':10,'font-weight':t.day?700:500},t.label);
+        add('text',{x:xx,y:h-6,'text-anchor':'middle',fill:t.day?css('--blue'):css('--muted'),'font-size':10,'font-weight':t.day?700:500},t.label);
       });
-      const nowX=x(chartData.nowOffset);
-      add('line',{x1:nowX,x2:nowX,y1:m.t,y2:h-m.b,stroke:css('--orange'),'stroke-dasharray':'2,3'});
-      add('text',{x:nowX+(chartData.nowOffset>45?-4:4),y:m.t+12,'text-anchor':chartData.nowOffset>45?'end':'start',fill:css('--orange'),'font-size':10,'font-weight':700},'Now');
-      add('text',{x:11,y:(m.t+h-m.b)/2,transform:`rotate(-90 11 ${(m.t+h-m.b)/2})`,'text-anchor':'middle',fill:css('--muted'),'font-size':11},yTitle);
+      const current=new Date(),nowOffset=(current-chartData.windowStart)/3600000;
+      if(nowOffset>=0&&nowOffset<=span){const nowX=x(nowOffset),nowLabel=new Intl.DateTimeFormat('en-US',{timeZone:chartData.tz,hour:'numeric',minute:'2-digit'}).format(current).toLowerCase();add('line',{x1:nowX,x2:nowX,y1:m.t,y2:h-m.b,stroke:css('--orange'),'stroke-dasharray':'2,3'});add('text',{x:nowX+4,y:m.t+12,'text-anchor':'start',fill:css('--orange'),'font-size':10,'font-weight':700},nowLabel)}
+      add('text',{x:12,y:(m.t+h-m.b)/2+4,'text-anchor':'start',fill:css('--muted'),'font-size':11},yTitle);
       series.forEach(s=>{let d='',on=false;s.values.forEach((v,i)=>{if(v==null){on=false;return}d+=(on?'L':'M')+x(i).toFixed(1)+' '+y(v).toFixed(1)+' ';on=true});add('path',{d,fill:'none',stroke:css(s.color),'stroke-width':2.6,'stroke-linejoin':'round'})})
     }
     function redraw(){if(!chartData||!chartData.temp.length){['temp-chart','pop-chart','wind-chart'].forEach(id=>el(id).innerHTML='');return;}const temps=chartData.temp.filter(v=>v!=null),maxT=Math.max(...temps,80),minT=Math.min(...temps,30);draw(el('temp-chart'),[{values:chartData.temp,color:'--blue'}],[Math.floor((minT-5)/5)*5,Math.ceil((maxT+5)/5)*5],'°F');draw(el('pop-chart'),[{values:chartData.pop,color:'--cyan'}],[0,100],'%');const vals=[...chartData.wind,...chartData.gust].filter(v=>v!=null),maxW=Math.max(20,...vals);draw(el('wind-chart'),[{values:chartData.wind,color:'--green'},{values:chartData.gust,color:'--orange'}],[0,Math.ceil((maxW+3)/5)*5],'mph')}
@@ -109,9 +105,9 @@
       for(let i=0,start=0;i<=dayParts.length;i++){
         if(i===dayParts.length||dayParts[i]!==dayParts[start]){segments.push({start,end:i-1,label:dayParts[start]});start=i}
       }
-      const timeTicks=Array.from({length:9},(_,n)=>{const i=n*6;return{i,label:i===0?'Today':i===24?'Tomorrow':i===48?new Intl.DateTimeFormat('en-US',{timeZone:tz,weekday:'short'}).format(times[i]):hourLabel(times[i],tz),day:i%24===0}});
-      chartData={temp:hours.map(x=>x?.temperature??null),pop:hours.map(x=>x?.probabilityOfPrecipitation?.value??null),wind:hours.map(x=>x?maxWind(x.windSpeed):null),gust,segments,timeTicks,nowOffset:(now-windowStart)/3600000,spanHours:48};
-      el('updated').textContent=`Updated ${local(now,tz)} · ${label}`;
+      const timeTicks=Array.from({length:8},(_,n)=>{const i=n*6;return{i,label:i===0?'Today':i===24?'Tomorrow':hourLabel(times[i],tz),day:i%24===0}});
+      chartData={temp:hours.map(x=>x?.temperature??null),pop:hours.map(x=>x?.probabilityOfPrecipitation?.value??null),wind:hours.map(x=>x?maxWind(x.windSpeed):null),gust,segments,timeTicks,windowStart,tz,spanHours:48};
+      el('updated').textContent=`Updated ${local(now,tz)}`;el('updated').classList.remove('hidden');
       el('loading').classList.add('hidden');el('content').classList.remove('hidden');requestAnimationFrame(redraw);hasLoaded=true;
     }catch(e){
       if(!hasLoaded){el('loading').classList.add('hidden');el('error').classList.remove('hidden');el('error').textContent=e.message}
@@ -121,6 +117,7 @@
     document.addEventListener('visibilitychange',autoRefresh);
     window.addEventListener('focus',autoRefresh);
     setInterval(()=>{if(document.visibilityState==='visible')load()},10*60000);
+    setInterval(()=>{if(document.visibilityState==='visible')redraw()},60000);
     mountPullToRefresh(load);
     let chartWidth=0;new ResizeObserver(entries=>{const width=entries[0].contentRect.width;if(width>0&&width!==chartWidth){chartWidth=width;requestAnimationFrame(redraw)}}).observe(document.querySelector('.charts'));window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',redraw);if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});load();
   })();

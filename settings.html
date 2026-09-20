@@ -30,12 +30,10 @@
         </div>
       </article>
     </div>
-    <div id="site-footer-nav"></div>
   </main>
   <script src="/assets/weather-core.js"></script>
   <script>
     WX.mountHeader('',()=>{location.href='/'});
-    WX.mountFooterNav('');
     function paintChoice(){
       const current=WX.getThemeChoice();
       document.querySelectorAll('#theme-choice-group .choice-btn').forEach(b=>{
