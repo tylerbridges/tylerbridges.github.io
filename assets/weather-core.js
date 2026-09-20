@@ -256,21 +256,18 @@ window.WX = (function(){
     const fmt=d=>new Intl.DateTimeFormat('en-US',{timeZone:tz,hour:'numeric',minute:'2-digit'}).format(d);
     return[sunrise?['Sunrise',fmt(sunrise)]:null,sunset?['Sunset',fmt(sunset)]:null].filter(Boolean);
   }
-  // Early in the day, summarize today's full arc just like a future-day card.
-  // In the final two hours of the daytime forecast period, lead with the live
-  // observation instead: by then the daytime high and broad daytime forecast
-  // are becoming stale, while the transition into tonight is still useful.
+  // Always keep the live observation in today's bold first line. Earlier in
+  // the day, use the italic line for today's full forecast arc; in the final
+  // two hours of the daytime period, trim that line to the transition into
+  // tonight because the daytime high and broad daytime forecast are stale.
   function todayBrief(current,d,n,at=new Date(),tz=getTimeZone()){
     const end=d?.endTime?new Date(d.endTime).getTime():NaN;
     const localHour=+new Intl.DateTimeFormat('en-US',{timeZone:tz,hour:'numeric',hour12:false}).format(at)%24;
     const nearingEvening=Number.isFinite(end)?at.getTime()>=end-2*3600000:localHour>=16;
-    if(d&&!nearingEvening){
-      const day=`${d.shortForecast} with a high near ${d.temperature}°`;
-      const night=n?`, becoming ${n.shortForecast.toLowerCase()} tonight with a low near ${n.temperature}°`:'';
-      return {now:`${day}${night}.`,later:''};
-    }
     const now=current||(d?`${d.shortForecast} with a high near ${d.temperature}°`:'Conditions unavailable');
-    const later=n?`Becoming ${n.shortForecast.toLowerCase()} tonight with a low near ${n.temperature}°.`:'';
+    const day=d&&!nearingEvening?`${d.shortForecast} with a high near ${d.temperature}°`:'';
+    const night=n?`${day?', becoming':'Becoming'} ${n.shortForecast.toLowerCase()} tonight with a low near ${n.temperature}°`:'';
+    const later=day||night?`${day}${night}.`:'';
     return {now,later};
   }
   function futureBrief(d,n){
