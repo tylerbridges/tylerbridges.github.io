@@ -54,12 +54,21 @@ window.WX = (function(){
   async function product(type,officeId){try{const list=await json(`${API}/products/types/${type}/locations/${officeId}`);const item=(list['@graph']||[])[0];if(!item?.id)return null;return await json(item.id.startsWith('http')?item.id:`${API}/products/${item.id}`)}catch{return null}}
   async function currentObservation(point){
     const stations=await json(point.properties.observationStations);
-    const station=stations.features?.[0]?.id;
-    if(!station)throw new Error('No nearby observation station.');
-    const result=await json(`${station}/observations/latest`);
-    const observation=result.properties,age=Date.now()-Date.parse(observation?.timestamp);
-    if(!Number.isFinite(age)||age< -300000||age>2*3600000||!observation.textDescription?.trim())throw new Error('Current conditions unavailable.');
-    return {observation,confirmedAt:new Date()};
+    const ids=(stations.features||[]).slice(0,5).map(f=>f.id);
+    if(!ids.length)throw new Error('No nearby observation station.');
+    // The nearest station is sometimes offline or stale (unmaintained gauge,
+    // outage, etc.) — try the next-closest ones in order rather than giving
+    // up on the whole location after one bad station.
+    let last=new Error('Current conditions unavailable.');
+    for(const station of ids){
+      try{
+        const result=await json(`${station}/observations/latest`);
+        const observation=result.properties,age=Date.now()-Date.parse(observation?.timestamp);
+        if(!Number.isFinite(age)||age< -300000||age>2*3600000||!observation.textDescription?.trim())throw new Error('Current conditions unavailable.');
+        return {observation,confirmedAt:new Date()};
+      }catch(e){last=e}
+    }
+    throw last;
   }
   function currentHeadline(observation){
     const condition=observation.textDescription.trim();
@@ -160,8 +169,10 @@ window.WX = (function(){
     return {now:`${now}.`,later};
   }
   function futureBrief(d,n){
+    // "the evening", not "tonight" — these cards are never today, and
+    // "tonight" specifically reads as "later today" to a reader.
     const hi=d?`${d.shortForecast} with a high near ${d.temperature}°`:null;
-    const lo=n?`${hi?`becoming ${n.shortForecast.toLowerCase()} tonight`:n.shortForecast} with a low near ${n.temperature}°`:null;
+    const lo=n?`${hi?`becoming ${n.shortForecast.toLowerCase()} in the evening`:n.shortForecast} with a low near ${n.temperature}°`:null;
     if(hi&&lo)return `${hi}, ${lo}.`;
     return `${hi||lo||'Forecast unavailable'}.`;
   }
@@ -187,12 +198,17 @@ window.WX = (function(){
     const brief=todayBrief(currentText,todayPeriods.day,todayPeriods.night);
     const alertsRes=await json(`${API}/alerts/active?point=${loc.lat},${loc.lon}`).catch(()=>null);
     const active=alertsRes?.features||[];
-    const alertsHTML=alertsRes?(active.length?active.map(a=>alertLine(a,tz)).join(''):'<p>No active NWS alerts.</p>'):'<p>Current NWS alerts could not be verified.</p>';
     const laterHTML=brief.later?`<p class="condition">${esc(brief.later)}</p>`:'';
-    container.innerHTML=`<article class="brief"><h3>${esc(title)}</h3><hr><p class="now-line">${esc(brief.now)}</p>${laterHTML}<div class="metrics">${metrics}</div><hr><h3>NWS Alerts</h3><div id="alerts">${alertsHTML}</div></article>`;
+    // Only show the NWS Alerts block when there's a genuine active alert —
+    // otherwise this card keeps the exact same shape (brief + metrics, no
+    // trailing section) as every other day's card instead of always
+    // reserving space for a "No active NWS alerts." line.
+    const alertsSectionHTML=active.length?`<hr><h3>NWS Alerts</h3><div id="alerts">${active.map(a=>alertLine(a,tz)).join('')}</div>`:'';
+    container.innerHTML=`<article class="brief"><h3>${esc(title)}</h3><hr><p class="now-line">${esc(brief.now)}</p>${laterHTML}<div class="metrics">${metrics}</div>${alertsSectionHTML}</article>`;
+    if(!active.length||!officeId)return;
     const hazardText=[todayPeriods.day?.detailedForecast,todayPeriods.night?.detailedForecast].filter(Boolean).join(' ');
-    const needsHazard=active.length||/thunder|snow|ice|freezing|fog|heavy rain|blizzard/i.test(hazardText)||(gustFrom(hazardText)||0)>20;
-    if(needsHazard&&officeId){
+    const needsHazard=/thunder|snow|ice|freezing|fog|heavy rain|blizzard/i.test(hazardText)||(gustFrom(hazardText)||0)>20;
+    if(needsHazard){
       const [hwo,afd]=await Promise.all([product('HWO',officeId),product('AFD',officeId)]);
       const guidance=[hwo?.productText,afd?.productText].filter(Boolean).join(' ');
       let extra='';

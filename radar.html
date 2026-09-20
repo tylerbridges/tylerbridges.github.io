@@ -32,7 +32,9 @@
     .radar-overlay input[type=range]::-moz-range-track{height:4px;border-radius:999px;background:var(--line-strong)}
     .radar-overlay input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:16px;height:16px;margin-top:-6px;border-radius:50%;background:var(--blue);box-shadow:0 1px 4px rgba(0,0,0,.45);cursor:pointer}
     .radar-overlay input[type=range]::-moz-range-thumb{width:16px;height:16px;border:0;border-radius:50%;background:var(--blue);box-shadow:0 1px 4px rgba(0,0,0,.45);cursor:pointer}
-    .radar-time{flex:0 0 auto;min-width:5rem;text-align:right;font-size:.76rem;color:var(--muted);font-variant-numeric:tabular-nums}
+    .radar-time{flex:0 0 auto;min-width:4rem;text-align:right;font-size:.76rem;color:var(--muted);font-variant-numeric:tabular-nums}
+    .speed-btn{flex:0 0 auto;min-width:2.4rem;padding:.25rem .45rem;border-radius:999px;border:1px solid var(--line-strong);background:transparent;color:var(--text);font-size:.72rem;font-weight:650}
+    .speed-btn:active{transform:scale(.94)}
     .radar-legend{display:flex;align-items:center;gap:.55rem;margin-top:1rem;font-size:.78rem;color:var(--muted)}
     /* Mirrors the NEXRAD Level III reflectivity ramp the radar tiles use. */
     .legend-bar{flex:1;height:7px;border-radius:999px;background:linear-gradient(90deg,#04e9e7,#019ff4,#0300f4,#02fd02,#01c501,#008e00,#fdf802,#e5bc00,#fd9500,#fd0000,#bc0000,#f800fd)}
@@ -57,6 +59,7 @@
           <button id="play-btn" class="play-btn" type="button" aria-label="Pause"><svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor"/></svg></button>
           <input id="frame-slider" type="range" min="0" value="0" step="1" aria-label="Radar frame">
           <span id="radar-time" class="radar-time"></span>
+          <button id="speed-btn" class="speed-btn" type="button" aria-label="Playback speed"></button>
         </div>
       </div>
       <div class="radar-legend" aria-hidden="true">
@@ -98,6 +101,11 @@
 
     let map=null,marker=null,frames=[],idx=0,playing=true,timer=null;
     let loading=false,onLatest=true,rvHost='',styleReady=false,usingFallback=false;
+    // Playback speed: a multiplier on the base frame interval, remembered
+    // per-device so a preference sticks across visits.
+    const SPEED_KEY='radar-speed',SPEEDS=[0.5,1,2,3],BASE_INTERVAL=700;
+    let speed=(()=>{try{const v=parseFloat(localStorage.getItem(SPEED_KEY));return SPEEDS.includes(v)?v:1}catch{return 1}})();
+    function paintSpeedBtn(){el('speed-btn').textContent=`${speed}×`}
     const PLAY_ICON='<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>';
     const PAUSE_ICON='<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor"/></svg>';
 
@@ -125,7 +133,7 @@
       el('radar-time').textContent=onLatest?`${fmtTime(frames[idx].time*1000)} · latest`:fmtTime(frames[idx].time*1000);
       paintFrame();
     }
-    function play(){playing=true;el('play-btn').innerHTML=PAUSE_ICON;el('play-btn').setAttribute('aria-label','Pause');clearInterval(timer);timer=setInterval(()=>showFrame(idx+1),700)}
+    function play(){playing=true;el('play-btn').innerHTML=PAUSE_ICON;el('play-btn').setAttribute('aria-label','Pause');clearInterval(timer);timer=setInterval(()=>showFrame(idx+1),BASE_INTERVAL/speed)}
     function pause(){playing=false;el('play-btn').innerHTML=PLAY_ICON;el('play-btn').setAttribute('aria-label','Play');clearInterval(timer)}
 
     async function loadFrames(isRefresh){
@@ -227,6 +235,13 @@
 
     el('play-btn').addEventListener('click',()=>playing?pause():play());
     el('frame-slider').addEventListener('input',e=>{pause();showFrame(+e.target.value)});
+    paintSpeedBtn();
+    el('speed-btn').addEventListener('click',()=>{
+      speed=SPEEDS[(SPEEDS.indexOf(speed)+1)%SPEEDS.length];
+      try{localStorage.setItem(SPEED_KEY,speed)}catch{}
+      paintSpeedBtn();
+      if(playing)play();
+    });
     let lastRefresh=0;
     function refreshFrames(force){
       if(!map)return Promise.resolve();
