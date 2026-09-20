@@ -122,8 +122,13 @@ window.WX = (function(){
     const gust=gridGust??textGust;
     const pop=d?.probabilityOfPrecipitation?.value;
     const wind=windAvg(b.windSpeed);
+    // Once today's daytime period has already passed, NWS stops returning it
+    // entirely (its periods only run forward from now) — d is genuinely
+    // absent, not just missing a value, so show tonight's low alone rather
+    // than a "H: —°" placeholder for a high that was never coming.
+    const hiLo=d&&n?['H',`${d.temperature}° L: ${n.temperature}°`]:d?['H',`${d.temperature}°`]:n?['L',`${n.temperature}°`]:null;
     return [
-      ['H',`${d?.temperature??'—'}° L: ${n?.temperature??'—'}°`],
+      hiLo,
       pop==null?null:['Rain %',`${pop}%`],
       humidity==null?null:['Humidity',`${humidity}%`],
       ['Wind',wind==null?esc(b.windSpeed):`${wind} mph`],
