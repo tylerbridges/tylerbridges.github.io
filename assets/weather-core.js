@@ -327,10 +327,10 @@ window.WX = (function(){
       <form id="location-form" class="location-form" role="search">
         <div class="search-field">
           <button class="icon-btn" id="locate-btn" type="button" aria-label="Use current location">${LOCATE_ICON}</button>
-          <input id="location-input" list="location-suggestions" type="text" inputmode="search" autocomplete="off" placeholder="City, state or ZIP" aria-label="Search for a location">
-          <datalist id="location-suggestions"></datalist>
+          <input id="location-input" type="text" inputmode="search" autocomplete="off" placeholder="City, state or ZIP" aria-label="Search for a location" role="combobox" aria-autocomplete="list" aria-controls="location-suggestions" aria-expanded="false">
           <button class="icon-btn" type="submit" aria-label="Search location">${SEARCH_ICON}</button>
         </div>
+        <div class="location-suggestions hidden" id="location-suggestions" role="listbox" aria-label="Location suggestions"></div>
       </form>
       <nav class="tabs" aria-label="Pages">
         <a href="/" class="tab${active==='today'?' active':''}">Today</a>
@@ -416,31 +416,57 @@ window.WX = (function(){
     el('nav-subpage-close').addEventListener('click',closeSubpage);
     subpage.addEventListener('cancel',e=>{e.preventDefault();closeSubpage()});
     document.addEventListener('keydown',e=>{if(e.key==='Escape'&&drawerOpen)setDrawer(false)});
-    let suggestionMap=new Map(),suggestTimer=null;
+    const locationInput=el('location-input'),suggestions=el('location-suggestions');
+    let suggestionMap=new Map(),suggestTimer=null,suggestRequest=0,activeSuggestion=-1;
     function setKicker(text){const k=el('kicker');if(k){k.textContent=text;k.style.display=text?'':'none'}}
+    function closeSuggestions(){suggestions.classList.add('hidden');suggestions.innerHTML='';locationInput.setAttribute('aria-expanded','false');locationInput.removeAttribute('aria-activedescendant');activeSuggestion=-1}
+    function highlightSuggestion(index){
+      const options=[...suggestions.querySelectorAll('[role="option"]')];
+      if(!options.length)return;
+      activeSuggestion=(index+options.length)%options.length;
+      options.forEach((option,i)=>option.setAttribute('aria-selected',String(i===activeSuggestion)));
+      locationInput.setAttribute('aria-activedescendant',options[activeSuggestion].id);
+      options[activeSuggestion].scrollIntoView({block:'nearest'});
+    }
+    function renderSuggestions(){
+      const names=[...suggestionMap.keys()].slice(0,4);
+      if(!names.length){closeSuggestions();return}
+      suggestions.innerHTML=names.map((name,i)=>`<button class="location-suggestion" id="location-suggestion-${i}" type="button" role="option" aria-selected="false" data-location="${esc(name)}">${esc(name)}</button>`).join('');
+      suggestions.classList.remove('hidden');locationInput.setAttribute('aria-expanded','true');activeSuggestion=-1;
+    }
     function pick(pos,query){
       saveLocation({...pos,label:null,source:'search',query});
-      el('location-input').value='';el('location-suggestions').innerHTML='';suggestionMap.clear();
-      el('location-input').blur();
+      locationInput.value='';closeSuggestions();suggestionMap.clear();
+      locationInput.blur();
       onLocationChange();
     }
-    el('location-input').addEventListener('input',()=>{
+    suggestions.addEventListener('pointerdown',e=>{const option=e.target.closest('[data-location]');if(!option)return;e.preventDefault();const query=option.dataset.location;pick(suggestionMap.get(query),query)});
+    locationInput.addEventListener('keydown',e=>{
+      if(e.key==='ArrowDown'&&!suggestions.classList.contains('hidden')){e.preventDefault();highlightSuggestion(activeSuggestion+1)}
+      else if(e.key==='ArrowUp'&&!suggestions.classList.contains('hidden')){e.preventDefault();highlightSuggestion(activeSuggestion-1)}
+      else if(e.key==='Enter'&&activeSuggestion>=0){e.preventDefault();const option=suggestions.querySelectorAll('[role="option"]')[activeSuggestion],query=option?.dataset.location;if(query)pick(suggestionMap.get(query),query)}
+      else if(e.key==='Escape'&&!suggestions.classList.contains('hidden')){e.preventDefault();closeSuggestions()}
+    });
+    locationInput.addEventListener('input',()=>{
       clearTimeout(suggestTimer);
-      const q=el('location-input').value.trim();
-      if(suggestionMap.has(q)){setKicker('Loading…');pick(suggestionMap.get(q),q);return}
-      if(q.length<3){suggestionMap.clear();el('location-suggestions').innerHTML='';return}
+      const request=++suggestRequest,q=locationInput.value.trim();
+      closeSuggestions();
+      if(q.length<3){suggestionMap.clear();return}
       suggestTimer=setTimeout(async()=>{
         try{
-          const results=await json(`https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&countrycodes=us&q=${encodeURIComponent(q)}`);
+          const results=await json(`https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=4&countrycodes=us&q=${encodeURIComponent(q)}`);
+          if(request!==suggestRequest||q!==locationInput.value.trim())return;
           suggestionMap=new Map();
           results.forEach(r=>{const label=normalizedLabel(r);if(!suggestionMap.has(label))suggestionMap.set(label,{lat:+(+r.lat).toFixed(4),lon:+(+r.lon).toFixed(4)})});
-          el('location-suggestions').innerHTML=[...suggestionMap.keys()].map(name=>`<option value="${esc(name)}"></option>`).join('');
+          renderSuggestions();
         }catch{}
       },350);
     });
+    locationInput.addEventListener('focus',()=>{if(suggestionMap.size&&locationInput.value.trim().length>=3)renderSuggestions()});
+    document.addEventListener('pointerdown',e=>{if(!el('location-form').contains(e.target))closeSuggestions()});
     el('location-form').addEventListener('submit',async e=>{
       e.preventDefault();
-      const q=el('location-input').value.trim();
+      const q=locationInput.value.trim();
       if(!q)return;
       setKicker('Searching…');
       try{pick(suggestionMap.get(q)||await geocodeSearch(q),q)}
