@@ -111,6 +111,15 @@ window.WX = (function(){
     const h12=h%12===0?12:h%12;
     return `${h12}${h<12?'a':'p'}`;
   }
+  // Named dayparts (Evening/Overnight/Morning/Afternoon), the way Apple/Carrot
+  // Weather group an hourly timeline, instead of raw clock-hour ticks.
+  function dayPartLabel(date,tz){
+    const h=+new Intl.DateTimeFormat('en-US',{timeZone:tz,hour:'numeric',hour12:false}).format(new Date(date))%24;
+    if(h>=18)return 'Evening';
+    if(h<6)return 'Overnight';
+    if(h<12)return 'Morning';
+    return 'Afternoon';
+  }
   function findTodayPeriods(allPeriods,tz){
     const todayKey=dayKey(tz,new Date());
     return {
@@ -549,7 +558,7 @@ window.WX = (function(){
 
   return {API,DEFAULT_LOC,el,esc,getSavedLocation,saveLocation,geolocate,geocodeSearch,resolveLocation,resolvePoint,json,
     emoji,local,maxWind,gustFrom,durationMs,gridValues,kphToMph,cToF,product,
-    currentObservation,currentHeadline,alertLine,dayKey,startOfDay,hourLabel,dayRows,uvForDate,humidityForDate,gustForDate,maxTempForDate,minTempForDate,dayMetrics,metricsHTML,
+    currentObservation,currentHeadline,alertLine,dayKey,startOfDay,hourLabel,dayPartLabel,dayRows,uvForDate,humidityForDate,gustForDate,maxTempForDate,minTempForDate,dayMetrics,metricsHTML,
     todayBrief,futureBrief,renderFutureCardHTML,loadTodayCard,
     findTodayPeriods,renderDaysHTML,mountHeader,mountFooterNav,mountPullToRefresh,getTheme,setTheme,getThemeChoice,recolorStyleDark,minimalDarkRadarStyle};
 })();
