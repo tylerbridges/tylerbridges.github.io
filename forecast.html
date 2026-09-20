@@ -52,7 +52,7 @@
       const today=findTodayPeriods(forecast.properties.periods,tz);
       const todayTitle=`${emoji((today.day||today.night).shortForecast)} Today · ${now.toLocaleDateString('en-US',{timeZone:tz,month:'short',day:'numeric'})}`;
       await loadTodayCard(el('today-card'),todayTitle,loc,point,officeId,today,grid,tz);
-      el('days').innerHTML=renderDaysHTML(rows.slice(1),tz);
+      el('days').innerHTML=renderDaysHTML(rows.slice(1),tz,loc);
       el('updated').textContent=`Forecast issued ${local(forecast.properties.updateTime,tz)} · Refreshed ${local(now,tz)}.`;
       el('loading').classList.add('hidden');el('content').classList.remove('hidden');hasLoaded=true;
     }catch(e){
