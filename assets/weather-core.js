@@ -256,11 +256,19 @@ window.WX = (function(){
     const fmt=d=>new Intl.DateTimeFormat('en-US',{timeZone:tz,hour:'numeric',minute:'2-digit'}).format(d);
     return[sunrise?['Sunrise',fmt(sunrise)]:null,sunset?['Sunset',fmt(sunset)]:null].filter(Boolean);
   }
-  // Punchy one-line summaries replacing the old Today/Tonight (or Day/Night)
-  // bullet breakdown. todayBrief leads with the live observation since "now"
-  // is known; futureBrief leads with the H/L range since a future day has no
-  // "current" reading yet.
-  function todayBrief(current,d,n){
+  // Early in the day, summarize today's full arc just like a future-day card.
+  // In the final two hours of the daytime forecast period, lead with the live
+  // observation instead: by then the daytime high and broad daytime forecast
+  // are becoming stale, while the transition into tonight is still useful.
+  function todayBrief(current,d,n,at=new Date(),tz=getTimeZone()){
+    const end=d?.endTime?new Date(d.endTime).getTime():NaN;
+    const localHour=+new Intl.DateTimeFormat('en-US',{timeZone:tz,hour:'numeric',hour12:false}).format(at)%24;
+    const nearingEvening=Number.isFinite(end)?at.getTime()>=end-2*3600000:localHour>=16;
+    if(d&&!nearingEvening){
+      const day=`${d.shortForecast} with a high near ${d.temperature}°`;
+      const night=n?`, becoming ${n.shortForecast.toLowerCase()} tonight with a low near ${n.temperature}°`:'';
+      return {now:`${day}${night}.`,later:''};
+    }
     const now=current||(d?`${d.shortForecast} with a high near ${d.temperature}°`:'Conditions unavailable');
     const later=n?`Becoming ${n.shortForecast.toLowerCase()} tonight with a low near ${n.temperature}°.`:'';
     return {now,later};
@@ -294,7 +302,7 @@ window.WX = (function(){
     const metrics=metricsHTML([...dayMetrics(todayPeriods.day,todayPeriods.night,uvForDate(todayKey,loc.lat),humidityForDate(grid,todayKey,tz),gustForDate(grid,todayKey,tz),maxTempForDate(grid,todayKey,tz),minTempForDate(grid,todayKey,tz)),...sunMetrics(new Date(),loc.lat,loc.lon,tz)]);
     const current=await currentObservation(point).catch(()=>null);
     const currentText=current?currentHeadline(current.observation):null;
-    const brief=todayBrief(currentText,todayPeriods.day,todayPeriods.night);
+    const brief=todayBrief(currentText,todayPeriods.day,todayPeriods.night,new Date(),tz);
     const alertsRes=await json(`${API}/alerts/active?point=${loc.lat},${loc.lon}`).catch(()=>null);
     const active=alertsRes?.features||[];
     const laterHTML=brief.later?`<p class="condition">${esc(brief.later)}</p>`:'';
