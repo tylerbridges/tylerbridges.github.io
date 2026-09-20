@@ -189,7 +189,7 @@ window.WX = (function(){
     // apps like Apple Weather handle it, instead of going blank.
     const hi=d?.temperature??gridHi;
     const lo=n?.temperature??gridLo;
-    const hiLo=hi!=null&&lo!=null?['H',`${hi}° L: ${lo}°`]:hi!=null?['H',`${hi}°`]:lo!=null?['L',`${lo}°`]:null;
+    const hiLo=hi!=null&&lo!=null?['H',`${hi}°`,'L',`${lo}°`]:hi!=null?['H',`${hi}°`]:lo!=null?['L',`${lo}°`]:null;
     return [
       hiLo,
       pop==null?null:['Rain %',`${pop}%`],
@@ -199,7 +199,7 @@ window.WX = (function(){
       uv==null?null:['Max UV',uv]
     ].filter(Boolean);
   }
-  function metricsHTML(pairs){return pairs.map(([k,v])=>`<span class="metric"><b>${esc(k)}:</b> ${v}</span>`).join('')}
+  function metricsHTML(pairs){return pairs.map(([k,v,k2,v2])=>`<span class="metric"><b>${esc(k)}:</b> ${v}${k2?` <b>${esc(k2)}:</b> ${v2}`:''}</span>`).join('')}
   // Sunrise/sunset equation (Wikipedia "Sunrise equation" / NOAA solar
   // calculator), accurate to within a minute or two — no API, no key,
   // computed entirely from lat/lon/date the way Apple Weather's astro data
@@ -234,7 +234,7 @@ window.WX = (function(){
   function todayBrief(current,d,n){
     const now=current||(d?`${d.shortForecast} with a high near ${d.temperature}°`:'Conditions unavailable');
     const later=n?`Becoming ${n.shortForecast.toLowerCase()} tonight with a low near ${n.temperature}°.`:'';
-    return {now:`${now}.`,later};
+    return {now,later};
   }
   function futureBrief(d,n){
     // "the evening", not "tonight" — these cards are never today, and
