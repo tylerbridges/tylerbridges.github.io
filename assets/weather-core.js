@@ -349,7 +349,7 @@ window.WX = (function(){
         <dialog class="nav-subpage" id="nav-subpage" aria-labelledby="nav-subpage-title">
           <div class="nav-subpage-shell">
             <div class="nav-subpage-head">
-              <button class="nav-subpage-close" id="nav-subpage-close" type="button" aria-label="Close secondary page">‹ Weather</button>
+              <button class="nav-subpage-close" id="nav-subpage-close" type="button" aria-label="Back to weather"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
               <h1 class="nav-subpage-title" id="nav-subpage-title"></h1>
             </div>
             <div class="nav-subpage-content" id="nav-subpage-content"></div>
