@@ -1,0 +1,5 @@
+# Keep routine project work autonomous while retaining Codex's workspace
+# sandbox and automatic safety review for actions that cross its boundary.
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+approvals_reviewer = "auto_review"
