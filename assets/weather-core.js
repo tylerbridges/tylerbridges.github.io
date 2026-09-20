@@ -337,16 +337,15 @@ window.WX = (function(){
         <a href="/forecast.html" class="tab${active==='forecast'?' active':''}">7-Day</a>
         <a href="/radar.html" class="tab${active==='radar'?' active':''}">Radar</a>
       </nav>`;
-    // Appended directly to <body>, not nested inside header: header has
-    // backdrop-filter, which — like transform — creates a new containing
-    // block for position:fixed descendants. Nested here, the drawer/scrim
-    // would be confined to header's own small box instead of the viewport.
+    // Appended directly to <body> because the header's backdrop-filter creates
+    // a containing block that would confine a fixed dialog to the header.
     if(!el('nav-drawer')){
       document.body.insertAdjacentHTML('beforeend',`
-        <div class="nav-scrim" id="nav-scrim"></div>
-        <nav class="nav-drawer" id="nav-drawer" aria-label="Site menu">
+        <div class="nav-scrim" id="nav-scrim" aria-hidden="true"></div>
+        <nav class="nav-drawer" id="nav-drawer" aria-labelledby="nav-drawer-title" aria-modal="true" aria-hidden="true" role="dialog">
+          <div class="nav-drawer-head"><span class="nav-drawer-title" id="nav-drawer-title">Menu</span><button class="nav-close" id="nav-close" type="button" aria-label="Close menu">×</button></div>
           <a href="/settings.html">Settings</a>
-          <a href="/credits.html" class="nav-drawer-bottom">Credits</a>
+          <a href="/credits.html">Credits</a>
         </nav>`);
     }
     function paintThemeBtn(){
@@ -359,17 +358,25 @@ window.WX = (function(){
     let drawerOpen=false;
     function setDrawer(open){
       drawerOpen=open;
-      if(open){
-        const top=`${el('menu-btn').getBoundingClientRect().bottom}px`;
-        el('nav-drawer').style.top=top;
-        el('nav-scrim').style.top=top;
-      }
       el('nav-drawer').classList.toggle('open',open);
       el('nav-scrim').classList.toggle('open',open);
+      el('nav-drawer').setAttribute('aria-hidden',String(!open));
+      document.body.classList.toggle('nav-open',open);
+      document.querySelector('main')?.toggleAttribute('inert',open);
       el('menu-btn').setAttribute('aria-expanded',String(open));
+      if(open)el('nav-close').focus();else el('menu-btn').focus();
     }
     el('menu-btn').addEventListener('click',()=>setDrawer(!drawerOpen));
+    el('nav-close').addEventListener('click',()=>setDrawer(false));
     el('nav-scrim').addEventListener('click',()=>setDrawer(false));
+    document.addEventListener('keydown',e=>{
+      if(e.key==='Escape'&&drawerOpen)setDrawer(false);
+      if(e.key==='Tab'&&drawerOpen){
+        const focusable=[...el('nav-drawer').querySelectorAll('button,a')];
+        const edge=e.shiftKey?focusable[0]:focusable.at(-1);
+        if(document.activeElement===edge){e.preventDefault();focusable.at(e.shiftKey?-1:0).focus()}
+      }
+    });
     let suggestionMap=new Map(),suggestTimer=null;
     function setKicker(text){const k=el('kicker');if(k){k.textContent=text;k.style.display=text?'':'none'}}
     function pick(pos,query){
