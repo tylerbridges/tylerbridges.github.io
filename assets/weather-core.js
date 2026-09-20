@@ -127,7 +127,22 @@ window.WX = (function(){
       night: allPeriods.find(p=>!p.isDaytime&&dayKey(tz,p.startTime)===todayKey)||null
     };
   }
-  function uvForDate(grid,dateKey,tz){const values=grid.properties?.maxUVIndex?.values||[];for(const row of values){if(dayKey(tz,row.validTime.split('/')[0])===dateKey&&row.value!=null)return Math.round(row.value)}return null}
+  // NWS's forecastGridData has no UV index field at all (the old EPA UV
+  // Index API it once pointed to was retired), so this was previously
+  // always null for everyone regardless of location. Estimated instead from
+  // solar noon zenith angle for the date/latitude — the same clear-sky
+  // geometry real UV forecasts start from before applying ozone/cloud
+  // corrections we have no data source for — rather than a metric that can
+  // never populate.
+  function uvForDate(dateKey,lat){
+    if(lat==null)return null;
+    const[y,m,d]=dateKey.split('-').map(Number);
+    const rad=Math.PI/180,start=Date.UTC(y,0,1),dayOfYear=Math.floor((Date.UTC(y,m-1,d)-start)/86400000)+1;
+    const declination=23.44*Math.sin(rad*(360/365)*(dayOfYear-81));
+    const zenith=Math.abs(lat-declination);
+    if(zenith>=90)return 0;
+    return Math.max(0,Math.round(12.5*Math.pow(Math.cos(zenith*rad),2.42)));
+  }
   function humidityForDate(grid,dateKey,tz){const values=grid.properties?.relativeHumidity?.values||[];const vals=values.filter(row=>dayKey(tz,row.validTime.split('/')[0])===dateKey).map(r=>r.value).filter(v=>v!=null);if(!vals.length)return null;return Math.round(vals.reduce((a,b)=>a+b,0)/vals.length)}
   function gustForDate(grid,dateKey,tz){const field=grid.properties?.windGust;const values=field?.values||[];const kph=field?.uom?.includes('km_h');const vals=values.filter(row=>dayKey(tz,row.validTime.split('/')[0])===dateKey).map(r=>r.value).filter(v=>v!=null);if(!vals.length)return null;const max=Math.max(...vals);return Math.round(kph?max*.621371:max)}
   // NWS's gridpoint maxTemperature/minTemperature cover the full calendar day
@@ -139,7 +154,7 @@ window.WX = (function(){
   function tempForDate(grid,field,dateKey,tz){const values=grid.properties?.[field]?.values||[];for(const row of values){if(dayKey(tz,row.validTime.split('/')[0])===dateKey&&row.value!=null)return cToF(row.value)}return null}
   const maxTempForDate=(grid,dateKey,tz)=>tempForDate(grid,'maxTemperature',dateKey,tz);
   const minTempForDate=(grid,dateKey,tz)=>tempForDate(grid,'minTemperature',dateKey,tz);
-  function dayRows(allPeriods,grid,tz){
+  function dayRows(allPeriods,grid,tz,lat){
     // Group by calendar date (in the location's timezone) rather than walking
     // day/night pairs positionally, so today's row is always complete even
     // once its daytime period's endTime has passed, and exactly 7 calendar
@@ -152,7 +167,7 @@ window.WX = (function(){
     });
     const todayKey=dayKey(tz,new Date());
     const startIdx=Math.max(0,order.indexOf(todayKey));
-    return order.slice(startIdx,startIdx+7).map(key=>({...byKey[key],uv:uvForDate(grid,key,tz),humidity:humidityForDate(grid,key,tz),gust:gustForDate(grid,key,tz),hi:maxTempForDate(grid,key,tz),lo:minTempForDate(grid,key,tz)}));
+    return order.slice(startIdx,startIdx+7).map(key=>({...byKey[key],uv:uvForDate(key,lat),humidity:humidityForDate(grid,key,tz),gust:gustForDate(grid,key,tz),hi:maxTempForDate(grid,key,tz),lo:minTempForDate(grid,key,tz)}));
   }
   function windAvg(windSpeed){
     const nums=(String(windSpeed).match(/\d+/g)||[]).map(Number);
@@ -245,7 +260,7 @@ window.WX = (function(){
   // Alerts section, fetched and rendered by this one function.
   async function loadTodayCard(container,title,loc,point,officeId,todayPeriods,grid,tz){
     const todayKey=dayKey(tz,new Date());
-    const metrics=metricsHTML([...dayMetrics(todayPeriods.day,todayPeriods.night,uvForDate(grid,todayKey,tz),humidityForDate(grid,todayKey,tz),gustForDate(grid,todayKey,tz),maxTempForDate(grid,todayKey,tz),minTempForDate(grid,todayKey,tz)),...sunMetrics(new Date(),loc.lat,loc.lon,tz)]);
+    const metrics=metricsHTML([...dayMetrics(todayPeriods.day,todayPeriods.night,uvForDate(todayKey,loc.lat),humidityForDate(grid,todayKey,tz),gustForDate(grid,todayKey,tz),maxTempForDate(grid,todayKey,tz),minTempForDate(grid,todayKey,tz)),...sunMetrics(new Date(),loc.lat,loc.lon,tz)]);
     const current=await currentObservation(point).catch(()=>null);
     const currentText=current?currentHeadline(current.observation):null;
     const brief=todayBrief(currentText,todayPeriods.day,todayPeriods.night);
@@ -511,6 +526,13 @@ window.WX = (function(){
     for(const layer of clone.layers){
       layer.paint=layer.paint||{};
       const sl=layer['source-layer'];
+      // The source style's own zoom thresholds assume a fully-detailed map
+      // (state/country labels and borders only fading in once zoomed out
+      // enough that city-level clutter would otherwise dominate). Ours is
+      // already stripped to just those reference layers, so let them show
+      // at any zoom the radar map itself allows, instead of disappearing
+      // and leaving only a city name with no sense of what state it's in.
+      if(sl==='boundary'||sl==='place'){delete layer.minzoom;delete layer.maxzoom}
       if(layer.type==='background'){layer.paint['background-color']='#0a0a0a';continue}
       if(layer.type==='fill'&&(sl==='water')){layer.paint['fill-color']='#0d1117';layer.paint['fill-opacity']=1;delete layer.paint['fill-pattern'];continue}
       if(layer.type==='line'&&sl==='waterway'){layer.paint['line-color']='#0d1117';continue}
