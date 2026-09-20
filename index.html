@@ -74,7 +74,7 @@
       hit.addEventListener('pointermove',e=>{if(e.pointerType!=='touch')showScrub(e.clientX)});
       hit.addEventListener('pointerleave',e=>{if(e.pointerType!=='touch')restoreNow()});
       let holdTimer=null,touchScrubbing=false,touchStart=null;
-      hit.addEventListener('touchstart',e=>{if(e.touches.length!==1)return;const touch=e.touches[0],startX=touch.clientX;touchStart={x:startX,y:touch.clientY};clearTimeout(holdTimer);holdTimer=setTimeout(()=>{touchScrubbing=true;showScrub(startX);try{navigator.vibrate?.(10)}catch{}},500)},{passive:true});
+      hit.addEventListener('touchstart',e=>{if(e.touches.length!==1)return;const touch=e.touches[0],startX=touch.clientX;touchStart={x:startX,y:touch.clientY};clearTimeout(holdTimer);holdTimer=setTimeout(()=>{touchScrubbing=true;showScrub(startX);try{navigator.vibrate?.(10)}catch{}},350)},{passive:true});
       hit.addEventListener('touchmove',e=>{if(!touchStart||e.touches.length!==1)return;const touch=e.touches[0];if(!touchScrubbing&&Math.hypot(touch.clientX-touchStart.x,touch.clientY-touchStart.y)>10){clearTimeout(holdTimer);touchStart=null;return}if(touchScrubbing){e.preventDefault();showScrub(touch.clientX)}},{passive:false});
       const endTouchScrub=e=>{clearTimeout(holdTimer);if(touchScrubbing)e.preventDefault();touchScrubbing=false;touchStart=null;restoreNow()};
       hit.addEventListener('contextmenu',e=>{if(touchScrubbing)e.preventDefault()});
