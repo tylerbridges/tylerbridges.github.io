@@ -52,10 +52,27 @@ window.WX = (function(){
   function gridValues(field,times,convert=v=>v){if(!field?.values)return times.map(()=>null);return times.map(t=>{const ms=t.getTime();for(const row of field.values){const [start,dur='PT1H']=row.validTime.split('/');const a=new Date(start).getTime();if(ms>=a&&ms<a+durationMs(dur))return row.value==null?null:convert(row.value)}return null})}
   const kphToMph=v=>Math.round(v*.621371), cToF=v=>Math.round(v*9/5+32);
   async function product(type,officeId){try{const list=await json(`${API}/products/types/${type}/locations/${officeId}`);const item=(list['@graph']||[])[0];if(!item?.id)return null;return await json(item.id.startsWith('http')?item.id:`${API}/products/${item.id}`)}catch{return null}}
+  // Great-circle distance in miles between two [lon,lat] points.
+  function milesBetween([lon1,lat1],[lon2,lat2]){
+    const R=3958.8,toRad=d=>d*Math.PI/180;
+    const dLat=toRad(lat2-lat1),dLon=toRad(lon2-lon1);
+    const a=Math.sin(dLat/2)**2+Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+    return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+  }
   async function currentObservation(point){
     const stations=await json(point.properties.observationStations);
-    const ids=(stations.features||[]).slice(0,5).map(f=>f.id);
-    if(!ids.length)throw new Error('No nearby observation station.');
+    const origin=point.geometry?.coordinates;
+    // NWS's own station list is ordered nearest-first, but "nearest" can
+    // still be tens of miles away in sparsely-instrumented areas — cap how
+    // far the fallback is willing to reach so a distant station's reading
+    // never gets shown as if it were local.
+    const MAX_MILES=50;
+    let candidates=(stations.features||[]).slice(0,8);
+    if(origin){
+      candidates=candidates.filter(f=>!f.geometry?.coordinates||milesBetween(origin,f.geometry.coordinates)<=MAX_MILES);
+    }
+    const ids=candidates.slice(0,5).map(f=>f.id);
+    if(!ids.length)throw new Error('No observation station within range.');
     // The nearest station is sometimes offline or stale (unmaintained gauge,
     // outage, etc.) — try the next-closest ones in order rather than giving
     // up on the whole location after one bad station.
