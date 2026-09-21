@@ -54,7 +54,7 @@
         const date=new Intl.DateTimeFormat('en-US',{timeZone:tz,month:'short',day:'numeric'}).format(group.date);
         const rows=group.periods.map(({period,sourceIndex})=>{
           const rain=period.probabilityOfPrecipitation?.value,sustained=maxWind(period.windSpeed),gust=gusts[sourceIndex],uv=uvValues[sourceIndex],start=new Date(period.startTime),end=new Date(period.endTime),isCurrent=current>=start&&current<end;
-          const wind=sustained==null?null:`Wind: ${sustained} mph`,gustText=gust==null?null:`Gusts: ${gust} mph`,details=[rain==null?null:`Rain: ${Math.round(rain)}%`,wind,gustText,uv==null?null:`UV: ${Math.round(uv)}`].filter(Boolean).join(' · ');
+          const wind=sustained==null&&gust==null?null:`Wind/Gusts: ${sustained??'—'}/${gust??'—'} mph`,details=[rain==null?null:`Rain: ${Math.round(rain)}%`,wind,uv==null?null:`UV: ${Math.round(uv)}`].filter(Boolean).join(' · ');
           const progress=isCurrent?Math.max(0,Math.min(100,(current-start)/(end-start)*100)):0,tick=isCurrent?`<span class="hourly-current-tick" style="--hour-progress:${progress.toFixed(1)}%" aria-hidden="true"></span>`:'';
           return `<article class="hourly-row">${tick}<time class="hourly-time" datetime="${esc(period.startTime)}">${esc(hourText(period.startTime,tz))}</time><span class="hourly-icon" aria-hidden="true">${emoji(period.shortForecast)}</span><span class="hourly-summary"><span class="hourly-condition">${esc(period.shortForecast)}</span><span class="hourly-summary-divider" aria-hidden="true">·</span><span class="hourly-temp">${Math.round(period.temperature)}°</span></span><span class="hourly-meta">${esc(details)}</span></article>`;
         }).join('');
