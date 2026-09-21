@@ -17,6 +17,11 @@ window.WX = (function(){
     try{return new Intl.DateTimeFormat('en-US',{timeZone:zone,timeZoneName:'longGeneric'}).formatToParts(new Date()).find(p=>p.type==='timeZoneName')?.value||zone}catch{return zone}
   }
   function deviceTimeZone(){try{const zone=Intl.DateTimeFormat().resolvedOptions().timeZone;return validTimeZone(zone)?zone:DEFAULT_TIME_ZONE}catch{return DEFAULT_TIME_ZONE}}
+  // Single source of truth for the Settings time-zone picker, used both by
+  // settings.html's own markup and by the header's subpage-modal copy of it
+  // (mountHeader fetches settings.html and reuses its .credit-list markup),
+  // so the two can't drift the way a second hardcoded <option> list would.
+  function timeZoneOptionsHTML(){return TIME_ZONES.map(zone=>`<option value="${esc(zone)}">${esc(timeZoneLabel(zone))}</option>`).join('')}
   function ensureTimeZone(){
     const saved=storedTimeZone();if(saved)return Promise.resolve(saved);
     if(timeZoneSetupPromise)return timeZoneSetupPromise;
@@ -364,7 +369,7 @@ window.WX = (function(){
     const day=d&&!nearingEvening?`${d.shortForecast} with a high near ${d.temperature}°`:'';
     const night=n?`${day?', becoming':'Becoming'} ${n.shortForecast.toLowerCase()} tonight with a low near ${n.temperature}°`:'';
     const later=day||night?`${day}${night}.`:'';
-    return {now,later};
+    return {now:`${now}.`,later};
   }
   function futureBrief(d,n){
     // "the evening", not "tonight" — these cards are never today, and
@@ -524,7 +529,11 @@ window.WX = (function(){
     function paintSubpageSettings(){
       subpageContent.querySelectorAll('[data-choice]').forEach(b=>b.classList.toggle('active',b.dataset.choice===getThemeChoice()));
       const select=subpageContent.querySelector('#time-zone-choice'),current=getTimeZone();
-      if(select){if(![...select.options].some(option=>option.value===current))select.add(new Option(timeZoneLabel(current),current),0);select.value=current}
+      if(select){
+        if(!select.options.length)select.innerHTML=timeZoneOptionsHTML();
+        if(![...select.options].some(option=>option.value===current))select.add(new Option(timeZoneLabel(current),current),0);
+        select.value=current;
+      }
     }
     async function openSubpage(name,href){
       clearTimeout(subpageCloseTimer);subpageTrigger=el('menu-btn');setDrawer(false,false);
@@ -817,7 +826,7 @@ window.WX = (function(){
     });
   }
 
-  return {API,DEFAULT_LOC,DEFAULT_TIME_ZONE,el,esc,getSavedLocation,saveLocation,getTimeZone,setTimeZone,timeZoneLabel,geolocate,geocodeSearch,resolveLocation,resolvePoint,json,
+  return {API,DEFAULT_LOC,DEFAULT_TIME_ZONE,el,esc,getSavedLocation,saveLocation,getTimeZone,setTimeZone,timeZoneLabel,timeZoneOptionsHTML,geolocate,geocodeSearch,resolveLocation,resolvePoint,json,
     emoji,local,maxWind,gustFrom,durationMs,gridValues,kphToMph,cToF,product,
     currentObservation,currentHeadline,alertLine,dayKey,startOfDay,hourLabel,dayPartLabel,dayRows,uvForDate,humidityForDate,gustForDate,maxTempForDate,minTempForDate,extraDayMetrics,dayMetrics,metricsHTML,
     todayBrief,futureBrief,renderFutureCardHTML,loadTodayCard,sunMetrics,
