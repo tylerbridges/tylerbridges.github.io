@@ -19,33 +19,33 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@5.6.1/dist/maplibre-gl.css">
   <title>Radar — Rochester Weather</title>
   <style>
-    .radar-viewer{overflow:hidden;border:1px solid #3a3a3c;border-radius:14px;background:#101012;box-shadow:var(--shadow)}
-    .radar-card{position:relative;height:clamp(280px,58vw,520px);background:#000}
-    #map{position:absolute;inset:0;background:#000}
+    .radar-viewer{overflow:hidden;border:1px solid var(--line);border-radius:14px;background:var(--surface);box-shadow:var(--shadow)}
+    .radar-card{position:relative;height:clamp(280px,58vw,520px);background:var(--surface-2)}
+    #map{position:absolute;inset:0;background:var(--surface-2)}
     .radar-console.hidden{display:none}
-    .radar-console{border-top:1px solid #343437;background:#151517;color:#f5f5f7}
+    .radar-console{border-top:1px solid var(--line);background:var(--surface);color:var(--text)}
     .radar-frame-row{display:flex;align-items:baseline;justify-content:space-between;gap:.75rem;padding:.34rem .65rem .3rem}
     .radar-product-label{color:var(--cyan);font-size:.78rem;line-height:1.1;font-weight:650}
-    .radar-frame-kind{color:#8e8e93;font-size:.69rem;line-height:1.2;font-weight:400}
+    .radar-frame-kind{color:var(--muted);font-size:.69rem;line-height:1.2;font-weight:400}
     .radar-frame-readout{display:flex;align-items:baseline;justify-content:flex-end;gap:.35rem;flex:0 0 auto;font-variant-numeric:tabular-nums}
-    .radar-frame-divider{color:#6c6c70;font-size:.72rem;font-weight:400}
-    .radar-time{font-size:.9rem;line-height:1.1;color:#fff;font-weight:700}
+    .radar-frame-divider{color:var(--muted);font-size:.72rem;font-weight:400}
+    .radar-time{font-size:.9rem;line-height:1.1;color:var(--text);font-weight:700}
     .radar-scale{height:9px;background:linear-gradient(90deg,#00e400 0%,#00a800 18%,#ffff00 35%,#ffbf00 46%,#ff0000 58%,#d60000 70%,#ff00ff 82%,#9955c9 92%,#fff 100%);box-shadow:inset 0 1px rgba(255,255,255,.12)}
-    .radar-overlay{display:flex;align-items:center;gap:.65rem;padding:.62rem .75rem .68rem;background:#111113}
+    .radar-overlay{display:flex;align-items:center;gap:.65rem;padding:.62rem .75rem .68rem;background:var(--surface)}
     .play-btn{flex:0 0 auto;width:30px;height:28px;border-radius:9px;border:1px solid rgba(100,210,255,.45);background:rgba(100,210,255,.08);color:var(--cyan);display:flex;align-items:center;justify-content:center;transition:transform .15s ease-out,background-color .15s ease-out}
     .play-btn:active{transform:scale(.92)}
     .play-btn:hover,.play-btn:focus-visible{background:rgba(100,210,255,.16)}
     .play-btn svg{width:13px;height:13px}
-    .radar-overlay input[type=range]{flex:1;min-width:0;-webkit-appearance:none;appearance:none;height:5px;border-radius:999px;background:#46464a;outline:none;margin:0}
-    .radar-overlay input[type=range]::-webkit-slider-runnable-track{height:5px;border-radius:999px;background:#46464a}
-    .radar-overlay input[type=range]::-moz-range-track{height:5px;border-radius:999px;background:#46464a}
-    .radar-overlay input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:18px;height:18px;margin-top:-6.5px;border-radius:50%;background:var(--cyan);border:2px solid #111113;box-shadow:0 0 0 1px rgba(100,210,255,.5);cursor:pointer}
-    .radar-overlay input[type=range]::-moz-range-thumb{width:18px;height:18px;border:2px solid #111113;border-radius:50%;background:var(--cyan);box-shadow:0 0 0 1px rgba(100,210,255,.5);cursor:pointer}
+    .radar-overlay input[type=range]{flex:1;min-width:0;-webkit-appearance:none;appearance:none;height:5px;border-radius:999px;background:var(--line-strong);outline:none;margin:0}
+    .radar-overlay input[type=range]::-webkit-slider-runnable-track{height:5px;border-radius:999px;background:var(--line-strong)}
+    .radar-overlay input[type=range]::-moz-range-track{height:5px;border-radius:999px;background:var(--line-strong)}
+    .radar-overlay input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:18px;height:18px;margin-top:-6.5px;border-radius:50%;background:var(--cyan);border:2px solid var(--surface);box-shadow:0 0 0 1px color-mix(in srgb,var(--cyan) 55%,transparent);cursor:pointer}
+    .radar-overlay input[type=range]::-moz-range-thumb{width:18px;height:18px;border:2px solid var(--surface);border-radius:50%;background:var(--cyan);box-shadow:0 0 0 1px color-mix(in srgb,var(--cyan) 55%,transparent);cursor:pointer}
     .radar-overlay input[type=range]:focus-visible{box-shadow:0 0 0 2px var(--cyan)}
-    .speed-btn{flex:0 0 auto;height:28px;min-width:2.7rem;padding:0 .5rem;border-radius:9px;border:1px solid #3a3a3c;background:#1c1c1e;color:#ddd;font-size:.72rem;font-weight:650;transition:transform .15s ease-out,background-color .15s ease-out}
+    .speed-btn{flex:0 0 auto;height:28px;min-width:2.7rem;padding:0 .5rem;border-radius:9px;border:1px solid var(--line);background:var(--surface-2);color:var(--text);font-size:.72rem;font-weight:650;transition:transform .15s ease-out,background-color .15s ease-out}
     .speed-btn:active{transform:scale(.94);background-color:rgba(255,255,255,.1)}
-    .radar-locate-btn{position:absolute;top:10px;right:10px;z-index:2;width:38px;height:38px;padding:0;border:1px solid rgba(100,210,255,.45);border-radius:10px;background:rgba(17,17,19,.86);color:var(--cyan);display:flex;align-items:center;justify-content:center;box-shadow:0 2px 9px rgba(0,0,0,.45);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);transition:transform .15s ease-out,background-color .15s ease-out}
-    .radar-locate-btn:hover,.radar-locate-btn:focus-visible{background:rgba(35,35,38,.94)}
+    .radar-locate-btn{position:absolute;top:10px;right:10px;z-index:2;width:38px;height:38px;padding:0;border:1px solid color-mix(in srgb,var(--cyan) 48%,var(--line));border-radius:10px;background:color-mix(in srgb,var(--surface) 88%,transparent);color:var(--cyan);display:flex;align-items:center;justify-content:center;box-shadow:0 2px 9px rgba(0,0,0,.24);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);transition:transform .15s ease-out,background-color .15s ease-out}
+    .radar-locate-btn:hover,.radar-locate-btn:focus-visible{background:var(--surface-2)}
     .radar-locate-btn:active{transform:scale(.92)}
     .radar-locate-btn:disabled{opacity:.55}
     .radar-locate-btn svg{width:21px;height:21px}
@@ -65,18 +65,20 @@
     .forecast-map-card{min-width:0;padding:0;overflow:hidden;border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--text);text-align:left;box-shadow:var(--shadow);cursor:pointer;transition:transform .15s ease-out,border-color .15s ease-out}
     .forecast-map-card:hover,.forecast-map-card:focus-visible{border-color:var(--blue);outline:0;transform:translateY(-1px)}
     .forecast-map-card:active{transform:scale(.985)}
-    .forecast-map-thumb{position:relative;display:block;aspect-ratio:5/3;overflow:hidden;background:#f4f5f6}
+    .forecast-map-thumb{position:relative;display:block;aspect-ratio:5/3;overflow:hidden;background:var(--surface-2)}
     .forecast-map-thumb img{position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:cover;color:#273746;font-size:.75rem}
     .forecast-map-base{z-index:1;pointer-events:none}
     .forecast-map-overlay{z-index:2;pointer-events:none}
     .forecast-map-labels{z-index:3;pointer-events:none}
-    .forecast-map-image-head{position:absolute;inset:0 0 auto;z-index:5;display:flex;align-items:center;justify-content:space-between;gap:.5rem;min-height:28px;padding:.35rem .48rem;border-bottom:1px solid rgba(0,0,0,.16);background:rgba(255,255,255,.94);color:#161617;font-size:.62rem;line-height:1.1;box-shadow:0 1px 4px rgba(0,0,0,.1)}
-    .forecast-map-image-head strong{font-size:.68rem}
+    :root[data-theme="dark"] .forecast-map-labels{filter:brightness(1.55) contrast(1.28)}
+    @media(prefers-color-scheme:dark){:root:not([data-theme]) .forecast-map-labels{filter:brightness(1.55) contrast(1.28)}}
+    .forecast-map-image-head{position:absolute;inset:0 0 auto;z-index:5;display:flex;align-items:center;justify-content:space-between;gap:.5rem;min-height:30px;padding:.38rem .5rem;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--surface) 95%,transparent);color:var(--text);font-size:.66rem;font-weight:600;line-height:1.1;box-shadow:0 1px 5px rgba(0,0,0,.18)}
+    .forecast-map-image-head strong{font-size:.74rem}
     .forecast-map-pin{position:absolute;z-index:4;transform:translate(-50%,-50%);pointer-events:none}
     .forecast-map-card-copy{display:block;padding:.72rem .8rem .78rem}
-    .forecast-map-title{display:block;color:var(--blue);font-size:.92rem;font-weight:750}
-    .forecast-map-detail{display:block;margin-top:.12rem;color:var(--muted);font-size:.72rem;line-height:1.35}
-    .forecast-map-valid{display:block;margin-top:.2rem;color:var(--muted);font-size:.67rem;line-height:1.3}
+    .forecast-map-title{display:block;color:var(--blue);font-size:.96rem;font-weight:750}
+    .forecast-map-detail{display:block;margin-top:.12rem;color:var(--muted);font-size:.76rem;line-height:1.38}
+    .forecast-map-valid{display:block;margin-top:.2rem;color:var(--muted);font-size:.7rem;line-height:1.35}
     .forecast-map-card.unavailable .forecast-map-thumb::after{content:"Map temporarily unavailable";position:absolute;inset:0;display:grid;place-items:center;padding:1rem;background:var(--surface-2);color:var(--muted);font-size:.78rem;text-align:center}
     .forecast-map-dialog{width:min(960px,calc(100% - 1.25rem));max-width:none;max-height:calc(100dvh - 1.25rem);padding:0;overflow:hidden;border:1px solid var(--line);border-radius:18px;background:var(--surface);color:var(--text);box-shadow:0 24px 70px rgba(0,0,0,.62)}
     .forecast-map-dialog::backdrop{background:rgba(0,0,0,.76);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}
@@ -86,12 +88,12 @@
     .forecast-map-close{width:34px;height:34px;padding:0;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);color:var(--text);display:grid;place-items:center;cursor:pointer}
     .forecast-map-close:hover,.forecast-map-close:focus-visible{border-color:var(--blue);outline:0}
     .forecast-map-close svg{width:17px;height:17px}
-    .forecast-map-stage{position:relative;min-height:190px;aspect-ratio:5/3;overflow:hidden;background:#f4f5f6}
+    .forecast-map-stage{position:relative;min-height:190px;aspect-ratio:5/3;overflow:hidden;background:var(--surface-2)}
     .forecast-map-stage img{position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:cover;color:#273746;text-align:center}
     .forecast-map-dialog-error{display:none;position:absolute;inset:auto .8rem .8rem;z-index:6;padding:.65rem .8rem;border:1px solid color-mix(in srgb,var(--red) 45%,var(--line));border-radius:10px;background:color-mix(in srgb,var(--surface) 92%,transparent);color:var(--text);font-size:.78rem;text-align:center;box-shadow:var(--shadow)}
     .forecast-map-dialog.has-error .forecast-map-overlay{display:none}
     .forecast-map-dialog.has-error .forecast-map-dialog-error{display:block}
-    .forecast-map-legend{display:flex;align-items:center;justify-content:center;gap:.6rem;min-height:36px;padding:.42rem .8rem;border-top:1px solid var(--line);background:var(--surface);color:var(--muted);font-size:.68rem;line-height:1.2}
+    .forecast-map-legend{display:flex;align-items:center;justify-content:center;gap:.6rem;min-height:36px;padding:.42rem .8rem;border-top:1px solid var(--line);background:var(--surface);color:var(--muted);font-size:.72rem;line-height:1.2}
     .forecast-map-legend-items{display:flex;align-items:center;justify-content:center;gap:.5rem;flex-wrap:wrap}
     .forecast-map-legend-item{display:inline-flex;align-items:center;gap:.25rem;white-space:nowrap}
     .forecast-map-legend-swatch{width:.72rem;height:.72rem;border:1px solid rgba(0,0,0,.26);border-radius:2px}
@@ -107,7 +109,7 @@
       .forecast-maps-head{display:block}.forecast-maps-head p{margin-top:.25rem;text-align:left}
       .forecast-map-gallery{display:flex;gap:.65rem;overflow-x:auto;margin-right:calc(-1 * max(1rem,env(safe-area-inset-right)));padding:0 max(1rem,env(safe-area-inset-right)) .65rem 0;scroll-snap-type:x proximity;scrollbar-width:none}
       .forecast-map-gallery::-webkit-scrollbar{display:none}
-      .forecast-map-card{flex:0 0 min(78vw,320px);scroll-snap-align:start}
+      .forecast-map-card{flex:0 0 min(86vw,350px);scroll-snap-align:start}
       .forecast-map-dialog{width:calc(100% - .5rem);max-height:calc(100dvh - .5rem);border-radius:16px}
       .forecast-map-dialog-shell{max-height:calc(100dvh - .5rem)}
       .forecast-map-dialog-head{padding:.65rem .7rem}.forecast-map-dialog-foot{padding:.6rem .7rem}
@@ -189,7 +191,7 @@
   <script src="/assets/weather-core.js"></script>
   <script>
   (()=>{
-    const {el,geolocate,resolveLocation,resolvePoint,getTimeZone,mountHeader,mountPullToRefresh,minimalDarkRadarStyle}=WX;
+    const {el,geolocate,resolveLocation,resolvePoint,getTimeZone,getTheme,mountHeader,mountPullToRefresh,minimalRadarStyle}=WX;
     const header=mountHeader('radar',()=>centerOnLocation());
 
     // Iowa Environmental Mesonet's continuously updated CONUS N0Q mosaic uses
@@ -203,27 +205,26 @@
     // which raster basemaps cannot do. Raster Esri is kept only as a fallback
     // for when the vector style cannot be reached.
     //
-    // The radar basemap always renders in a minimal, near-black roads-only
-    // style — like RadarScope/Apple Weather/MyRadar — regardless of the
-    // site's own light/dark toggle, so reflectivity colors stay high-contrast
-    // against it. minimalDarkRadarStyle() strips OpenFreeMap's actively
-    // maintained "liberty" style (OpenMapTiles schema) down to background,
-    // water, boundaries, a progressively detailed road hierarchy and labels.
+    // The radar basemap follows the site's resolved light/dark setting while
+    // retaining a minimal roads-only treatment so forecast colors stay clear.
     const VECTOR_STYLE='https://tiles.openfreemap.org/styles/liberty';
     // Attribution for all of these lives on /credits.html, linked below the
     // map, rather than on-map controls — see the note by attributionControl.
-    const RASTER_FALLBACK={version:8,sources:{esri:{type:'raster',tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}'],tileSize:256,maxzoom:16}},layers:[{id:'bg',type:'background',paint:{'background-color':'#000'}},{id:'esri',type:'raster',source:'esri'}]};
+    const radarFallbackStyle=()=>{
+      const dark=getTheme()==='dark',base=dark?'World_Dark_Gray_Base':'World_Light_Gray_Base',reference=dark?'World_Dark_Gray_Reference':'World_Light_Gray_Reference';
+      return {version:8,sources:{esri:{type:'raster',tiles:[`https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/${base}/MapServer/tile/{z}/{y}/{x}`],tileSize:256,maxzoom:16},'esri-reference':{type:'raster',tiles:[`https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/${reference}/MapServer/tile/{z}/{y}/{x}`],tileSize:256,maxzoom:16}},layers:[{id:'bg',type:'background',paint:{'background-color':dark?'#0a0a0a':'#eef4fa'}},{id:'esri',type:'raster',source:'esri'},{id:'esri-reference',type:'raster',source:'esri-reference'}]};
+    };
 
     const DEFAULT_ZOOM=7.2,MAP_MAX_ZOOM=16;
     let map=null,marker=null,frames=[],pastCount=0,idx=0,playing=false,timer=null;
-    let loading=false,onLatest=true,styleReady=false,usingFallback=false;
+    let loading=false,onLatest=true,styleReady=false,usingFallback=false,changingTheme=false,vectorStyleTemplate=null;
     const NOAA_MAP_ROOT='https://mapservices.weather.noaa.gov';
     const QPF_SERVICE=`${NOAA_MAP_ROOT}/vector/rest/services/precip/wpc_qpf/MapServer`;
     const WEATHER_SERVICE=`${NOAA_MAP_ROOT}/vector/rest/services/outlooks/natl_fcst_wx_chart/MapServer`;
     const RAIN_RISK_SERVICE=`${NOAA_MAP_ROOT}/vector/rest/services/hazards/wpc_precip_hazards/MapServer`;
     const WINTER_SERVICE=`${NOAA_MAP_ROOT}/vector/rest/services/precip/wpc_prob_winter_precip/MapServer`;
-    const FORECAST_BASE_SERVICE='https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer';
-    const FORECAST_LABEL_SERVICE='https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer';
+    const FORECAST_BASE_SERVICES={light:'https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer',dark:'https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer'};
+    const FORECAST_LABEL_SERVICES={light:'https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer',dark:'https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer'};
     const NATIONAL_BBOX=[-14200000,2500000,-7200000,6700000];
     const FORECAST_AREAS={
       nearby:{label:'Near selected location',center:()=>[forecastLocation.lon,forecastLocation.lat],widthKm:900},
@@ -273,7 +274,7 @@
       // animated "sweep" instead of a hard cut — kept under the shortest
       // frame interval (BASE_INTERVAL at the fastest speed) so it never
       // outlasts the frame it's fading into.
-      const referenceLayer=(map.getStyle().layers||[]).find(layer=>layer.type==='line'||layer.type==='symbol');
+      const referenceLayer=(map.getStyle().layers||[]).find(layer=>layer.type==='line'||layer.type==='symbol'||layer.id==='esri-reference');
       map.addLayer({id:'radar',type:'raster',source:'radar',paint:{'raster-opacity':1,'raster-fade-duration':RADAR_FADE_MS,'raster-resampling':'nearest'}},referenceLayer?.id);
     }
     function showFrame(i){
@@ -327,14 +328,14 @@
       paintFrame();
     }
     async function radarStyle(){
-      if(usingFallback)return RASTER_FALLBACK;
-      const libertyStyle=await fetch(VECTOR_STYLE,{cache:'no-store'}).then(r=>r.json());
-      return minimalDarkRadarStyle(libertyStyle);
+      if(usingFallback)return radarFallbackStyle();
+      if(!vectorStyleTemplate)vectorStyleTemplate=await fetch(VECTOR_STYLE,{cache:'no-store'}).then(r=>r.json());
+      return minimalRadarStyle(vectorStyleTemplate,getTheme());
     }
     async function buildMap(latlng){
       let initialStyle;
       try{initialStyle=await radarStyle()}
-      catch{usingFallback=true;initialStyle=RASTER_FALLBACK}
+      catch{usingFallback=true;initialStyle=radarFallbackStyle()}
       map=new maplibregl.Map({
         container:'map',style:initialStyle,center:[latlng[1],latlng[0]],zoom:DEFAULT_ZOOM,
         // No on-map attribution control — credited instead on a linked
@@ -359,11 +360,27 @@
       // leaving a black rectangle.
       map.on('error',e=>{
         const msg=String(e?.error?.message||'');
-        if(!styleReady&&!usingFallback&&/style|sprite|glyphs|fetch|load/i.test(msg)){usingFallback=true;map.setStyle(RASTER_FALLBACK)}
+        if(!styleReady&&!usingFallback&&!changingTheme&&/style|sprite|glyphs|fetch|load/i.test(msg)){usingFallback=true;map.setStyle(radarFallbackStyle())}
       });
-      setTimeout(()=>{if(!styleReady&&!usingFallback){usingFallback=true;map.setStyle(RASTER_FALLBACK)}},7000);
+      setTimeout(()=>{if(!styleReady&&!usingFallback&&!changingTheme){usingFallback=true;map.setStyle(radarFallbackStyle())}},7000);
       const markerEl=document.createElement('div');markerEl.className='radar-location-marker';markerEl.setAttribute('role','img');markerEl.setAttribute('aria-label','Selected location');
       marker=new maplibregl.Marker({element:markerEl,anchor:'center'}).setLngLat([latlng[1],latlng[0]]).addTo(map);
+    }
+
+    async function applyMapTheme(){
+      renderForecastMaps();
+      if(el('forecast-map-dialog').open)paintForecastMap();
+      if(!map)return;
+      changingTheme=true;styleReady=false;
+      try{map.setStyle(await radarStyle())}
+      catch{usingFallback=true;map.setStyle(radarFallbackStyle())}
+      const restoreRadar=attempt=>{
+        if(!map)return;
+        if(map.isStyleLoaded()){changingTheme=false;styleReady=true;paintFrame();return}
+        if(attempt<50)setTimeout(()=>restoreRadar(attempt+1),100);
+        else changingTheme=false;
+      };
+      restoreRadar(0);
     }
 
     function centerOnLocation(){
@@ -419,8 +436,8 @@
       if(stamp)params.set('v',stamp);
       return `${service}/export?${params}`;
     }
-    const forecastBaseUrl=size=>forecastMapUrl(FORECAST_BASE_SERVICE,null,size,false);
-    const forecastLabelUrl=size=>forecastMapUrl(FORECAST_LABEL_SERVICE,null,size,true);
+    const forecastBaseUrl=size=>forecastMapUrl(FORECAST_BASE_SERVICES[getTheme()],null,size,false);
+    const forecastLabelUrl=size=>forecastMapUrl(FORECAST_LABEL_SERVICES[getTheme()],null,size,true);
     const forecastOverlayUrl=(item,size)=>forecastMapUrl(item.service,item.layer,size,true,forecastRefreshStamp);
     const forecastMetaText=item=>item.validText||'Latest NOAA/NWS forecast';
     function paintForecastAreaControl(){
@@ -522,6 +539,7 @@
       if(playing)play();
     });
     document.addEventListener('timezonechange',()=>{if(frames.length){updateStatus(false);showFrame(idx)}});
+    document.addEventListener('themechange',applyMapTheme);
     let lastRefresh=0;
     function refreshFrames(force){
       if(!map)return Promise.resolve();

@@ -603,20 +603,19 @@ window.WX = (function(){
     return clone;
   }
 
-  // Radar apps (RadarScope, Apple Weather) always show reflectivity against a
-  // near-black, roads-only basemap regardless of the app's own light/dark
-  // setting — busy terrain/landuse/building/POI layers compete with the
-  // radar colors instead of receding behind them. Rather than recolor the
-  // full "liberty" style (which keeps every layer, just inverted), this
-  // strips it down to only what a radar basemap needs, filtering by the
+  // Busy terrain/landuse/building/POI layers compete with radar colors instead
+  // of receding behind them. This strips the source style down to only what a
+  // radar basemap needs and applies a high-contrast light or dark palette,
+  // filtering by the
   // vector tiles' OpenMapTiles source-layer names (stable across whichever
   // cartographic style OpenFreeMap serves them through, unlike its own
   // layer ids). Everything else — landcover, landuse, parks, buildings and
   // POIs — is dropped outright. The full drivable-road hierarchy is retained
   // so local streets progressively appear as the user zooms in, while paths,
   // tracks, service roads and rail lines stay out of the radar presentation.
-  function minimalDarkRadarStyle(style){
+  function minimalRadarStyle(style,theme='dark'){
     const clone=JSON.parse(JSON.stringify(style));
+    const dark=theme!=='light';
     const KEEP_SOURCE_LAYERS=new Set(['water','waterway','boundary','transportation','transportation_name','place']);
     const NON_DRIVING_LAYER=/path|pedestrian|service|track|rail|transit|one.way|road.area/i;
     const MINOR_PLACE=/suburb|neighbourhood|neighborhood|quarter|isolated_dwelling|housenumber/i;
@@ -642,15 +641,15 @@ window.WX = (function(){
       // at any zoom the radar map itself allows, instead of disappearing
       // and leaving only a city name with no sense of what state it's in.
       if(sl==='boundary'){delete layer.minzoom;delete layer.maxzoom}
-      if(layer.type==='background'){layer.paint['background-color']='#0a0a0a';continue}
-      if(layer.type==='fill'&&(sl==='water')){layer.paint['fill-color']='#08121d';layer.paint['fill-opacity']=1;delete layer.paint['fill-pattern'];continue}
-      if(layer.type==='line'&&sl==='waterway'){layer.paint['line-color']='#163353';layer.paint['line-opacity']=.75;continue}
-      if(layer.type==='line'&&sl==='boundary'){layer.paint['line-color']='rgba(185,188,195,0.68)';layer.paint['line-opacity']=1;if(!layer.paint['line-width'])layer.paint['line-width']=.8;continue}
+      if(layer.type==='background'){layer.paint['background-color']=dark?'#0a0a0a':'#eef4fa';continue}
+      if(layer.type==='fill'&&(sl==='water')){layer.paint['fill-color']=dark?'#08121d':'#cce7f4';layer.paint['fill-opacity']=1;delete layer.paint['fill-pattern'];continue}
+      if(layer.type==='line'&&sl==='waterway'){layer.paint['line-color']=dark?'#163353':'#8abbd3';layer.paint['line-opacity']=dark ? .75 : .9;continue}
+      if(layer.type==='line'&&sl==='boundary'){layer.paint['line-color']=dark?'rgba(185,188,195,0.68)':'rgba(69,88,109,0.72)';layer.paint['line-opacity']=1;if(!layer.paint['line-width'])layer.paint['line-width']=.8;continue}
       if(layer.type==='line'&&sl==='transportation'){
         const id=layer.id||'',blob=JSON.stringify(layer);
         const casing=/casing/i.test(id),major=/motorway|trunk/i.test(blob),primary=/primary/i.test(blob),secondary=/secondary|tertiary/i.test(blob);
-        layer.paint['line-color']=casing?'#090b0e':major?'#1879c9':primary?'#65717d':secondary?'#4d535b':'#35393f';
-        layer.paint['line-opacity']=/tunnel/i.test(id) ? .58 : casing ? .96 : major ? .98 : primary ? .9 : secondary ? .82 : .68;
+        layer.paint['line-color']=dark?(casing?'#090b0e':major?'#1879c9':primary?'#65717d':secondary?'#4d535b':'#35393f'):(casing?'#fff':major?'#1874b9':primary?'#587a98':secondary?'#7890a5':'#a0afbc');
+        layer.paint['line-opacity']=/tunnel/i.test(id) ? .58 : casing ? .96 : major ? .98 : primary ? .9 : secondary ? .82 : dark ? .68 : .76;
         continue;
       }
       if(layer.type==='symbol'){
@@ -661,7 +660,7 @@ window.WX = (function(){
         // SDF glyphs fetched from the style's own glyphs URL, not arbitrary
         // system fonts, so swapping in "SF Pro"/"Inter" here would 404
         // instead of just changing the typeface.
-        layer.paint['text-color']='#a9aaae';layer.paint['text-halo-color']='#050506';layer.paint['text-halo-width']=1.35;
+        layer.paint['text-color']=dark?'#b9bbc0':'#263f58';layer.paint['text-halo-color']=dark?'#050506':'#f5f9fc';layer.paint['text-halo-width']=dark?1.35:1.65;
         layer.layout=layer.layout||{};
         layer.layout['text-size']=sl==='place'?12:10.5;
         // Route shields provide crucial road orientation on a radar map. Keep
@@ -726,5 +725,5 @@ window.WX = (function(){
     emoji,local,maxWind,gustFrom,durationMs,gridValues,kphToMph,cToF,product,
     currentObservation,currentHeadline,alertLine,dayKey,startOfDay,hourLabel,dayPartLabel,dayRows,uvForDate,humidityForDate,gustForDate,maxTempForDate,minTempForDate,dayMetrics,metricsHTML,
     todayBrief,futureBrief,renderFutureCardHTML,loadTodayCard,sunMetrics,
-    findTodayPeriods,renderDaysHTML,mountHeader,mountPullToRefresh,getTheme,setTheme,getThemeChoice,recolorStyleDark,minimalDarkRadarStyle};
+    findTodayPeriods,renderDaysHTML,mountHeader,mountPullToRefresh,getTheme,setTheme,getThemeChoice,recolorStyleDark,minimalRadarStyle};
 })();
