@@ -22,25 +22,23 @@
     #map{position:absolute;inset:0;background:#000}
     .radar-console.hidden{display:none}
     .radar-console{border-top:1px solid #343437;background:#151517;color:#f5f5f7}
-    .radar-product-row{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;padding:.55rem .75rem .48rem}
-    .radar-product{display:grid;gap:.02rem;min-width:0}
-    .radar-product strong{color:var(--cyan);font-size:.88rem;line-height:1.15;font-weight:650}
-    .radar-product span,.radar-frame-kind{color:#8e8e93;font-size:.69rem;line-height:1.2}
+    .radar-frame-row{display:flex;justify-content:flex-end;padding:.55rem .75rem .48rem}
+    .radar-frame-kind{color:#8e8e93;font-size:.69rem;line-height:1.2}
     .radar-frame-readout{display:grid;justify-items:end;flex:0 0 auto;font-variant-numeric:tabular-nums}
     .radar-time{font-size:.9rem;line-height:1.1;color:#f5f5f7;font-weight:650}
     .radar-scale{height:9px;background:linear-gradient(90deg,#00e400 0%,#00a800 18%,#ffff00 35%,#ffbf00 46%,#ff0000 58%,#d60000 70%,#ff00ff 82%,#9955c9 92%,#fff 100%);box-shadow:inset 0 1px rgba(255,255,255,.12)}
     .radar-overlay{display:flex;align-items:center;gap:.65rem;padding:.62rem .75rem .68rem;background:#111113}
-    .play-btn{flex:0 0 auto;width:34px;height:34px;border-radius:9px;border:1px solid rgba(100,210,255,.45);background:rgba(100,210,255,.08);color:var(--cyan);display:flex;align-items:center;justify-content:center;transition:transform .15s ease-out,background-color .15s ease-out}
+    .play-btn{flex:0 0 auto;width:30px;height:28px;border-radius:9px;border:1px solid rgba(100,210,255,.45);background:rgba(100,210,255,.08);color:var(--cyan);display:flex;align-items:center;justify-content:center;transition:transform .15s ease-out,background-color .15s ease-out}
     .play-btn:active{transform:scale(.92)}
     .play-btn:hover,.play-btn:focus-visible{background:rgba(100,210,255,.16)}
-    .play-btn svg{width:15px;height:15px}
+    .play-btn svg{width:13px;height:13px}
     .radar-overlay input[type=range]{flex:1;min-width:0;-webkit-appearance:none;appearance:none;height:5px;border-radius:999px;background:#46464a;outline:none;margin:0}
     .radar-overlay input[type=range]::-webkit-slider-runnable-track{height:5px;border-radius:999px;background:#46464a}
     .radar-overlay input[type=range]::-moz-range-track{height:5px;border-radius:999px;background:#46464a}
     .radar-overlay input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:18px;height:18px;margin-top:-6.5px;border-radius:50%;background:var(--cyan);border:2px solid #111113;box-shadow:0 0 0 1px rgba(100,210,255,.5);cursor:pointer}
     .radar-overlay input[type=range]::-moz-range-thumb{width:18px;height:18px;border:2px solid #111113;border-radius:50%;background:var(--cyan);box-shadow:0 0 0 1px rgba(100,210,255,.5);cursor:pointer}
     .radar-overlay input[type=range]:focus-visible{box-shadow:0 0 0 2px var(--cyan)}
-    .speed-btn{flex:0 0 auto;min-width:2.7rem;padding:.3rem .5rem;border-radius:9px;border:1px solid #3a3a3c;background:#1c1c1e;color:#ddd;font-size:.72rem;font-weight:650;transition:transform .15s ease-out,background-color .15s ease-out}
+    .speed-btn{flex:0 0 auto;height:28px;min-width:2.7rem;padding:0 .5rem;border-radius:9px;border:1px solid #3a3a3c;background:#1c1c1e;color:#ddd;font-size:.72rem;font-weight:650;transition:transform .15s ease-out,background-color .15s ease-out}
     .speed-btn:active{transform:scale(.94);background-color:rgba(255,255,255,.1)}
     .radar-locate-btn{position:absolute;top:10px;right:10px;z-index:2;width:38px;height:38px;padding:0;border:1px solid rgba(100,210,255,.45);border-radius:10px;background:rgba(17,17,19,.86);color:var(--cyan);display:flex;align-items:center;justify-content:center;box-shadow:0 2px 9px rgba(0,0,0,.45);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);transition:transform .15s ease-out,background-color .15s ease-out}
     .radar-locate-btn:hover,.radar-locate-btn:focus-visible{background:rgba(35,35,38,.94)}
@@ -49,7 +47,7 @@
     .radar-locate-btn svg{width:21px;height:21px}
     .radar-location-marker{width:17px;height:17px;border:3px solid #fff;border-radius:50%;background:var(--blue);box-shadow:0 0 0 3px rgba(10,132,255,.3),0 2px 7px rgba(0,0,0,.65)}
     #radar-status{margin-top:.9rem}
-    @media(max-width:520px){.radar-card{height:clamp(210px,54vw,280px)}.radar-product-row{padding:.5rem .65rem .42rem}.radar-overlay{padding:.58rem .65rem .64rem;gap:.55rem}}
+    @media(max-width:520px){.radar-card{height:clamp(210px,54vw,280px)}.radar-frame-row{padding:.5rem .65rem .42rem}.radar-overlay{padding:.58rem .65rem .64rem;gap:.55rem}}
   </style>
 </head>
 <body>
@@ -69,16 +67,15 @@
           <span id="radar-locate-status" class="sr-only" aria-live="polite"></span>
         </div>
         <div class="radar-console hidden">
-          <div class="radar-product-row">
-            <div class="radar-product"><strong>Radar</strong><span>Weather map</span></div>
+          <div class="radar-frame-row">
             <div class="radar-frame-readout"><time id="radar-time" class="radar-time"></time><span id="radar-frame-kind" class="radar-frame-kind"></span></div>
           </div>
-          <div class="radar-scale" role="img" aria-label="Radar intensity from light to heavy precipitation"></div>
           <div class="radar-overlay">
             <button id="play-btn" class="play-btn" type="button" aria-label="Play"><svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor"/></svg></button>
             <input id="frame-slider" type="range" min="0" value="0" step="1" aria-label="Radar frame">
             <button id="speed-btn" class="speed-btn" type="button" aria-label="Playback speed"></button>
           </div>
+          <div class="radar-scale" role="img" aria-label="Radar intensity from light to heavy precipitation"></div>
         </div>
       </section>
       <p class="status" id="radar-status"></p>
@@ -134,7 +131,7 @@
 
     function updateStatus(checkedNow){
       if(!frames.length){el('radar-status').textContent='';return}
-      el('radar-status').textContent=`Latest radar scan: ${fmtFull(frames[pastCount-1].time*1000)}${checkedNow?' · just refreshed':''} · NEXRAD mosaic via Iowa Environmental Mesonet`;
+      el('radar-status').textContent=`Latest radar scan: ${fmtFull(frames[pastCount-1].time*1000)}${checkedNow?' · just refreshed':''}`;
     }
     function paintFrame(){
       if(!map||!styleReady||!frames.length)return;
