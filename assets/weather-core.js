@@ -189,6 +189,24 @@ window.WX = (function(){
   function tempForDate(grid,field,dateKey,tz){const values=grid.properties?.[field]?.values||[];for(const row of values){if(dayKey(tz,row.validTime.split('/')[0])===dateKey&&row.value!=null)return cToF(row.value)}return null}
   const maxTempForDate=(grid,dateKey,tz)=>tempForDate(grid,'maxTemperature',dateKey,tz);
   const minTempForDate=(grid,dateKey,tz)=>tempForDate(grid,'minTemperature',dateKey,tz);
+  function gridMetricValuesForDate(grid,fieldName,dateKey,tz,convert=value=>Math.round(value)){
+    const field=grid.properties?.[fieldName],values=field?.values||[];
+    return values.filter(row=>dayKey(tz,row.validTime.split('/')[0])===dateKey&&row.value!=null).map(row=>convert(row.value,field?.uom)).filter(Number.isFinite);
+  }
+  function extraDayMetrics(grid,dateKey,tz){
+    const asTemperature=(value,uom)=>uom?.includes('degC')?cToF(value):Math.round(value);
+    const apparent=gridMetricValuesForDate(grid,'apparentTemperature',dateKey,tz,asTemperature);
+    const dewpoints=gridMetricValuesForDate(grid,'dewpoint',dateKey,tz,asTemperature);
+    const clouds=gridMetricValuesForDate(grid,'skyCover',dateKey,tz);
+    const range=apparent.length?`${Math.min(...apparent)}°${Math.min(...apparent)===Math.max(...apparent)?'':`–${Math.max(...apparent)}°`}`:null;
+    const average=values=>values.length?Math.round(values.reduce((sum,value)=>sum+value,0)/values.length):null;
+    const dewpoint=average(dewpoints),cloudCover=average(clouds);
+    return [
+      range==null?null:['Feels Like',range],
+      dewpoint==null?null:['Dew Point',`${dewpoint}°`],
+      cloudCover==null?null:['Cloud Cover',`${cloudCover}%`]
+    ].filter(Boolean);
+  }
   function dayRows(allPeriods,grid,tz,lat){
     // Group by calendar date in the selected display time zone rather than walking
     // day/night pairs positionally, so today's row is always complete even
@@ -202,7 +220,7 @@ window.WX = (function(){
     });
     const todayKey=dayKey(tz,new Date());
     const startIdx=Math.max(0,order.indexOf(todayKey));
-    return order.slice(startIdx,startIdx+7).map(key=>({...byKey[key],uv:uvForDate(key,lat),humidity:humidityForDate(grid,key,tz),gust:gustForDate(grid,key,tz),hi:maxTempForDate(grid,key,tz),lo:minTempForDate(grid,key,tz)}));
+    return order.slice(startIdx,startIdx+7).map(key=>({...byKey[key],uv:uvForDate(key,lat),humidity:humidityForDate(grid,key,tz),gust:gustForDate(grid,key,tz),hi:maxTempForDate(grid,key,tz),lo:minTempForDate(grid,key,tz),extraMetrics:extraDayMetrics(grid,key,tz)}));
   }
   function windAvg(windSpeed){
     const nums=(String(windSpeed).match(/\d+/g)||[]).map(Number);
@@ -234,7 +252,25 @@ window.WX = (function(){
       uv==null?null:['Max UV',uv]
     ].filter(Boolean);
   }
-  function metricsHTML(pairs){return pairs.map(([k,v,k2,v2])=>`<span class="metric"><b>${esc(k)}:</b> ${v}${k2?` <b>${esc(k2)}:</b> ${v2}`:''}</span>`).join('')}
+  let metricsGroupId=0;
+  function metricPillsHTML(pairs){return pairs.map(([k,v,k2,v2])=>`<span class="metric"><b>${esc(k)}:</b> ${v}${k2?` <b>${esc(k2)}:</b> ${v2}`:''}</span>`).join('')}
+  function metricsHTML(pairs,primaryCount=4){
+    const primary=pairs.slice(0,primaryCount),extra=pairs.slice(primaryCount);
+    if(!extra.length)return `<div class="metric-row">${metricPillsHTML(primary)}</div>`;
+    const id=`metrics-extra-${++metricsGroupId}`;
+    return `<div class="metric-row">${metricPillsHTML(primary)}</div><button class="metrics-toggle" type="button" aria-expanded="false" aria-controls="${id}" aria-label="Show more weather details"><span>More</span><svg viewBox="0 0 12 8" aria-hidden="true"><path d="M1 1.5 6 6.5l5-5"/></svg></button><div class="metric-row metrics-extra" id="${id}" hidden>${metricPillsHTML(extra)}</div>`;
+  }
+  if(typeof document!=='undefined')document.addEventListener('click',event=>{
+    const button=event.target.closest?.('.metrics-toggle');
+    if(!button)return;
+    const extra=document.getElementById(button.getAttribute('aria-controls'));
+    if(!extra)return;
+    const expanded=button.getAttribute('aria-expanded')==='true';
+    button.setAttribute('aria-expanded',String(!expanded));
+    button.setAttribute('aria-label',expanded?'Show more weather details':'Show fewer weather details');
+    button.querySelector('span').textContent=expanded?'More':'Less';
+    extra.hidden=expanded;
+  });
   // Sunrise/sunset equation (Wikipedia "Sunrise equation" / NOAA solar
   // calculator), accurate to within a minute or two — no API, no key,
   // computed entirely from lat/lon/date the way Apple Weather's astro data
@@ -299,7 +335,7 @@ window.WX = (function(){
       const date=r.date.toLocaleDateString('en-US',{month:'short',day:'numeric',timeZone:tz});
       const day=index===0?'Tomorrow':r.date.toLocaleDateString('en-US',{weekday:'long',timeZone:tz});
       const title=`${emoji(b.shortForecast)} ${day} · ${date}`;
-      const metrics=metricsHTML([...dayMetrics(d,n,r.uv,r.humidity,r.gust,r.hi,r.lo).slice(1),...sunMetrics(r.date,loc?.lat,loc?.lon,tz)]);
+      const metrics=metricsHTML([...dayMetrics(d,n,r.uv,r.humidity,r.gust,r.hi,r.lo).slice(1),...sunMetrics(r.date,loc?.lat,loc?.lon,tz),...(r.extraMetrics||[])]);
       return renderFutureCardHTML(title,d,n,metrics,r.hi,r.lo);
     }).join('');
   }
@@ -308,7 +344,7 @@ window.WX = (function(){
   // Alerts section, fetched and rendered by this one function.
   async function loadTodayCard(container,title,loc,point,officeId,todayPeriods,grid,tz){
     const todayKey=dayKey(tz,new Date());
-    const metrics=metricsHTML([...dayMetrics(todayPeriods.day,todayPeriods.night,uvForDate(todayKey,loc.lat),humidityForDate(grid,todayKey,tz),gustForDate(grid,todayKey,tz),maxTempForDate(grid,todayKey,tz),minTempForDate(grid,todayKey,tz)),...sunMetrics(new Date(),loc.lat,loc.lon,tz)]);
+    const metrics=metricsHTML([...dayMetrics(todayPeriods.day,todayPeriods.night,uvForDate(todayKey,loc.lat),humidityForDate(grid,todayKey,tz),gustForDate(grid,todayKey,tz),maxTempForDate(grid,todayKey,tz),minTempForDate(grid,todayKey,tz)),...sunMetrics(new Date(),loc.lat,loc.lon,tz),...extraDayMetrics(grid,todayKey,tz)]);
     const current=await currentObservation(point).catch(()=>null);
     const currentText=current?currentHeadline(current.observation):null;
     const brief=todayBrief(currentText,todayPeriods.day,todayPeriods.night,new Date(),tz);
@@ -729,7 +765,7 @@ window.WX = (function(){
 
   return {API,DEFAULT_LOC,DEFAULT_TIME_ZONE,el,esc,getSavedLocation,saveLocation,getTimeZone,setTimeZone,timeZoneLabel,geolocate,geocodeSearch,resolveLocation,resolvePoint,json,
     emoji,local,maxWind,gustFrom,durationMs,gridValues,kphToMph,cToF,product,
-    currentObservation,currentHeadline,alertLine,dayKey,startOfDay,hourLabel,dayPartLabel,dayRows,uvForDate,humidityForDate,gustForDate,maxTempForDate,minTempForDate,dayMetrics,metricsHTML,
+    currentObservation,currentHeadline,alertLine,dayKey,startOfDay,hourLabel,dayPartLabel,dayRows,uvForDate,humidityForDate,gustForDate,maxTempForDate,minTempForDate,extraDayMetrics,dayMetrics,metricsHTML,
     todayBrief,futureBrief,renderFutureCardHTML,loadTodayCard,sunMetrics,
     findTodayPeriods,renderDaysHTML,mountHeader,mountPullToRefresh,getTheme,setTheme,getThemeChoice,recolorStyleDark,minimalRadarStyle};
 })();
