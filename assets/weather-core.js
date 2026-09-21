@@ -284,8 +284,14 @@ window.WX = (function(){
     if(hi&&lo)return `${hi}, ${lo}.`;
     return `${hi||lo||'Forecast unavailable'}.`;
   }
-  function renderFutureCardHTML(title,d,n,metrics){
-    return `<article class="brief"><h3>${esc(title)}</h3><hr><p class="condition">${esc(futureBrief(d,n))}</p><div class="metrics">${metrics}</div></article>`;
+  function futureHeadline(d,n,gridHi=null,gridLo=null){
+    const condition=(d||n)?.shortForecast||'Conditions unavailable';
+    const hi=d?.temperature??gridHi,lo=n?.temperature??gridLo;
+    const range=hi!=null&&lo!=null?`${hi}°–${lo}°`:hi!=null?`${hi}°`:lo!=null?`${lo}°`:'';
+    return `${condition}${range?` · ${range}`:''}`;
+  }
+  function renderFutureCardHTML(title,d,n,metrics,gridHi=null,gridLo=null){
+    return `<article class="brief"><h3>${esc(title)}</h3><hr><p class="now-line">${esc(futureHeadline(d,n,gridHi,gridLo))}</p><p class="condition">${esc(futureBrief(d,n))}</p><div class="metrics">${metrics}</div></article>`;
   }
   function renderDaysHTML(rows,tz,loc){
     return rows.map((r,index)=>{
@@ -293,8 +299,8 @@ window.WX = (function(){
       const date=r.date.toLocaleDateString('en-US',{month:'short',day:'numeric',timeZone:tz});
       const day=index===0?'Tomorrow':r.date.toLocaleDateString('en-US',{weekday:'long',timeZone:tz});
       const title=`${emoji(b.shortForecast)} ${day} · ${date}`;
-      const metrics=metricsHTML([...dayMetrics(d,n,r.uv,r.humidity,r.gust,r.hi,r.lo),...sunMetrics(r.date,loc?.lat,loc?.lon,tz)]);
-      return renderFutureCardHTML(title,d,n,metrics);
+      const metrics=metricsHTML([...dayMetrics(d,n,r.uv,r.humidity,r.gust,r.hi,r.lo).slice(1),...sunMetrics(r.date,loc?.lat,loc?.lon,tz)]);
+      return renderFutureCardHTML(title,d,n,metrics,r.hi,r.lo);
     }).join('');
   }
   // Shared by the Today page and the 7-day page's first (today) card so the
