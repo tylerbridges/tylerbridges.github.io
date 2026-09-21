@@ -43,6 +43,11 @@
     .radar-overlay input[type=range]:focus-visible{box-shadow:0 0 0 2px var(--cyan)}
     .speed-btn{flex:0 0 auto;min-width:2.7rem;padding:.3rem .5rem;border-radius:9px;border:1px solid #3a3a3c;background:#1c1c1e;color:#ddd;font-size:.72rem;font-weight:650;transition:transform .15s ease-out,background-color .15s ease-out}
     .speed-btn:active{transform:scale(.94);background-color:rgba(255,255,255,.1)}
+    .radar-locate-btn{position:absolute;top:10px;right:10px;z-index:2;width:38px;height:38px;padding:0;border:1px solid rgba(100,210,255,.45);border-radius:10px;background:rgba(17,17,19,.86);color:var(--cyan);display:flex;align-items:center;justify-content:center;box-shadow:0 2px 9px rgba(0,0,0,.45);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);transition:transform .15s ease-out,background-color .15s ease-out}
+    .radar-locate-btn:hover,.radar-locate-btn:focus-visible{background:rgba(35,35,38,.94)}
+    .radar-locate-btn:active{transform:scale(.92)}
+    .radar-locate-btn:disabled{opacity:.55}
+    .radar-locate-btn svg{width:21px;height:21px}
     .radar-location-marker{width:17px;height:17px;border:3px solid #fff;border-radius:50%;background:var(--blue);box-shadow:0 0 0 3px rgba(10,132,255,.3),0 2px 7px rgba(0,0,0,.65)}
     #radar-status{margin-top:.9rem}
     @media(max-width:520px){.radar-card{height:clamp(350px,55dvh,520px)}.radar-product-row{padding:.5rem .65rem .42rem}.radar-overlay{padding:.58rem .65rem .64rem;gap:.55rem}}
@@ -61,6 +66,8 @@
       <section class="radar-viewer" aria-label="Animated weather radar">
         <div class="radar-card">
           <div id="map"></div>
+          <button id="radar-locate-btn" class="radar-locate-btn" type="button" aria-label="Center radar on current location"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="currentColor"/><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+          <span id="radar-locate-status" class="sr-only" aria-live="polite"></span>
         </div>
         <div class="radar-console hidden">
           <div class="radar-product-row">
@@ -69,7 +76,7 @@
           </div>
           <div class="radar-scale" role="img" aria-label="Reflectivity intensity from light to heavy precipitation"></div>
           <div class="radar-overlay">
-            <button id="play-btn" class="play-btn" type="button" aria-label="Pause"><svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor"/></svg></button>
+            <button id="play-btn" class="play-btn" type="button" aria-label="Play"><svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor"/></svg></button>
             <input id="frame-slider" type="range" min="0" value="0" step="1" aria-label="Radar frame">
             <button id="speed-btn" class="speed-btn" type="button" aria-label="Playback speed"></button>
           </div>
@@ -82,7 +89,7 @@
   <script src="/assets/weather-core.js"></script>
   <script>
   (()=>{
-    const {el,resolveLocation,resolvePoint,getTimeZone,mountHeader,mountPullToRefresh,minimalDarkRadarStyle}=WX;
+    const {el,geolocate,resolveLocation,resolvePoint,getTimeZone,mountHeader,mountPullToRefresh,minimalDarkRadarStyle}=WX;
     const header=mountHeader('radar',()=>centerOnLocation());
 
     // RainViewer serves the same NEXRAD mosaic the NWS publishes, but as plain
@@ -120,7 +127,8 @@
     // map, rather than on-map controls — see the note by attributionControl.
     const RASTER_FALLBACK={version:8,sources:{esri:{type:'raster',tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}'],tileSize:256,maxzoom:16}},layers:[{id:'bg',type:'background',paint:{'background-color':'#000'}},{id:'esri',type:'raster',source:'esri'}]};
 
-    let map=null,marker=null,frames=[],pastCount=0,idx=0,playing=true,timer=null;
+    const DEFAULT_ZOOM=6.9;
+    let map=null,marker=null,frames=[],pastCount=0,idx=0,playing=false,timer=null;
     let loading=false,onLatest=true,rvHost='',styleReady=false,usingFallback=false;
     // Playback speed: a multiplier on the base frame interval, remembered
     // per-device so a preference sticks across visits.
@@ -221,7 +229,7 @@
       try{initialStyle=await radarStyle()}
       catch{usingFallback=true;initialStyle=RASTER_FALLBACK}
       map=new maplibregl.Map({
-        container:'map',style:initialStyle,center:[latlng[1],latlng[0]],zoom:7.6,
+        container:'map',style:initialStyle,center:[latlng[1],latlng[0]],zoom:DEFAULT_ZOOM,
         // No on-map attribution control — credited instead on a linked
         // /credits.html page so the map stays visually clean. All required
         // attributions (RainViewer, OpenFreeMap/OSM, Esri, MapLibre) live there.
@@ -270,7 +278,21 @@
       });
     }
 
+    async function centerOnDevice(){
+      const button=el('radar-locate-btn'),status=el('radar-locate-status');
+      button.disabled=true;button.setAttribute('aria-busy','true');status.textContent='Finding current location…';
+      try{
+        const pos=await geolocate({enableHighAccuracy:true,maximumAge:0,timeout:10000}),latlng=[pos.lon,pos.lat];
+        map.jumpTo({center:latlng,zoom:DEFAULT_ZOOM});
+        marker.setLngLat(latlng);
+        status.textContent='Radar centered on your current location.';
+        resolvePoint(pos).then(({label})=>header.setKicker(label)).catch(()=>header.setKicker('Current location'));
+      }catch{status.textContent='Current location is unavailable.'}
+      finally{button.disabled=false;button.removeAttribute('aria-busy')}
+    }
+
     el('play-btn').addEventListener('click',()=>playing?pause():play());
+    el('radar-locate-btn').addEventListener('click',centerOnDevice);
     el('frame-slider').addEventListener('input',e=>{pause();showFrame(+e.target.value)});
     paintSpeedBtn();
     el('speed-btn').addEventListener('click',()=>{
