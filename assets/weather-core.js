@@ -605,21 +605,21 @@ window.WX = (function(){
   // strips it down to only what a radar basemap needs, filtering by the
   // vector tiles' OpenMapTiles source-layer names (stable across whichever
   // cartographic style OpenFreeMap serves them through, unlike its own
-  // layer ids). Everything else — landcover, landuse, parks, buildings,
-  // POIs, minor roads, small-place labels — is dropped outright.
+  // layer ids). Everything else — landcover, landuse, parks, buildings and
+  // POIs — is dropped outright. The full drivable-road hierarchy is retained
+  // so local streets progressively appear as the user zooms in, while paths,
+  // tracks, service roads and rail lines stay out of the radar presentation.
   function minimalDarkRadarStyle(style){
     const clone=JSON.parse(JSON.stringify(style));
     const KEEP_SOURCE_LAYERS=new Set(['water','waterway','boundary','transportation','transportation_name','place']);
-    const MAJOR_ROAD=/motorway|trunk|primary/i;
-    const MINOR_ROAD=/path|footway|steps|cycleway|track|service|pedestrian|rail/i;
-    const MINOR_PLACE=/village|hamlet|suburb|neighbourhood|neighborhood|quarter|isolated_dwelling|housenumber/i;
+    const NON_DRIVING_LAYER=/path|pedestrian|service|track|rail|transit|one.way|road.area/i;
+    const MINOR_PLACE=/suburb|neighbourhood|neighborhood|quarter|isolated_dwelling|housenumber/i;
     clone.layers=(clone.layers||[]).filter(l=>{
       if(l.type==='background')return true;
       const sl=l['source-layer'];
       if(!sl||!KEEP_SOURCE_LAYERS.has(sl))return false;
       if(sl==='transportation'||sl==='transportation_name'){
-        const blob=JSON.stringify(l);
-        return MAJOR_ROAD.test(blob)&&!MINOR_ROAD.test(blob);
+        return !NON_DRIVING_LAYER.test(l.id||'');
       }
       if(sl==='place'){
         return !MINOR_PLACE.test(JSON.stringify(l));
@@ -635,12 +635,18 @@ window.WX = (function(){
       // already stripped to just those reference layers, so let them show
       // at any zoom the radar map itself allows, instead of disappearing
       // and leaving only a city name with no sense of what state it's in.
-      if(sl==='boundary'||sl==='place'){delete layer.minzoom;delete layer.maxzoom}
+      if(sl==='boundary'){delete layer.minzoom;delete layer.maxzoom}
       if(layer.type==='background'){layer.paint['background-color']='#0a0a0a';continue}
       if(layer.type==='fill'&&(sl==='water')){layer.paint['fill-color']='#08121d';layer.paint['fill-opacity']=1;delete layer.paint['fill-pattern'];continue}
       if(layer.type==='line'&&sl==='waterway'){layer.paint['line-color']='#163353';layer.paint['line-opacity']=.75;continue}
       if(layer.type==='line'&&sl==='boundary'){layer.paint['line-color']='rgba(185,188,195,0.68)';layer.paint['line-opacity']=1;if(!layer.paint['line-width'])layer.paint['line-width']=.8;continue}
-      if(layer.type==='line'&&sl==='transportation'){layer.paint['line-color']=/motorway|trunk/i.test(JSON.stringify(layer))?'#28649b':'#555960';layer.paint['line-opacity']=.92;continue}
+      if(layer.type==='line'&&sl==='transportation'){
+        const id=layer.id||'',blob=JSON.stringify(layer);
+        const casing=/casing/i.test(id),major=/motorway|trunk/i.test(blob),primary=/primary/i.test(blob),secondary=/secondary|tertiary/i.test(blob);
+        layer.paint['line-color']=casing?'#090b0e':major?'#1879c9':primary?'#65717d':secondary?'#4d535b':'#35393f';
+        layer.paint['line-opacity']=/tunnel/i.test(id) ? .58 : casing ? .96 : major ? .98 : primary ? .9 : secondary ? .82 : .68;
+        continue;
+      }
       if(layer.type==='symbol'){
         // Small, low-contrast labels so they read as a quiet reference layer
         // rather than competing with the radar colors for attention. The
@@ -650,10 +656,12 @@ window.WX = (function(){
         // system fonts, so swapping in "SF Pro"/"Inter" here would 404
         // instead of just changing the typeface.
         layer.paint['text-color']='#a9aaae';layer.paint['text-halo-color']='#050506';layer.paint['text-halo-width']=1.35;
-        delete layer.paint['icon-color'];
         layer.layout=layer.layout||{};
         layer.layout['text-size']=sl==='place'?12:10.5;
-        delete layer.layout['icon-image'];
+        // Route shields provide crucial road orientation on a radar map. Keep
+        // the style's native shield sprite for transportation labels, while
+        // place labels remain text-only and visually quiet.
+        if(sl==='place'){delete layer.paint['icon-color'];delete layer.layout['icon-image']}
         continue;
       }
     }
