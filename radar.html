@@ -11,6 +11,7 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="preconnect" href="https://api.weather.gov">
+  <link rel="preconnect" href="https://mapservices.weather.noaa.gov" crossorigin>
   <link rel="preconnect" href="https://mesonet.agron.iastate.edu" crossorigin>
   <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
   <link rel="stylesheet" href="/assets/site.css">
@@ -53,7 +54,57 @@
     @keyframes radar-location-pulse{0%,100%{transform:scale(.92);opacity:.62}50%{transform:scale(1.06);opacity:1}}
     @media(prefers-reduced-motion:reduce){.radar-location-marker::before{animation:none;opacity:.82}}
     #radar-status{margin-top:.9rem}
-    @media(max-width:520px){.radar-card{height:clamp(210px,54vw,280px)}.radar-frame-row{padding:.3rem .55rem .27rem}.radar-overlay{padding:.58rem .65rem .64rem;gap:.55rem}}
+    .forecast-maps{margin-top:2rem}
+    .forecast-maps-head{display:flex;align-items:end;justify-content:space-between;gap:1rem;margin-bottom:.75rem}
+    .forecast-maps-head h2{margin:0}
+    .forecast-maps-head p{max-width:31rem;margin:0;color:var(--muted);font-size:.8rem;text-align:right}
+    .forecast-map-gallery{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem}
+    .forecast-map-card{min-width:0;padding:0;overflow:hidden;border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--text);text-align:left;box-shadow:var(--shadow);cursor:pointer;transition:transform .15s ease-out,border-color .15s ease-out}
+    .forecast-map-card:hover,.forecast-map-card:focus-visible{border-color:var(--blue);outline:0;transform:translateY(-1px)}
+    .forecast-map-card:active{transform:scale(.985)}
+    .forecast-map-thumb{position:relative;display:block;aspect-ratio:5/3;overflow:hidden;background:#f4f5f6}
+    .forecast-map-thumb img{position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:cover;color:#273746;font-size:.75rem}
+    .forecast-map-card-copy{display:block;padding:.72rem .8rem .78rem}
+    .forecast-map-title{display:block;color:var(--blue);font-size:.92rem;font-weight:750}
+    .forecast-map-detail{display:block;margin-top:.12rem;color:var(--muted);font-size:.72rem;line-height:1.35}
+    .forecast-map-valid{display:block;margin-top:.2rem;color:var(--muted);font-size:.67rem;line-height:1.3}
+    .forecast-map-card.unavailable .forecast-map-thumb::after{content:"Map temporarily unavailable";position:absolute;inset:0;display:grid;place-items:center;padding:1rem;background:var(--surface-2);color:var(--muted);font-size:.78rem;text-align:center}
+    .forecast-map-dialog{width:min(960px,calc(100% - 1.25rem));max-width:none;max-height:calc(100dvh - 1.25rem);padding:0;overflow:hidden;border:1px solid var(--line);border-radius:18px;background:var(--surface);color:var(--text);box-shadow:0 24px 70px rgba(0,0,0,.62)}
+    .forecast-map-dialog::backdrop{background:rgba(0,0,0,.76);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}
+    .forecast-map-dialog-shell{display:flex;max-height:calc(100dvh - 1.25rem);flex-direction:column}
+    .forecast-map-dialog-head{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.75rem;align-items:center;padding:.8rem .9rem;border-bottom:1px solid var(--line)}
+    .forecast-map-dialog-title{margin:0;font-size:1rem;line-height:1.25;letter-spacing:0}
+    .forecast-map-close{width:34px;height:34px;padding:0;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);color:var(--text);display:grid;place-items:center;cursor:pointer}
+    .forecast-map-close:hover,.forecast-map-close:focus-visible{border-color:var(--blue);outline:0}
+    .forecast-map-close svg{width:17px;height:17px}
+    .forecast-map-stage{position:relative;min-height:190px;aspect-ratio:5/3;overflow:hidden;background:#f4f5f6}
+    .forecast-map-stage img{position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:cover;color:#273746;text-align:center}
+    .forecast-map-base{z-index:1;pointer-events:none}
+    .forecast-map-dialog-error{display:none;position:absolute;inset:auto .8rem .8rem;z-index:2;padding:.65rem .8rem;border:1px solid color-mix(in srgb,var(--red) 45%,var(--line));border-radius:10px;background:color-mix(in srgb,var(--surface) 92%,transparent);color:var(--text);font-size:.78rem;text-align:center;box-shadow:var(--shadow)}
+    .forecast-map-dialog.has-error .forecast-map-overlay{display:none}
+    .forecast-map-dialog.has-error .forecast-map-dialog-error{display:block}
+    .forecast-map-legend{display:flex;align-items:center;justify-content:center;gap:.6rem;min-height:36px;padding:.42rem .8rem;border-top:1px solid var(--line);background:var(--surface);color:var(--muted);font-size:.68rem;line-height:1.2}
+    .forecast-map-legend-items{display:flex;align-items:center;justify-content:center;gap:.5rem;flex-wrap:wrap}
+    .forecast-map-legend-item{display:inline-flex;align-items:center;gap:.25rem;white-space:nowrap}
+    .forecast-map-legend-swatch{width:.72rem;height:.72rem;border:1px solid rgba(0,0,0,.26);border-radius:2px}
+    .forecast-map-dialog-foot{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:.6rem;align-items:center;padding:.7rem .9rem;border-top:1px solid var(--line)}
+    .forecast-map-nav{height:34px;padding:0 .7rem;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);color:var(--text);font:inherit;font-size:.78rem;font-weight:700;cursor:pointer}
+    .forecast-map-nav:hover,.forecast-map-nav:focus-visible{border-color:var(--blue);outline:0}
+    .forecast-map-meta{min-width:0;text-align:center}
+    .forecast-map-meta p{margin:0;color:var(--muted);font-size:.72rem;line-height:1.3}
+    .forecast-map-meta a{color:var(--blue);font-weight:700;text-decoration:none}
+    .forecast-map-meta a:hover{text-decoration:underline}
+    @media(max-width:620px){
+      .radar-card{height:clamp(210px,54vw,280px)}.radar-frame-row{padding:.3rem .55rem .27rem}.radar-overlay{padding:.58rem .65rem .64rem;gap:.55rem}
+      .forecast-maps-head{display:block}.forecast-maps-head p{margin-top:.25rem;text-align:left}
+      .forecast-map-gallery{display:flex;gap:.65rem;overflow-x:auto;margin-right:calc(-1 * max(1rem,env(safe-area-inset-right)));padding:0 max(1rem,env(safe-area-inset-right)) .65rem 0;scroll-snap-type:x proximity;scrollbar-width:none}
+      .forecast-map-gallery::-webkit-scrollbar{display:none}
+      .forecast-map-card{flex:0 0 min(78vw,320px);scroll-snap-align:start}
+      .forecast-map-dialog{width:calc(100% - .5rem);max-height:calc(100dvh - .5rem);border-radius:16px}
+      .forecast-map-dialog-shell{max-height:calc(100dvh - .5rem)}
+      .forecast-map-dialog-head{padding:.65rem .7rem}.forecast-map-dialog-foot{padding:.6rem .7rem}
+      .forecast-map-nav{width:38px;padding:0;font-size:.95rem}.forecast-map-nav-label{display:none}
+    }
   </style>
 </head>
 <body>
@@ -86,8 +137,34 @@
         </div>
       </section>
       <p class="status" id="radar-status"></p>
+      <section class="forecast-maps" aria-labelledby="forecast-maps-title">
+        <div class="forecast-maps-head">
+          <h2 id="forecast-maps-title">Forecast Maps</h2>
+          <p>Latest official forecasts from the NOAA/NWS Weather Prediction Center.</p>
+        </div>
+        <div class="forecast-map-gallery" id="forecast-map-gallery" aria-label="National forecast map gallery"></div>
+      </section>
     </div>
   </main>
+  <dialog class="forecast-map-dialog" id="forecast-map-dialog" aria-labelledby="forecast-map-dialog-title">
+    <div class="forecast-map-dialog-shell">
+      <div class="forecast-map-dialog-head">
+        <h2 class="forecast-map-dialog-title" id="forecast-map-dialog-title"></h2>
+        <button class="forecast-map-close" id="forecast-map-close" type="button" aria-label="Close forecast map"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+      </div>
+      <div class="forecast-map-stage" role="img" id="forecast-map-stage">
+        <img class="forecast-map-base" id="forecast-map-base" alt="" aria-hidden="true">
+        <img class="forecast-map-overlay" id="forecast-map-overlay" alt="" aria-hidden="true">
+        <div class="forecast-map-dialog-error" id="forecast-map-dialog-error">This WPC map is temporarily unavailable. Use the source link below to view it on the official site.</div>
+      </div>
+      <div class="forecast-map-legend" id="forecast-map-legend"></div>
+      <div class="forecast-map-dialog-foot">
+        <button class="forecast-map-nav" id="forecast-map-prev" type="button" aria-label="Previous forecast map"><span aria-hidden="true">‹</span><span class="forecast-map-nav-label"> Previous</span></button>
+        <div class="forecast-map-meta"><p id="forecast-map-description"></p><p><a id="forecast-map-source" href="https://mapservices.weather.noaa.gov/" target="_blank" rel="noreferrer">View NOAA/NWS data source</a></p></div>
+        <button class="forecast-map-nav" id="forecast-map-next" type="button" aria-label="Next forecast map"><span class="forecast-map-nav-label">Next </span><span aria-hidden="true">›</span></button>
+      </div>
+    </div>
+  </dialog>
   <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@5.6.1/dist/maplibre-gl.js"></script>
   <script src="/assets/weather-core.js"></script>
   <script>
@@ -120,6 +197,20 @@
     const DEFAULT_ZOOM=7.2,MAP_MAX_ZOOM=16;
     let map=null,marker=null,frames=[],pastCount=0,idx=0,playing=false,timer=null;
     let loading=false,onLatest=true,styleReady=false,usingFallback=false;
+    const NOAA_MAP_ROOT='https://mapservices.weather.noaa.gov';
+    const QPF_SERVICE=`${NOAA_MAP_ROOT}/vector/rest/services/precip/wpc_qpf/MapServer`;
+    const WEATHER_SERVICE=`${NOAA_MAP_ROOT}/vector/rest/services/outlooks/natl_fcst_wx_chart/MapServer`;
+    const RAIN_RISK_SERVICE=`${NOAA_MAP_ROOT}/vector/rest/services/hazards/wpc_precip_hazards/MapServer`;
+    const REFERENCE_SERVICE=`${NOAA_MAP_ROOT}/static/rest/services/nws_reference_maps/nws_reference_map/MapServer`;
+    const FORECAST_BBOX='-14200000,2500000,-7200000,6700000';
+    const FORECAST_MAPS=[
+      {title:'24-Hour Precipitation',detail:'Day 1 liquid-equivalent total',description:'Expected liquid-equivalent precipitation during the next 24-hour forecast period.',service:QPF_SERVICE,layer:1,metaLayer:1,metaFields:'valid_time,issue_time',legend:[['#61f400','.01–.25 in'],['#00a844','.25–.50'],['#00b5f0','.50–1'],['#0057b8','1–2'],['#b84acb','2–5'],['#d90000','5+']]},
+      {title:'48-Hour Precipitation',detail:'Day 1–2 liquid-equivalent total',description:'Expected liquid-equivalent precipitation across the first two forecast days.',service:QPF_SERVICE,layer:8,metaLayer:8,metaFields:'valid_time,issue_time',legend:[['#61f400','.01–.25 in'],['#00a844','.25–.50'],['#00b5f0','.50–1'],['#0057b8','1–2'],['#b84acb','2–5'],['#d90000','5+']]},
+      {title:'Day 1 Weather',detail:'Fronts and precipitation type',description:'Day 1 forecast fronts, pressure systems, and areas of rain, snow, ice, or thunderstorms.',service:WEATHER_SERVICE,layer:0,metaLayer:2,metaFields:'idp_filedate',legend:[['#79c968','Rain'],['#8f63d8','Mixed'],['#5599eb','Snow'],['#f05a5a','T-storm']]},
+      {title:'Day 2 Weather',detail:'Fronts and precipitation type',description:'Day 2 forecast fronts, pressure systems, and areas of rain, snow, ice, or thunderstorms.',service:WEATHER_SERVICE,layer:12,metaLayer:14,metaFields:'idp_filedate',legend:[['#79c968','Rain'],['#8f63d8','Mixed'],['#5599eb','Snow'],['#f05a5a','T-storm']]},
+      {title:'Excessive Rainfall',detail:'Day 1 flash-flood risk',description:'Day 1 risk areas where rainfall may exceed local flash-flood guidance.',service:RAIN_RISK_SERVICE,layer:0,metaLayer:0,metaFields:'valid_time,issue_time',legend:[['#38a800','Marginal'],['#fffe00','Slight'],['#f50000','Moderate'],['#ff69c5','High']]}
+    ];
+    let forecastMapIndex=0,forecastMapTrigger=null,forecastRefreshStamp=Math.floor(Date.now()/900000);
     // Playback speed: a multiplier on the base frame interval, remembered
     // per-device so a preference sticks across visits.
     const SPEED_KEY='radar-speed',SPEEDS=[0.5,1,2,3],BASE_INTERVAL=700;
@@ -263,6 +354,70 @@
       });
     }
 
+    function forecastMapUrl(service,layer,size,transparent,stamp){
+      const params=new URLSearchParams({bbox:FORECAST_BBOX,bboxSR:'3857',imageSR:'3857',size,format:'png32',transparent:String(transparent),layers:`show:${layer}`,f:'image'});
+      if(stamp)params.set('v',stamp);
+      return `${service}/export?${params}`;
+    }
+    const forecastBaseUrl=size=>forecastMapUrl(REFERENCE_SERVICE,3,size,true);
+    const forecastOverlayUrl=(item,size)=>forecastMapUrl(item.service,item.layer,size,true,forecastRefreshStamp);
+    const forecastMetaText=item=>item.validText||'Latest NOAA/NWS forecast';
+    function forecastLegend(item){
+      return `<span>Legend</span><span class="forecast-map-legend-items">${item.legend.map(([color,label])=>`<span class="forecast-map-legend-item"><span class="forecast-map-legend-swatch" style="background:${color}"></span>${label}</span>`).join('')}</span>`;
+    }
+    async function loadForecastMetadata(item,index){
+      try{
+        const params=new URLSearchParams({where:'1=1',outFields:item.metaFields,returnGeometry:'false',resultRecordCount:'1',f:'json'});
+        const response=await fetch(`${item.service}/${item.metaLayer}/query?${params}`,{cache:'no-store',signal:AbortSignal.timeout(12000)});
+        if(!response.ok)throw new Error('Metadata unavailable');
+        const attributes=(await response.json()).features?.[0]?.attributes;
+        const valid=attributes?.valid_time,fileDate=attributes?.idp_filedate;
+        item.validText=valid?`Valid ${valid}`:fileDate?`Updated ${fmtFull(fileDate)}`:attributes?.issue_time?`Issued ${attributes.issue_time} UTC`:'Latest NOAA/NWS forecast';
+        document.querySelector(`[data-forecast-map="${index}"] .forecast-map-valid`)?.replaceChildren(item.validText);
+        if(el('forecast-map-dialog').open&&forecastMapIndex===index)el('forecast-map-description').textContent=`${item.description} ${item.validText}.`;
+      }catch{item.validText='Latest NOAA/NWS forecast'}
+    }
+    function renderForecastMaps(){
+      const gallery=el('forecast-map-gallery');
+      gallery.innerHTML=FORECAST_MAPS.map((item,i)=>`<button class="forecast-map-card" type="button" data-forecast-map="${i}" aria-haspopup="dialog"><span class="forecast-map-thumb"><img class="forecast-map-base" src="${forecastBaseUrl('600,360')}" alt="" aria-hidden="true" loading="lazy" decoding="async"><img class="forecast-map-overlay" src="${forecastOverlayUrl(item,'600,360')}" alt="" aria-hidden="true" loading="lazy" decoding="async"></span><span class="forecast-map-card-copy"><span class="forecast-map-title">${item.title}</span><span class="forecast-map-detail">${item.detail}</span><span class="forecast-map-valid">${forecastMetaText(item)}</span></span></button>`).join('');
+      gallery.querySelectorAll('[data-forecast-map]').forEach(button=>{
+        button.addEventListener('click',()=>openForecastMap(+button.dataset.forecastMap,button));
+        button.querySelector('.forecast-map-overlay').addEventListener('error',()=>button.classList.add('unavailable'));
+        button.querySelector('.forecast-map-overlay').addEventListener('load',()=>button.classList.remove('unavailable'));
+      });
+      FORECAST_MAPS.forEach(loadForecastMetadata);
+    }
+    function paintForecastMap(){
+      const item=FORECAST_MAPS[forecastMapIndex],dialog=el('forecast-map-dialog');
+      dialog.classList.remove('has-error');
+      el('forecast-map-dialog-title').textContent=item.title;
+      el('forecast-map-description').textContent=`${item.description} ${forecastMetaText(item)}.`;
+      el('forecast-map-source').href=item.service;
+      el('forecast-map-stage').setAttribute('aria-label',`${item.title} from the NOAA/NWS Weather Prediction Center`);
+      el('forecast-map-base').src=forecastBaseUrl('1200,720');
+      el('forecast-map-overlay').src=forecastOverlayUrl(item,'1200,720');
+      el('forecast-map-legend').innerHTML=forecastLegend(item);
+      el('forecast-map-prev').setAttribute('aria-label',`Previous forecast map, ${FORECAST_MAPS[(forecastMapIndex-1+FORECAST_MAPS.length)%FORECAST_MAPS.length].title}`);
+      el('forecast-map-next').setAttribute('aria-label',`Next forecast map, ${FORECAST_MAPS[(forecastMapIndex+1)%FORECAST_MAPS.length].title}`);
+    }
+    function openForecastMap(index,trigger){
+      forecastMapIndex=index;forecastMapTrigger=trigger;
+      paintForecastMap();
+      el('forecast-map-dialog').showModal();
+      el('forecast-map-close').focus();
+    }
+    function stepForecastMap(direction){forecastMapIndex=(forecastMapIndex+direction+FORECAST_MAPS.length)%FORECAST_MAPS.length;paintForecastMap()}
+    function refreshForecastMaps(){forecastRefreshStamp=Math.floor(Date.now()/900000);renderForecastMaps();if(el('forecast-map-dialog').open)paintForecastMap()}
+
+    renderForecastMaps();
+    el('forecast-map-overlay').addEventListener('load',()=>el('forecast-map-dialog').classList.remove('has-error'));
+    el('forecast-map-overlay').addEventListener('error',()=>el('forecast-map-dialog').classList.add('has-error'));
+    el('forecast-map-close').addEventListener('click',()=>el('forecast-map-dialog').close());
+    el('forecast-map-prev').addEventListener('click',()=>stepForecastMap(-1));
+    el('forecast-map-next').addEventListener('click',()=>stepForecastMap(1));
+    el('forecast-map-dialog').addEventListener('click',event=>{if(event.target===el('forecast-map-dialog'))el('forecast-map-dialog').close()});
+    el('forecast-map-dialog').addEventListener('close',()=>{forecastMapTrigger?.focus();forecastMapTrigger=null});
+
     async function centerOnDevice(){
       const button=el('radar-locate-btn'),status=el('radar-locate-status');
       button.disabled=true;button.setAttribute('aria-busy','true');status.textContent='Finding current location…';
@@ -303,7 +458,7 @@
     // IEM's mosaic updates every five minutes; polling every two catches a new
     // scan soon after publication without hammering the public tile service.
     setInterval(()=>{if(document.visibilityState==='visible')refreshFrames()},2*60000);
-    mountPullToRefresh(()=>map?refreshFrames(true):centerOnLocation());
+    mountPullToRefresh(()=>{refreshForecastMaps();return map?refreshFrames(true):centerOnLocation()});
     if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
     centerOnLocation();
   })();
