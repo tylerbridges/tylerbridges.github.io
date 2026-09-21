@@ -38,7 +38,13 @@ window.WX = (function(){
   function getCachedPoint(lat,lon){try{const all=JSON.parse(localStorage.getItem(POINT_CACHE_KEY)||'{}');const entry=all[pointCacheKey(lat,lon)];if(entry&&Date.now()-entry.ts<POINT_TTL)return entry.point}catch{}return null}
   function setCachedPoint(lat,lon,point){try{const all=JSON.parse(localStorage.getItem(POINT_CACHE_KEY)||'{}');all[pointCacheKey(lat,lon)]={point,ts:Date.now()};const keys=Object.keys(all);if(keys.length>5){keys.sort((a,b)=>all[a].ts-all[b].ts);delete all[keys[0]]}localStorage.setItem(POINT_CACHE_KEY,JSON.stringify(all))}catch{}}
   function geolocate(opts={}){return new Promise((resolve,reject)=>{if(!navigator.geolocation)return reject(new Error('Geolocation unsupported'));navigator.geolocation.getCurrentPosition(pos=>resolve({lat:+pos.coords.latitude.toFixed(4),lon:+pos.coords.longitude.toFixed(4)}),reject,{enableHighAccuracy:false,timeout:5000,maximumAge:600000,...opts})})}
-  async function geocodeSearch(query){const results=await json(`https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=${encodeURIComponent(query)}`);if(!results.length)throw new Error('Location not found.');return {lat:+(+results[0].lat).toFixed(4),lon:+(+results[0].lon).toFixed(4)}}
+  const SEARCH_ALIASES=new Map([
+    ['jackson hole','Jackson, Wyoming'],
+    ['jackson hole wy','Jackson, Wyoming'],
+    ['jackson hole wyoming','Jackson, Wyoming']
+  ]);
+  function normalizedSearchQuery(query){const trimmed=String(query||'').trim(),key=trimmed.toLowerCase().replace(/[^a-z0-9]+/g,' ').trim().replace(/\s+/g,' ');return SEARCH_ALIASES.get(key)||trimmed}
+  async function geocodeSearch(query){const results=await json(`https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=${encodeURIComponent(normalizedSearchQuery(query))}`);if(!results.length)throw new Error('Location not found.');return {lat:+(+results[0].lat).toFixed(4),lon:+(+results[0].lon).toFixed(4)}}
   const US_STATE_ABBR={Alabama:'AL',Alaska:'AK',Arizona:'AZ',Arkansas:'AR',California:'CA',Colorado:'CO',Connecticut:'CT',Delaware:'DE',Florida:'FL',Georgia:'GA',Hawaii:'HI',Idaho:'ID',Illinois:'IL',Indiana:'IN',Iowa:'IA',Kansas:'KS',Kentucky:'KY',Louisiana:'LA',Maine:'ME',Maryland:'MD',Massachusetts:'MA',Michigan:'MI',Minnesota:'MN',Mississippi:'MS',Missouri:'MO',Montana:'MT',Nebraska:'NE',Nevada:'NV','New Hampshire':'NH','New Jersey':'NJ','New Mexico':'NM','New York':'NY','North Carolina':'NC','North Dakota':'ND',Ohio:'OH',Oklahoma:'OK',Oregon:'OR',Pennsylvania:'PA','Rhode Island':'RI','South Carolina':'SC','South Dakota':'SD',Tennessee:'TN',Texas:'TX',Utah:'UT',Vermont:'VT',Virginia:'VA',Washington:'WA','West Virginia':'WV',Wisconsin:'WI',Wyoming:'WY','District of Columbia':'DC','Puerto Rico':'PR',Guam:'GU','American Samoa':'AS','U.S. Virgin Islands':'VI','Northern Mariana Islands':'MP'};
   function normalizedLabel(result){
     const a=result.address||{};
@@ -496,7 +502,7 @@ window.WX = (function(){
       if(q.length<3){suggestionMap.clear();return}
       suggestTimer=setTimeout(async()=>{
         try{
-          const results=await json(`https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=4&countrycodes=us&q=${encodeURIComponent(q)}`);
+          const results=await json(`https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=4&countrycodes=us&q=${encodeURIComponent(normalizedSearchQuery(q))}`);
           if(request!==suggestRequest||q!==locationInput.value.trim())return;
           suggestionMap=new Map();
           results.forEach(r=>{const label=normalizedLabel(r);if(!suggestionMap.has(label))suggestionMap.set(label,{lat:+(+r.lat).toFixed(4),lon:+(+r.lon).toFixed(4)})});
