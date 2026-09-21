@@ -127,7 +127,7 @@
     // map, rather than on-map controls — see the note by attributionControl.
     const RASTER_FALLBACK={version:8,sources:{esri:{type:'raster',tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}'],tileSize:256,maxzoom:16}},layers:[{id:'bg',type:'background',paint:{'background-color':'#000'}},{id:'esri',type:'raster',source:'esri'}]};
 
-    const DEFAULT_ZOOM=7.2;
+    const DEFAULT_ZOOM=7.2,MAP_MAX_ZOOM=16;
     let map=null,marker=null,frames=[],pastCount=0,idx=0,playing=false,timer=null;
     let loading=false,onLatest=true,rvHost='',styleReady=false,usingFallback=false;
     // Playback speed: a multiplier on the base frame interval, remembered
@@ -241,7 +241,7 @@
         // fading in (localIdeographFontFamily already defaults to locally
         // rendering CJK glyphs instead of fetching them over the network).
         fadeDuration:0,
-        minZoom:3,maxZoom:10,cooperativeGestures:false,
+        minZoom:3,maxZoom:MAP_MAX_ZOOM,cooperativeGestures:false,
         // Bound how many off-screen tiles MapLibre keeps warm; the radar map
         // is small and short-lived, so a large cache only costs memory.
         maxTileCacheSize:24,refreshExpiredTiles:false
