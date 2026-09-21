@@ -47,7 +47,11 @@
     .radar-locate-btn:active{transform:scale(.92)}
     .radar-locate-btn:disabled{opacity:.55}
     .radar-locate-btn svg{width:21px;height:21px}
-    .radar-location-marker{width:17px;height:17px;border:3px solid #fff;border-radius:50%;background:var(--blue);box-shadow:0 0 0 3px rgba(10,132,255,.3),0 2px 7px rgba(0,0,0,.65)}
+    .radar-location-marker{position:relative;box-sizing:border-box;width:20px;height:20px;border:3px solid #fff;border-radius:50%;background:var(--blue);box-shadow:0 0 0 2px rgba(0,0,0,.92),0 0 0 6px rgba(100,210,255,.46),0 3px 12px rgba(0,0,0,.9)}
+    .radar-location-marker::before{content:"";position:absolute;inset:-11px;border:2px solid rgba(100,210,255,.82);border-radius:50%;background:rgba(10,132,255,.08);box-shadow:0 0 0 1px rgba(0,0,0,.65);animation:radar-location-pulse 2s ease-in-out infinite;pointer-events:none}
+    .radar-location-marker::after{content:"";position:absolute;inset:4px;border-radius:50%;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.35);pointer-events:none}
+    @keyframes radar-location-pulse{0%,100%{transform:scale(.92);opacity:.62}50%{transform:scale(1.06);opacity:1}}
+    @media(prefers-reduced-motion:reduce){.radar-location-marker::before{animation:none;opacity:.82}}
     #radar-status{margin-top:.9rem}
     @media(max-width:520px){.radar-card{height:clamp(210px,54vw,280px)}.radar-frame-row{padding:.3rem .55rem .27rem}.radar-overlay{padding:.58rem .65rem .64rem;gap:.55rem}}
   </style>
