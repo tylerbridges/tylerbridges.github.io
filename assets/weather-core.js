@@ -287,7 +287,7 @@ window.WX = (function(){
   function futureHeadline(d,n,gridHi=null,gridLo=null){
     const condition=(d||n)?.shortForecast||'Conditions unavailable';
     const hi=d?.temperature??gridHi,lo=n?.temperature??gridLo;
-    const range=hi!=null&&lo!=null?`${hi}°–${lo}°`:hi!=null?`${hi}°`:lo!=null?`${lo}°`:'';
+    const range=hi!=null&&lo!=null?`${lo}°–${hi}°`:hi!=null?`${hi}°`:lo!=null?`${lo}°`:'';
     return `${condition}${range?` · ${range}`:''}`;
   }
   function renderFutureCardHTML(title,d,n,metrics,gridHi=null,gridLo=null){
