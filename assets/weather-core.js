@@ -252,16 +252,26 @@ window.WX = (function(){
     const field=grid.properties?.[fieldName],values=field?.values||[];
     return values.filter(row=>dayKey(tz,row.validTime.split('/')[0])===dateKey&&row.value!=null).map(row=>convert(row.value,field?.uom)).filter(Number.isFinite);
   }
-  function extraDayMetrics(grid,dateKey,tz){
+  // `now`, when passed (today's card only), swaps the day-long apparent-
+  // temperature range for the single value at that moment — "feels like"
+  // should track current conditions today, not the whole day's spread.
+  function extraDayMetrics(grid,dateKey,tz,now=null){
     const asTemperature=(value,uom)=>uom?.includes('degC')?cToF(value):Math.round(value);
-    const apparent=gridMetricValuesForDate(grid,'apparentTemperature',dateKey,tz,asTemperature);
     const dewpoints=gridMetricValuesForDate(grid,'dewpoint',dateKey,tz,asTemperature);
     const clouds=gridMetricValuesForDate(grid,'skyCover',dateKey,tz);
-    const range=apparent.length?`${Math.min(...apparent)}°${Math.min(...apparent)===Math.max(...apparent)?'':`–${Math.max(...apparent)}°`}`:null;
     const average=values=>values.length?Math.round(values.reduce((sum,value)=>sum+value,0)/values.length):null;
     const dewpoint=average(dewpoints),cloudCover=average(clouds);
+    let feelsLike;
+    if(now){
+      const field=grid.properties?.apparentTemperature;
+      const value=gridValues(field,[now],v=>asTemperature(v,field?.uom))[0];
+      feelsLike=value==null?null:`${value}°`;
+    }else{
+      const apparent=gridMetricValuesForDate(grid,'apparentTemperature',dateKey,tz,asTemperature);
+      feelsLike=apparent.length?`${Math.min(...apparent)}°${Math.min(...apparent)===Math.max(...apparent)?'':`–${Math.max(...apparent)}°`}`:null;
+    }
     return [
-      range==null?null:['Feels Like',range],
+      feelsLike==null?null:['Feels Like',feelsLike],
       dewpoint==null?null:['Dew Point',`${dewpoint}°`],
       cloudCover==null?null:['Cloud Cover',`${cloudCover}%`]
     ].filter(Boolean);
@@ -403,7 +413,8 @@ window.WX = (function(){
   // Alerts section, fetched and rendered by this one function.
   async function loadTodayCard(container,title,loc,point,officeId,todayPeriods,grid,tz){
     const todayKey=dayKey(tz,new Date());
-    const metrics=metricsHTML([...dayMetrics(todayPeriods.day,todayPeriods.night,uvForDate(todayKey,loc.lat),humidityForDate(grid,todayKey,tz),gustForDate(grid,todayKey,tz),maxTempForDate(grid,todayKey,tz),minTempForDate(grid,todayKey,tz)),...sunMetrics(new Date(),loc.lat,loc.lon,tz),...extraDayMetrics(grid,todayKey,tz)]);
+    const now=new Date();
+    const metrics=metricsHTML([...dayMetrics(todayPeriods.day,todayPeriods.night,uvForDate(todayKey,loc.lat),humidityForDate(grid,todayKey,tz),gustForDate(grid,todayKey,tz),maxTempForDate(grid,todayKey,tz),minTempForDate(grid,todayKey,tz)),...sunMetrics(new Date(),loc.lat,loc.lon,tz),...extraDayMetrics(grid,todayKey,tz,now)],5);
     const current=await currentObservation(point).catch(()=>null);
     const currentText=current?currentHeadline(current.observation):null;
     const brief=todayBrief(currentText,todayPeriods.day,todayPeriods.night,new Date(),tz);
