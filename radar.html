@@ -11,15 +11,14 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="preconnect" href="https://api.weather.gov">
-  <link rel="preconnect" href="https://api.rainviewer.com" crossorigin>
-  <link rel="preconnect" href="https://tilecache.rainviewer.com" crossorigin>
+  <link rel="preconnect" href="https://mesonet.agron.iastate.edu" crossorigin>
   <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
   <link rel="stylesheet" href="/assets/site.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@5.6.1/dist/maplibre-gl.css">
   <title>Radar — Rochester Weather</title>
   <style>
     .radar-viewer{overflow:hidden;border:1px solid #3a3a3c;border-radius:14px;background:#101012;box-shadow:var(--shadow)}
-    .radar-card{position:relative;height:clamp(360px,58dvh,620px);background:#000}
+    .radar-card{position:relative;height:clamp(280px,58vw,520px);background:#000}
     #map{position:absolute;inset:0;background:#000}
     .radar-console.hidden{display:none}
     .radar-console{border-top:1px solid #343437;background:#151517;color:#f5f5f7}
@@ -29,7 +28,7 @@
     .radar-product span,.radar-frame-kind{color:#8e8e93;font-size:.69rem;line-height:1.2}
     .radar-frame-readout{display:grid;justify-items:end;flex:0 0 auto;font-variant-numeric:tabular-nums}
     .radar-time{font-size:.9rem;line-height:1.1;color:#f5f5f7;font-weight:650}
-    .radar-scale{height:9px;background:linear-gradient(90deg,#16375d 0%,#2c75b8 10%,#2ab04f 25%,#8fcd32 38%,#f2e629 50%,#ff9d16 63%,#e43d28 75%,#b21e35 86%,#c73bc8 94%,#7642c8 100%);box-shadow:inset 0 1px rgba(255,255,255,.12)}
+    .radar-scale{height:9px;background:linear-gradient(90deg,#00e400 0%,#00a800 18%,#ffff00 35%,#ffbf00 46%,#ff0000 58%,#d60000 70%,#ff00ff 82%,#9955c9 92%,#fff 100%);box-shadow:inset 0 1px rgba(255,255,255,.12)}
     .radar-overlay{display:flex;align-items:center;gap:.65rem;padding:.62rem .75rem .68rem;background:#111113}
     .play-btn{flex:0 0 auto;width:34px;height:34px;border-radius:9px;border:1px solid rgba(100,210,255,.45);background:rgba(100,210,255,.08);color:var(--cyan);display:flex;align-items:center;justify-content:center;transition:transform .15s ease-out,background-color .15s ease-out}
     .play-btn:active{transform:scale(.92)}
@@ -50,7 +49,7 @@
     .radar-locate-btn svg{width:21px;height:21px}
     .radar-location-marker{width:17px;height:17px;border:3px solid #fff;border-radius:50%;background:var(--blue);box-shadow:0 0 0 3px rgba(10,132,255,.3),0 2px 7px rgba(0,0,0,.65)}
     #radar-status{margin-top:.9rem}
-    @media(max-width:520px){.radar-card{height:clamp(350px,55dvh,520px)}.radar-product-row{padding:.5rem .65rem .42rem}.radar-overlay{padding:.58rem .65rem .64rem;gap:.55rem}}
+    @media(max-width:520px){.radar-card{height:clamp(210px,54vw,280px)}.radar-product-row{padding:.5rem .65rem .42rem}.radar-overlay{padding:.58rem .65rem .64rem;gap:.55rem}}
   </style>
 </head>
 <body>
@@ -92,26 +91,13 @@
     const {el,geolocate,resolveLocation,resolvePoint,getTimeZone,mountHeader,mountPullToRefresh,minimalDarkRadarStyle}=WX;
     const header=mountHeader('radar',()=>centerOnLocation());
 
-    // RainViewer serves the same NEXRAD mosaic the NWS publishes, but as plain
-    // XYZ tiles: 512px for retina sharpness, colour scheme 4 ("TWC" — The
-    // Weather Channel's familiar green/yellow/orange/red rain ramp with
-    // blue/purple for snow and mixed precipitation), smoothed, snow shown —
-    // the consumer-app palette people expect, rather than the more clinical
-    // NEXRAD Level III scheme (6) meteorologists use.
-    const RV_INDEX='https://api.rainviewer.com/public/weather-maps.json';
-    const TILE_SIZE=512,COLOR_SCHEME=4,TILE_OPTS='0_1';
-    // RainViewer's mosaic isn't actually tiled across the map's whole 3-14
-    // zoom range — past a certain zoom in either direction it serves a PNG
-    // with "Zoom Level Not Supported" rendered right into the tile instead
-    // of a normal error response, so MapLibre has no way to detect and
-    // retry it. Keeping the raster *source* itself inside a narrower,
-    // known-good zoom band means MapLibre's own raster over/underzoom
-    // (scaling the nearest valid-zoom tile) kicks in beyond that band —
-    // a softer image at the extremes instead of that placeholder graphic.
-    // RainViewer documents zoom 7 as the maximum radar tile level. MapLibre
-    // safely overzooms that valid source imagery when the map is closer, so
-    // the provider's "Zoom Level Not Supported" placeholder is never fetched.
-    const RADAR_MIN_ZOOM=3,RADAR_MAX_ZOOM=7;
+    // Iowa Environmental Mesonet's continuously updated CONUS N0Q mosaic uses
+    // the standard NEXRAD reflectivity palette: green for light precipitation,
+    // then yellow, orange, red and magenta as intensity increases. Historical
+    // layers are exposed at five-minute offsets, preserving animation without
+    // the blue-only palette imposed by RainViewer's current public API.
+    const IEM_TILE_ROOT='https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0';
+    const TILE_SIZE=256,SCAN_INTERVAL=5*60000;
     // Vector tiles stay sharp at any zoom and at the device's full pixel ratio,
     // which raster basemaps cannot do. Raster Esri is kept only as a fallback
     // for when the vector style cannot be reached.
@@ -129,7 +115,7 @@
 
     const DEFAULT_ZOOM=7.2,MAP_MAX_ZOOM=16;
     let map=null,marker=null,frames=[],pastCount=0,idx=0,playing=false,timer=null;
-    let loading=false,onLatest=true,rvHost='',styleReady=false,usingFallback=false;
+    let loading=false,onLatest=true,styleReady=false,usingFallback=false;
     // Playback speed: a multiplier on the base frame interval, remembered
     // per-device so a preference sticks across visits.
     const SPEED_KEY='radar-speed',SPEEDS=[0.5,1,2,3],BASE_INTERVAL=700;
@@ -144,27 +130,25 @@
 
     const fmtTime=ms=>new Date(ms).toLocaleTimeString([],{timeZone:getTimeZone(),hour:'numeric',minute:'2-digit'});
     const fmtFull=ms=>new Date(ms).toLocaleString([],{timeZone:getTimeZone(),month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'});
-    const tileUrl=frame=>`${rvHost}${frame.path}/${TILE_SIZE}/{z}/{x}/{y}/${COLOR_SCHEME}/${TILE_OPTS}.png`;
+    const tileUrl=frame=>`${IEM_TILE_ROOT}/${frame.layer}/{z}/{x}/{y}.png`;
 
     function updateStatus(checkedNow){
       if(!frames.length){el('radar-status').textContent='';return}
-      el('radar-status').textContent=`Latest radar scan: ${fmtFull(frames[pastCount-1].time*1000)}${checkedNow?' · just refreshed':''} · NEXRAD mosaic via RainViewer`;
+      el('radar-status').textContent=`Latest radar scan: ${fmtFull(frames[pastCount-1].time*1000)}${checkedNow?' · just refreshed':''} · NEXRAD mosaic via Iowa Environmental Mesonet`;
     }
     function paintFrame(){
       if(!map||!styleReady||!frames.length)return;
       const url=tileUrl(frames[idx]);
       const src=map.getSource('radar');
       if(src){src.setTiles([url]);return}
-      map.addSource('radar',{type:'raster',tiles:[url],tileSize:TILE_SIZE,minzoom:RADAR_MIN_ZOOM,maxzoom:RADAR_MAX_ZOOM});
-      // Saturation/contrast bumps make the reflectivity ramp read as vivid
-      // against the near-black basemap instead of flat, like RadarScope's.
+      map.addSource('radar',{type:'raster',tiles:[url],tileSize:TILE_SIZE,minzoom:3,maxzoom:MAP_MAX_ZOOM});
       // A non-zero fade duration dissolves each new frame's tiles in rather
       // than swapping instantly, which is what turns the loop into a smooth
       // animated "sweep" instead of a hard cut — kept under the shortest
       // frame interval (BASE_INTERVAL at the fastest speed) so it never
       // outlasts the frame it's fading into.
       const referenceLayer=(map.getStyle().layers||[]).find(layer=>layer.type==='line'||layer.type==='symbol');
-      map.addLayer({id:'radar',type:'raster',source:'radar',paint:{'raster-opacity':.93,'raster-fade-duration':RADAR_FADE_MS,'raster-saturation':.3,'raster-contrast':.26,'raster-resampling':'linear'}},referenceLayer?.id);
+      map.addLayer({id:'radar',type:'raster',source:'radar',paint:{'raster-opacity':1,'raster-fade-duration':RADAR_FADE_MS,'raster-resampling':'nearest'}},referenceLayer?.id);
     }
     function showFrame(i){
       if(!frames.length)return;
@@ -172,7 +156,7 @@
       onLatest=idx===pastCount-1;
       el('frame-slider').value=idx;
       const label=fmtTime(frames[idx].time*1000);
-      const kind=onLatest?'Latest scan':idx>=pastCount?'Forecast':'Past scan';
+      const kind=onLatest?'Latest scan':'Past scan';
       el('radar-time').textContent=label;
       el('radar-frame-kind').textContent=kind;
       el('frame-slider').setAttribute('aria-valuetext',`${label}, ${kind.toLowerCase()}`);
@@ -185,17 +169,14 @@
       if(loading)return;
       loading=true;
       try{
-        const data=await fetch(RV_INDEX,{cache:'no-store'}).then(r=>r.json());
-        const past=data?.radar?.past||[];
-        if(!data?.host||!past.length)throw new Error('no frames');
-        rvHost=data.host;
-        const pastFrames=past.slice(-10);
-        // Nowcast is RainViewer's short forward extrapolation (~30-60min, 10min
-        // steps) — appending it makes the loop feel like it's tracking a live
-        // system through "now" rather than stopping dead at the last scan.
-        const nowcast=(data?.radar?.nowcast||[]).slice(0,6);
-        pastCount=pastFrames.length;
-        frames=pastFrames.concat(nowcast);
+        // Allow a short publication delay, then align the displayed scan times
+        // with IEM's five-minute current/past mosaic layers.
+        const latest=Math.floor((Date.now()-2*60000)/SCAN_INTERVAL)*SCAN_INTERVAL;
+        frames=Array.from({length:12},(_,i)=>{
+          const minutes=(11-i)*5;
+          return {time:(latest-minutes*60000)/1000,layer:minutes?`nexrad-n0q-m${String(minutes).padStart(2,'0')}m`:'nexrad-n0q'};
+        });
+        pastCount=frames.length;
         el('frame-slider').max=frames.length-1;
         document.querySelector('.radar-console').classList.remove('hidden');
         el('error').classList.add('hidden');
@@ -232,7 +213,7 @@
         container:'map',style:initialStyle,center:[latlng[1],latlng[0]],zoom:DEFAULT_ZOOM,
         // No on-map attribution control — credited instead on a linked
         // /credits.html page so the map stays visually clean. All required
-        // attributions (RainViewer, OpenFreeMap/OSM, Esri, MapLibre) live there.
+        // attributions (IEM, OpenFreeMap/OSM, Esri, MapLibre) live there.
         attributionControl:false,dragRotate:false,pitchWithRotate:false,
         // Vector tiles are resolution-independent; render at the device's real
         // pixel ratio so the basemap is genuinely sharp rather than upscaled.
@@ -241,7 +222,7 @@
         // fading in (localIdeographFontFamily already defaults to locally
         // rendering CJK glyphs instead of fetching them over the network).
         fadeDuration:0,
-        minZoom:3,maxZoom:MAP_MAX_ZOOM,cooperativeGestures:false,
+        minZoom:3,maxZoom:MAP_MAX_ZOOM,cooperativeGestures:matchMedia('(pointer: coarse)').matches,
         // Bound how many off-screen tiles MapLibre keeps warm; the radar map
         // is small and short-lived, so a large cache only costs memory.
         maxTileCacheSize:24,refreshExpiredTiles:false
@@ -315,9 +296,8 @@
     window.addEventListener('focus',()=>refreshFrames());
     window.addEventListener('pageshow',e=>{if(e.persisted)refreshFrames()});
     window.addEventListener('resize',()=>{if(map)map.resize()});
-    // RainViewer's mosaic itself only updates every ~10 minutes, but polling
-    // every 2 (like RadarScope's own refresh cadence) catches a new scan
-    // sooner after it's published instead of sitting on a stale one.
+    // IEM's mosaic updates every five minutes; polling every two catches a new
+    // scan soon after publication without hammering the public tile service.
     setInterval(()=>{if(document.visibilityState==='visible')refreshFrames()},2*60000);
     mountPullToRefresh(()=>map?refreshFrames(true):centerOnLocation());
     if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
