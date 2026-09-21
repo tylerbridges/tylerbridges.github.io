@@ -37,9 +37,10 @@ h3{font-size:1rem;margin:0}
 .hourly-row+.hourly-row{border-top:1px solid var(--line)}
 .hourly-time{font-size:.82rem;font-weight:700;white-space:nowrap}
 .hourly-icon{font-size:1.15rem;line-height:1;text-align:center}
-.hourly-summary{min-width:0;display:flex;align-items:baseline;gap:.7rem}
+.hourly-summary{min-width:0;display:flex;align-items:baseline;gap:.35rem}
 .hourly-condition{min-width:0;flex:0 1 auto;font-size:.86rem;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.hourly-temp{flex:0 0 auto;font-size:1.05rem;font-weight:750}
+.hourly-summary-divider{flex:0 0 auto;color:var(--muted);font-size:.86rem;font-weight:400}
+.hourly-temp{flex:0 0 auto;font-size:.86rem;font-weight:650}
 .hourly-meta{grid-column:3;color:var(--muted);font-size:.73rem;margin-top:.14rem;white-space:normal}
 .hourly-current-tick{position:absolute;left:0;top:var(--hour-progress);width:.48rem;height:2px;background:var(--orange);border-radius:0 2px 2px 0;transform:translateY(-1px)}
 .now-line{color:var(--text);font-size:.95rem;font-weight:750;margin:.08rem 0 0;text-align:justify;text-align-last:left}
