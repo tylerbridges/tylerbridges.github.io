@@ -72,7 +72,7 @@
     .forecast-map-labels{z-index:3;pointer-events:none}
     .forecast-map-image-head{position:absolute;inset:0 0 auto;z-index:5;display:flex;align-items:center;justify-content:space-between;gap:.5rem;min-height:28px;padding:.35rem .48rem;border-bottom:1px solid rgba(0,0,0,.16);background:rgba(255,255,255,.94);color:#161617;font-size:.62rem;line-height:1.1;box-shadow:0 1px 4px rgba(0,0,0,.1)}
     .forecast-map-image-head strong{font-size:.68rem}
-    .forecast-map-pin{position:absolute;z-index:4;width:10px;height:10px;border:2px solid #fff;border-radius:50%;background:#087fc4;box-shadow:0 0 0 2px rgba(0,0,0,.68),0 2px 4px rgba(0,0,0,.38);transform:translate(-50%,-50%);pointer-events:none}
+    .forecast-map-pin{position:absolute;z-index:4;transform:translate(-50%,-50%);pointer-events:none}
     .forecast-map-card-copy{display:block;padding:.72rem .8rem .78rem}
     .forecast-map-title{display:block;color:var(--blue);font-size:.92rem;font-weight:750}
     .forecast-map-detail{display:block;margin-top:.12rem;color:var(--muted);font-size:.72rem;line-height:1.35}
@@ -174,7 +174,7 @@
         <img class="forecast-map-base" id="forecast-map-base" alt="" aria-hidden="true">
         <img class="forecast-map-overlay" id="forecast-map-overlay" alt="" aria-hidden="true">
         <img class="forecast-map-labels" id="forecast-map-labels" alt="" aria-hidden="true">
-        <span class="forecast-map-pin" id="forecast-map-pin" aria-hidden="true"></span>
+        <span class="radar-location-marker forecast-map-pin" id="forecast-map-pin" aria-hidden="true"></span>
         <div class="forecast-map-dialog-error" id="forecast-map-dialog-error">This WPC map is temporarily unavailable. Use the source link below to view it on the official site.</div>
       </div>
       <div class="forecast-map-legend" id="forecast-map-legend"></div>
@@ -447,7 +447,7 @@
     }
     function renderForecastMaps(){
       const gallery=el('forecast-map-gallery'),areaLabel=forecastAreaLabel(),pinStyle=forecastMarkerStyle();
-      gallery.innerHTML=FORECAST_MAPS.map((item,i)=>`<button class="forecast-map-card" type="button" data-forecast-map="${i}" aria-haspopup="dialog"><span class="forecast-map-thumb"><img class="forecast-map-base" src="${forecastBaseUrl('800,480')}" alt="" aria-hidden="true" loading="lazy" decoding="async"><img class="forecast-map-overlay" src="${forecastOverlayUrl(item,'800,480')}" alt="" aria-hidden="true" loading="lazy" decoding="async"><img class="forecast-map-labels" src="${forecastLabelUrl('800,480')}" alt="" aria-hidden="true" loading="lazy" decoding="async">${pinStyle?`<span class="forecast-map-pin" style="${pinStyle}" aria-hidden="true"></span>`:''}<span class="forecast-map-image-head"><strong>${escapeMapText(item.title)}</strong><span>${escapeMapText(areaLabel)}</span></span></span><span class="forecast-map-card-copy"><span class="forecast-map-title">${escapeMapText(item.title)}</span><span class="forecast-map-detail">${escapeMapText(item.detail)}</span><span class="forecast-map-valid">${escapeMapText(forecastMetaText(item))}</span></span></button>`).join('');
+      gallery.innerHTML=FORECAST_MAPS.map((item,i)=>`<button class="forecast-map-card" type="button" data-forecast-map="${i}" aria-haspopup="dialog"><span class="forecast-map-thumb"><img class="forecast-map-base" src="${forecastBaseUrl('800,480')}" alt="" aria-hidden="true" loading="lazy" decoding="async"><img class="forecast-map-overlay" src="${forecastOverlayUrl(item,'800,480')}" alt="" aria-hidden="true" loading="lazy" decoding="async"><img class="forecast-map-labels" src="${forecastLabelUrl('800,480')}" alt="" aria-hidden="true" loading="lazy" decoding="async">${pinStyle?`<span class="radar-location-marker forecast-map-pin" style="${pinStyle}" aria-hidden="true"></span>`:''}<span class="forecast-map-image-head"><strong>${escapeMapText(item.title)}</strong><span>${escapeMapText(areaLabel)}</span></span></span><span class="forecast-map-card-copy"><span class="forecast-map-title">${escapeMapText(item.title)}</span><span class="forecast-map-detail">${escapeMapText(item.detail)}</span><span class="forecast-map-valid">${escapeMapText(forecastMetaText(item))}</span></span></button>`).join('');
       gallery.querySelectorAll('[data-forecast-map]').forEach(button=>{
         button.addEventListener('click',()=>openForecastMap(+button.dataset.forecastMap,button));
         button.querySelector('.forecast-map-overlay').addEventListener('error',()=>button.classList.add('unavailable'));
