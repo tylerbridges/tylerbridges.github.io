@@ -87,8 +87,14 @@ hr{border:0;border-top:1px solid var(--line);margin:.85rem 0}
 #content{transition:opacity .2s ease}
 #content.refreshing{opacity:.55}
 @media(prefers-reduced-motion:reduce){#content{transition:none}}
-.alert{margin:.65rem 0}
-.alert p{margin:.3rem 0}
+/* Orange = a genuine issued alert (watch/warning/advisory) from NWS's active
+   alerts feed. Green = informational guidance (e.g. the Hazardous Weather
+   Outlook) that isn't itself an alert, so it reads as clearly lower-stakes. */
+.alert{margin:.65rem 0;padding:.75rem .9rem;border-radius:12px;border-left:4px solid var(--muted);background:var(--surface-2)}
+.alert p{margin:.35rem 0}
+.alert h4{margin:0;font-size:1rem}
+.alert-warning{border-left-color:var(--orange);background:color-mix(in srgb,var(--orange) 14%,var(--surface-2))}
+.alert-outlook{border-left-color:var(--green);background:color-mix(in srgb,var(--green) 14%,var(--surface-2))}
 .location-form{position:relative;margin:0}
 .search-field{display:flex;align-items:center;gap:.3rem;height:38px;border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:3px;box-shadow:var(--shadow)}
 .search-field input{flex:1;min-width:0;height:100%;border:0;background:transparent;color:var(--text);font:inherit;padding:0 .3rem}

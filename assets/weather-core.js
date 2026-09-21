@@ -129,7 +129,61 @@ window.WX = (function(){
     const temperature=value==null?null:unit?.endsWith('degC')?cToF(value):unit?.endsWith('degF')?Math.round(value):null;
     return `${condition}${temperature==null?'':` · ${temperature}°F`}`;
   }
-  function alertLine(a,tz){const p=a.properties;return `<div class="alert"><strong>${esc(p.event)}</strong><p>${esc(p.areaDesc)}</p><p>${esc(local(p.onset||p.effective,tz))}–${esc(local(p.ends||p.expires,tz))}</p><p>${esc((p.instruction||p.description||'See NWS alert for instructions.').replace(/\s+/g,' '))}</p><a href="${esc(p['@id']||a.id)}" target="_blank" rel="noreferrer">Full NWS alert</a></div>`}
+  // NWS's modern CAP alert feed is normally already mixed-case, but the
+  // classic teletype-style text products (HWO/AFD) are still issued in full
+  // caps, and some legacy CAP alerts still come through shouting too. Only
+  // reflow text that's actually predominantly uppercase, so already-normal
+  // text passes through untouched; this can't recover mid-sentence proper
+  // nouns from all-caps source, but it's far more readable than shouting.
+  // Words worth restoring after a blind lowercase pass: unambiguous
+  // weather-text acronyms and weekday names. Deliberately excludes state
+  // codes and month names — too many collide with common English words
+  // (OR/IN/ME/HI, "may occur") to restore blindly without a real parser.
+  const CASE_RESTORE=new Map(['NWS','NOAA','NEXRAD','CST','CDT','MST','MDT','PST','PDT','AKST','AKDT','HST','EST','EDT',
+    'Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map(w=>[w.toLowerCase(),w]));
+  function toSentenceCase(text){
+    const letters=text.replace(/[^a-z]/gi,'');
+    const upper=letters.replace(/[^A-Z]/g,'');
+    if(letters.length<12||upper.length/letters.length<0.7)return text;
+    // Restore acronyms/weekdays before capitalizing sentence starts — doing
+    // it after would miss a restored word that opens a sentence, since the
+    // capitalization pass only touches a still-lowercase leading letter.
+    return text.toLowerCase()
+      .replace(/\b[a-z]+\b/g,w=>CASE_RESTORE.get(w)||w)
+      .replace(/(^\s*[a-z]|[.!?]\s+[a-z]|\bi\b)/g,m=>m.toUpperCase());
+  }
+  // NWS product/alert text gives the issuing office as "NWS City ST" (alert
+  // senderName) or "National Weather Service City ST" (a text product's own
+  // header line, followed by more text) — neither has a comma before the
+  // state, so this adds one for a readable "NWS City, ST" label.
+  function officeLabel(rawText,officeId){
+    const m=String(rawText||'').match(/(?:National Weather Service|NWS)\s+([A-Za-z .]+?)\s+([A-Z]{2})(?=\s|$)/);
+    if(m)return `NWS ${m[1].trim()}, ${m[2]}`;
+    return officeId?`NWS ${officeId}`:'NWS';
+  }
+  // Pulls the sentence (plus the one after it) that triggered hazard
+  // guidance out of a full HWO/AFD text product, rather than showing the
+  // whole multi-section product inline.
+  function hazardExcerpt(text){
+    if(!text)return null;
+    const sentences=text.replace(/\s+/g,' ').split(/(?<=[.!?])\s+/);
+    const idx=sentences.findIndex(s=>/severe|tornado|hail|damaging|blizzard|flood/i.test(s));
+    if(idx<0)return null;
+    return toSentenceCase(sentences.slice(idx,idx+2).join(' ').trim());
+  }
+  function hwoCardHTML(hwo,officeId,loc,tz){
+    const office=officeLabel(hwo.productText,officeId);
+    const place=esc((loc.label||'your area').split(',')[0]);
+    const href=hwo['@id']||(hwo.id?`${API}/products/${hwo.id}`:null);
+    const linkHTML=href?`<a href="${esc(href)}" target="_blank" rel="noreferrer">Full NWS product</a>`:'';
+    return `<div class="alert alert-outlook"><h4>Hazardous Weather Outlook — ${esc(office)}</h4><p>Regional guidance for the ${esc(office)} area — not an issued alert, and may not apply to ${place}.</p><p>Issued ${esc(local(hwo.issuanceTime,tz))}</p><p>${esc(hazardExcerpt(hwo.productText)||'See the full outlook for details.')}</p>${linkHTML}</div>`;
+  }
+  function alertLine(a,tz){
+    const p=a.properties;
+    const title=`${esc(p.event)} — ${esc(officeLabel(p.senderName))}`;
+    const body=toSentenceCase((p.instruction||p.description||'See NWS alert for instructions.').replace(/\s+/g,' '));
+    return `<div class="alert alert-warning"><h4>${title}</h4><p>${esc(p.areaDesc)}</p><p>${esc(local(p.onset||p.effective,tz))}–${esc(local(p.ends||p.expires,tz))}</p><p>${esc(body)}</p><a href="${esc(p['@id']||a.id)}" target="_blank" rel="noreferrer">Full NWS alert</a></div>`;
+  }
   function dayKey(tz,date){return new Intl.DateTimeFormat('en-CA',{timeZone:tz,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(date))}
   function startOfDay(tz){
     // Shift "now" onto the wall-clock time of tz (interpreted as if it were
@@ -364,7 +418,7 @@ window.WX = (function(){
       const [hwo,afd]=await Promise.all([product('HWO',officeId),product('AFD',officeId)]);
       const guidance=[hwo?.productText,afd?.productText].filter(Boolean).join(' ');
       let extra='';
-      if(/severe|tornado|hail|damaging|blizzard|flood/i.test(guidance))extra+='<p class="note">Regional NWS hazard guidance indicates elevated risk nearby. Regional threats may not apply to your exact location; only issued local alerts are listed above.</p>';
+      if(hwo&&/severe|tornado|hail|damaging|blizzard|flood/i.test(guidance))extra+=hwoCardHTML(hwo,officeId,loc,tz);
       if(!hwo||!afd)extra+='<p class="note">Some regional hazard guidance could not be refreshed.</p>';
       if(extra){const slot=container.querySelector('#alerts');if(slot)slot.innerHTML+=extra}
     }
