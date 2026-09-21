@@ -127,7 +127,7 @@
     // map, rather than on-map controls — see the note by attributionControl.
     const RASTER_FALLBACK={version:8,sources:{esri:{type:'raster',tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}'],tileSize:256,maxzoom:16}},layers:[{id:'bg',type:'background',paint:{'background-color':'#000'}},{id:'esri',type:'raster',source:'esri'}]};
 
-    const DEFAULT_ZOOM=6.9;
+    const DEFAULT_ZOOM=7.2;
     let map=null,marker=null,frames=[],pastCount=0,idx=0,playing=false,timer=null;
     let loading=false,onLatest=true,rvHost='',styleReady=false,usingFallback=false;
     // Playback speed: a multiplier on the base frame interval, remembered
