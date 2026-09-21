@@ -170,6 +170,7 @@
         <div class="forecast-map-gallery" id="forecast-map-gallery" aria-label="Forecast map gallery"></div>
       </section>
     </div>
+    <footer class="site-footer" id="site-footer"></footer>
   </main>
   <dialog class="forecast-map-dialog" id="forecast-map-dialog" aria-labelledby="forecast-map-dialog-title">
     <div class="forecast-map-dialog-shell">
@@ -196,8 +197,9 @@
   <script src="/assets/weather-core.js"></script>
   <script>
   (()=>{
-    const {el,geolocate,resolveLocation,resolvePoint,getTimeZone,getTheme,mountHeader,mountPullToRefresh,minimalRadarStyle}=WX;
+    const {el,geolocate,resolveLocation,resolvePoint,getTimeZone,getTheme,mountHeader,mountFooter,mountPullToRefresh,minimalRadarStyle}=WX;
     const header=mountHeader('radar',()=>centerOnLocation());
+    mountFooter();
 
     // Iowa Environmental Mesonet's continuously updated CONUS N0Q mosaic uses
     // the standard NEXRAD reflectivity palette: green for light precipitation,

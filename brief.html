@@ -38,15 +38,17 @@
       <p class="see-more"><a href="/forecast.html">See the full 7-day forecast →</a></p>
       <section aria-labelledby="charts-title"><h2 id="charts-title">Next 48 hours</h2><div class="charts"><figure class="chart"><h3>Temperature</h3><svg id="temp-chart" role="img" aria-label="Hourly temperature in degrees Fahrenheit"></svg></figure><figure class="chart"><h3>Precipitation probability</h3><svg id="pop-chart" role="img" aria-label="Hourly precipitation probability in percent"></svg></figure><figure class="chart"><h3>Wind and gusts</h3><svg id="wind-chart" role="img" aria-label="Hourly sustained wind and gusts in miles per hour"></svg><div class="legend"><span><i class="swatch" style="background:var(--green)"></i>Sustained</span><span><i class="swatch" style="background:var(--orange)"></i>Gust</span></div></figure></div></section>
     </div>
+    <footer class="site-footer" id="site-footer"></footer>
   </main>
   <script src="/assets/weather-core.js"></script>
   <script>
   (()=>{
     const {el,resolveLocation,resolvePoint,json,emoji,local,maxWind,gridValues,kphToMph,cToF,
       dayKey,startOfDay,hourLabel,dayRows,uvForDate,humidityForDate,gustForDate,extraDayMetrics,dayMetrics,metricsHTML,sunMetrics,
-      findTodayPeriods,renderFutureCardHTML,loadTodayCard,mountHeader,mountPullToRefresh,DEFAULT_LOC}=WX;
+      findTodayPeriods,renderFutureCardHTML,loadTodayCard,mountHeader,mountFooter,mountPullToRefresh,DEFAULT_LOC}=WX;
     let chartData=null,currentLoc=null;
     const header=mountHeader('today',()=>load());
+    mountFooter();
     function localHourKey(date,tz){const parts=Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:tz,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).formatToParts(date).filter(part=>part.type!=='literal').map(part=>[part.type,part.value]));return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:00`}
     function modeledValues(payload,field,times,tz){if(!payload?.hourly?.time||!payload.hourly[field])return times.map(()=>null);const values=new Map(payload.hourly.time.map((key,index)=>[key,payload.hourly[field][index]]));return times.map(time=>{const value=values.get(localHourKey(time,tz));return value==null?null:Math.round(value)})}
     function mergeChartSeries(history,nws,times,now){return times.map((time,index)=>time<now?(history[index]??nws[index]):(nws[index]??history[index]))}

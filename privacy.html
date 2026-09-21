@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <script>try{var t=localStorage.getItem('weather-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);else if(t!=='system')document.documentElement.setAttribute('data-theme','dark')}catch{}</script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="description" content="How this site handles your location and browser data.">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="/assets/site.css">
+  <title>Privacy Policy — Rochester Weather</title>
+</head>
+<body>
+  <main class="shell">
+    <header id="site-header"></header>
+    <div class="page-head">
+      <h1>Privacy Policy</h1>
+      <p class="last-updated" id="updated"></p>
+    </div>
+    <div class="credit-list">
+      <article class="brief">
+        <h3>No accounts, no server-side storage</h3>
+        <p>This site has no backend, no user accounts, and no database. It runs entirely in your browser as static pages. Any preference it remembers — your saved location, appearance (light/dark/system), and time zone — is stored only in your own browser's <code>localStorage</code> and never transmitted to us or saved on any server we operate.</p>
+      </article>
+      <article class="brief">
+        <h3>Location</h3>
+        <p>If you allow it, your browser's own geolocation feature is used to find weather for your current position. That request goes directly from your browser to your device's location service — we never see or store it ourselves. You can also type in a city, state, or ZIP instead of sharing your location at any time.</p>
+      </article>
+      <article class="brief">
+        <h3>Third-party services</h3>
+        <p>To show forecasts, radar, and maps, your browser makes requests directly to a handful of external services — the National Weather Service, Open-Meteo, the Iowa Environmental Mesonet, OpenFreeMap/OpenStreetMap, Esri, and OpenStreetMap Nominatim. See <a href="/credits.html">Credits</a> for the full list. Those requests (for example, the coordinates being looked up) are sent straight from your browser to that service, not routed through us, so each provider's own privacy practices apply to that request. We don't control what they do with it.</p>
+      </article>
+      <article class="brief">
+        <h3>Cookies &amp; tracking</h3>
+        <p>This site does not use cookies, analytics, or advertising trackers. If that ever changes, this policy will be updated first.</p>
+      </article>
+      <article class="brief">
+        <h3>Children's privacy</h3>
+        <p>This site isn't directed at children under 13, and we don't knowingly collect any information from them.</p>
+      </article>
+      <article class="brief">
+        <h3>Changes to this policy</h3>
+        <p>This policy may be updated from time to time; the date above reflects the most recent revision.</p>
+      </article>
+      <article class="brief">
+        <h3>Contact</h3>
+        <p>Questions about this policy can be raised via the <a href="https://github.com/tylerbridges/tylerbridges.github.io" target="_blank" rel="noreferrer">project's GitHub repository</a>.</p>
+      </article>
+    </div>
+    <footer class="site-footer" id="site-footer"></footer>
+  </main>
+  <script src="/assets/weather-core.js"></script>
+  <script>
+    WX.mountHeader('',()=>{location.href='/'});
+    WX.mountFooter();
+    document.getElementById('updated').textContent='Last updated September 21, 2026';
+    if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
+  </script>
+</body>
+</html>

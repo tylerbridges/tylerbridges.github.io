@@ -32,13 +32,15 @@
     <div id="content" class="hidden">
       <div class="hourly-days" id="hourly-days"></div>
     </div>
+    <footer class="site-footer" id="site-footer"></footer>
   </main>
   <script src="/assets/weather-core.js"></script>
   <script>
   (()=>{
-    const {el,esc,resolveLocation,resolvePoint,json,local,emoji,dayKey,maxWind,gridValues,kphToMph,mountHeader,mountPullToRefresh}=WX;
+    const {el,esc,resolveLocation,resolvePoint,json,local,emoji,dayKey,maxWind,gridValues,kphToMph,mountHeader,mountFooter,mountPullToRefresh}=WX;
     let busy=false,lastLoad=0,hasLoaded=false;
     const header=mountHeader('hourly',()=>load());
+    mountFooter();
     const hourText=(value,tz)=>new Intl.DateTimeFormat('en-US',{timeZone:tz,hour:'numeric'}).format(new Date(value));
     function localHourKey(date,tz){const parts=Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:tz,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).formatToParts(date).filter(part=>part.type!=='literal').map(part=>[part.type,part.value]));return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:00`}
     function hourlyValues(payload,field,times,tz){if(!payload?.hourly?.time||!payload.hourly[field])return times.map(()=>null);const values=new Map(payload.hourly.time.map((key,index)=>[key,payload.hourly[field][index]]));return times.map(time=>values.get(localHourKey(time,tz))??null)}

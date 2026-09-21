@@ -36,10 +36,12 @@
         <select class="setting-select" id="time-zone-choice"></select>
       </article>
     </div>
+    <footer class="site-footer" id="site-footer"></footer>
   </main>
   <script src="/assets/weather-core.js"></script>
   <script>
     WX.mountHeader('',()=>{location.href='/'});
+    WX.mountFooter();
     function paintChoice(){
       const current=WX.getThemeChoice();
       document.querySelectorAll('#theme-choice-group .choice-btn').forEach(b=>{

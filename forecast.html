@@ -31,13 +31,15 @@
       <div id="today-card"></div>
       <div class="days" id="days"></div>
     </div>
+    <footer class="site-footer" id="site-footer"></footer>
   </main>
   <script src="/assets/weather-core.js"></script>
   <script>
   (()=>{
-    const {el,resolveLocation,resolvePoint,json,local,emoji,dayRows,findTodayPeriods,renderDaysHTML,loadTodayCard,mountHeader,mountPullToRefresh}=WX;
+    const {el,resolveLocation,resolvePoint,json,local,emoji,dayRows,findTodayPeriods,renderDaysHTML,loadTodayCard,mountHeader,mountFooter,mountPullToRefresh}=WX;
     let busy=false,lastLoad=0,hasLoaded=false;
     const header=mountHeader('forecast',()=>load());
+    mountFooter();
     async function load(){if(busy)return;busy=true;lastLoad=Date.now();if(!hasLoaded){el('loading').classList.remove('hidden');el('error').classList.add('hidden');el('content').classList.add('hidden')}else{el('content').classList.add('refreshing')}try{
       const loc=await resolveLocation();
       const {point,label,tz,officeId}=await resolvePoint(loc);

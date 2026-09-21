@@ -778,6 +778,16 @@ window.WX = (function(){
     return clone;
   }
 
+  // A persistent, page-agnostic footer: the weather-safety disclaimer every
+  // page should carry, plus links to the legal pages. Populates a
+  // <footer id="site-footer"></footer> placeholder the same way mountHeader
+  // populates #site-header, so it stays a single shared component instead
+  // of page-specific duplication.
+  function mountFooter(){
+    const footer=el('site-footer');
+    if(!footer)return;
+    footer.innerHTML=`<p class="disclaimer">Weather information on this site is for general informational purposes only and is not a substitute for official guidance. In hazardous weather, always follow instructions from the National Weather Service and your local authorities.</p><nav class="footer-links" aria-label="Legal"><a href="/privacy.html">Privacy</a><a href="/terms.html">Terms</a><a href="/credits.html">Credits</a></nav>`;
+  }
   // iOS Safari has no built-in pull-to-refresh gesture (unlike some Android
   // browsers), so this reproduces the native-feeling gesture by hand: drag
   // down from the top of the page, release past a threshold, refresh.
@@ -830,5 +840,5 @@ window.WX = (function(){
     emoji,local,maxWind,gustFrom,durationMs,gridValues,kphToMph,cToF,product,
     currentObservation,currentHeadline,alertLine,dayKey,startOfDay,hourLabel,dayPartLabel,dayRows,uvForDate,humidityForDate,gustForDate,maxTempForDate,minTempForDate,extraDayMetrics,dayMetrics,metricsHTML,
     todayBrief,futureBrief,renderFutureCardHTML,loadTodayCard,sunMetrics,
-    findTodayPeriods,renderDaysHTML,mountHeader,mountPullToRefresh,getTheme,setTheme,getThemeChoice,recolorStyleDark,minimalRadarStyle};
+    findTodayPeriods,renderDaysHTML,mountHeader,mountFooter,mountPullToRefresh,getTheme,setTheme,getThemeChoice,recolorStyleDark,minimalRadarStyle};
 })();

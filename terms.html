@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <script>try{var t=localStorage.getItem('weather-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);else if(t!=='system')document.documentElement.setAttribute('data-theme','dark')}catch{}</script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="description" content="Terms for using this site.">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="/assets/site.css">
+  <title>Terms of Service — Rochester Weather</title>
+</head>
+<body>
+  <main class="shell">
+    <header id="site-header"></header>
+    <div class="page-head">
+      <h1>Terms of Service</h1>
+      <p class="last-updated" id="updated"></p>
+    </div>
+    <div class="credit-list">
+      <article class="brief">
+        <h3>Acceptance of terms</h3>
+        <p>By using this site, you agree to these terms. If you don't agree, please don't use it.</p>
+      </article>
+      <article class="brief">
+        <h3>Informational use only</h3>
+        <p>Weather information on this site is provided for general informational purposes only and is <strong>not</strong> a substitute for official warnings, watches, or guidance. Always follow instructions from the National Weather Service and your local authorities when making decisions about severe weather or other hazards. Do not rely on this site as your sole source of information in a life-safety situation.</p>
+      </article>
+      <article class="brief">
+        <h3>Third-party data</h3>
+        <p>Forecasts, radar, and map data come from third-party sources listed on the <a href="/credits.html">Credits</a> page. This site is an independent project and is not affiliated with, endorsed by, or operated by NOAA, the National Weather Service, or any other data provider it uses.</p>
+      </article>
+      <article class="brief">
+        <h3>No warranty</h3>
+        <p>This site is provided "as is" and "as available," without warranties of any kind, express or implied, including as to accuracy, reliability, or availability. To the fullest extent permitted by law, the site's operator disclaims all liability for any loss or damage arising from your use of, or inability to use, this site or the data it displays.</p>
+      </article>
+      <article class="brief">
+        <h3>Changes</h3>
+        <p>This site, its features, and these terms may change or be discontinued at any time without notice.</p>
+      </article>
+      <article class="brief">
+        <h3>Governing law</h3>
+        <p>These terms are governed by the laws of the jurisdiction in which the site's operator resides, without regard to conflict-of-law principles.</p>
+      </article>
+      <article class="brief">
+        <h3>Contact</h3>
+        <p>Questions about these terms can be raised via the <a href="https://github.com/tylerbridges/tylerbridges.github.io" target="_blank" rel="noreferrer">project's GitHub repository</a>.</p>
+      </article>
+    </div>
+    <footer class="site-footer" id="site-footer"></footer>
+  </main>
+  <script src="/assets/weather-core.js"></script>
+  <script>
+    WX.mountHeader('',()=>{location.href='/'});
+    WX.mountFooter();
+    document.getElementById('updated').textContent='Last updated September 21, 2026';
+    if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
+  </script>
+</body>
+</html>

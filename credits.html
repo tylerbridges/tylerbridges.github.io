@@ -41,10 +41,12 @@
         <p><a href="https://nominatim.openstreetmap.org/" target="_blank" rel="noreferrer">OpenStreetMap Nominatim</a> — turns a city, state, or ZIP into a map location.</p>
       </article>
     </div>
+    <footer class="site-footer" id="site-footer"></footer>
   </main>
   <script src="/assets/weather-core.js"></script>
   <script>
     WX.mountHeader('',()=>{location.href='/'});
+    WX.mountFooter();
     if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
   </script>
 </body>
