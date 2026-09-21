@@ -637,10 +637,10 @@ window.WX = (function(){
       // and leaving only a city name with no sense of what state it's in.
       if(sl==='boundary'||sl==='place'){delete layer.minzoom;delete layer.maxzoom}
       if(layer.type==='background'){layer.paint['background-color']='#0a0a0a';continue}
-      if(layer.type==='fill'&&(sl==='water')){layer.paint['fill-color']='#0d1117';layer.paint['fill-opacity']=1;delete layer.paint['fill-pattern'];continue}
-      if(layer.type==='line'&&sl==='waterway'){layer.paint['line-color']='#0d1117';continue}
-      if(layer.type==='line'&&sl==='boundary'){layer.paint['line-color']='rgba(150,150,155,0.35)';layer.paint['line-opacity']=1;continue}
-      if(layer.type==='line'&&sl==='transportation'){layer.paint['line-color']=/motorway/i.test(JSON.stringify(layer))?'#6a6a6a':'#4a4a4a';layer.paint['line-opacity']=1;continue}
+      if(layer.type==='fill'&&(sl==='water')){layer.paint['fill-color']='#08121d';layer.paint['fill-opacity']=1;delete layer.paint['fill-pattern'];continue}
+      if(layer.type==='line'&&sl==='waterway'){layer.paint['line-color']='#163353';layer.paint['line-opacity']=.75;continue}
+      if(layer.type==='line'&&sl==='boundary'){layer.paint['line-color']='rgba(185,188,195,0.68)';layer.paint['line-opacity']=1;if(!layer.paint['line-width'])layer.paint['line-width']=.8;continue}
+      if(layer.type==='line'&&sl==='transportation'){layer.paint['line-color']=/motorway|trunk/i.test(JSON.stringify(layer))?'#28649b':'#555960';layer.paint['line-opacity']=.92;continue}
       if(layer.type==='symbol'){
         // Small, low-contrast labels so they read as a quiet reference layer
         // rather than competing with the radar colors for attention. The
@@ -649,10 +649,10 @@ window.WX = (function(){
         // SDF glyphs fetched from the style's own glyphs URL, not arbitrary
         // system fonts, so swapping in "SF Pro"/"Inter" here would 404
         // instead of just changing the typeface.
-        layer.paint['text-color']='#999';layer.paint['text-halo-color']='#0a0a0a';layer.paint['text-halo-width']=1.1;
+        layer.paint['text-color']='#a9aaae';layer.paint['text-halo-color']='#050506';layer.paint['text-halo-width']=1.35;
         delete layer.paint['icon-color'];
         layer.layout=layer.layout||{};
-        layer.layout['text-size']=sl==='place'?11:10;
+        layer.layout['text-size']=sl==='place'?12:10.5;
         delete layer.layout['icon-image'];
         continue;
       }
