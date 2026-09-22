@@ -1,4 +1,4 @@
-const CACHE='rochester-weather-v76';
+const CACHE='sky-report-v77';
 const SHELL=['/','/index.html','/brief.html','/live.html','/hourly.html','/forecast.html','/radar.html','/credits.html','/settings.html','/privacy.html','/terms.html','/404.html','/manifest.webmanifest','/favicon.svg','/apple-touch-icon.png','/icon-192.png','/icon-512.png','/icon-maskable-512.png','/assets/site.css','/assets/weather-core.js'];
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL))));
 self.addEventListener('install',()=>self.skipWaiting());
