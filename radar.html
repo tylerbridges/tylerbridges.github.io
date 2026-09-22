@@ -304,7 +304,10 @@
 
     function updateStatus(checkedNow){
       if(!frames.length){el('radar-status').textContent='';return}
-      el('radar-status').textContent=`Latest radar scan: ${fmtFull(frames[pastCount-1].time*1000)}${checkedNow?' · just refreshed':''}`;
+      // Which source actually loaded is otherwise invisible — probeNowcoast()
+      // decides silently, and both sources can look plausible at a glance.
+      const source=usingNowcoast?'NOAA nowCOAST':'IEM';
+      el('radar-status').textContent=`Latest radar scan: ${fmtFull(frames[pastCount-1].time*1000)} · via ${source}${checkedNow?' · just refreshed':''}`;
     }
     function paintFrame(){
       if(!map||!styleReady||!frames.length)return;
