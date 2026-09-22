@@ -45,10 +45,12 @@
   (()=>{
     const {el,resolveLocation,resolvePoint,json,emoji,local,maxWind,gridValues,kphToMph,cToF,
       dayKey,startOfDay,hourLabel,dayRows,uvForDate,humidityForDate,gustForDate,popForDate,extraDayMetrics,dayMetrics,metricsHTML,sunMetrics,
-      findTodayPeriods,renderFutureCardHTML,loadTodayCard,mountHeader,mountFooter,mountPullToRefresh,DEFAULT_LOC}=WX;
+      findTodayPeriods,renderFutureCardHTML,loadTodayCard,mountHeader,mountFooter,mountPullToRefresh,mountLocationSwitcher,DEFAULT_LOC,
+      tempValue,windValue,tempUnitLabel,windUnitLabel,hour12}=WX;
     let chartData=null,currentLoc=null;
     const header=mountHeader('today',()=>load());
     mountFooter();
+    mountLocationSwitcher(()=>load());
     function localHourKey(date,tz){const parts=Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:tz,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).formatToParts(date).filter(part=>part.type!=='literal').map(part=>[part.type,part.value]));return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:00`}
     function modeledValues(payload,field,times,tz){if(!payload?.hourly?.time||!payload.hourly[field])return times.map(()=>null);const values=new Map(payload.hourly.time.map((key,index)=>[key,payload.hourly[field][index]]));return times.map(time=>{const value=values.get(localHourKey(time,tz));return value==null?null:Math.round(value)})}
     function mergeChartSeries(history,nws,times,now){return times.map((time,index)=>time<now?(history[index]??nws[index]):(nws[index]??history[index]))}
@@ -60,7 +62,7 @@
       svg.setAttribute('viewBox',`0 0 ${w} ${h}`);svg.innerHTML='';
       const make=(parent,tag,a,t)=>{const n=document.createElementNS(ns,tag);Object.entries(a||{}).forEach(([k,v])=>n.setAttribute(k,v));if(t!=null)n.textContent=t;parent.appendChild(n);return n};
       const add=(tag,a,t)=>make(svg,tag,a,t),css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-      const timeLabel=date=>new Intl.DateTimeFormat('en-US',{timeZone:chartData.tz,hour:'numeric',minute:'2-digit'}).format(date).replace(/\b(AM|PM)\b/g,value=>value.toLowerCase());
+      const timeLabel=date=>new Intl.DateTimeFormat('en-US',{timeZone:chartData.tz,hour:'numeric',minute:'2-digit',hour12:hour12()}).format(date).replace(/\b(AM|PM)\b/g,value=>value.toLowerCase());
       const scrubLabel=(date,offset)=>`${offset<24?'Today':offset<48?'Tom':new Intl.DateTimeFormat('en-US',{timeZone:chartData.tz,weekday:'short'}).format(date)} · ${timeLabel(date)}`;
       add('rect',{x:m.l,y:m.t,width:w-m.l-m.r,height:h-m.t-m.b,fill:'none',stroke:css('--line')});
       for(let j=0;j<=4;j++){const v=domain[0]+(domain[1]-domain[0])*j/4,yy=y(v);add('text',{x:m.l-7,y:yy+4,'text-anchor':'end',fill:css('--muted'),'font-size':11},Math.round(v))}
@@ -87,7 +89,16 @@
       hit.addEventListener('contextmenu',e=>{if(touchScrubbing)e.preventDefault()});
       hit.addEventListener('touchend',endTouchScrub,{passive:false});hit.addEventListener('touchcancel',endTouchScrub,{passive:false})
     }
-    function redraw(){if(!chartData||!chartData.temp.length){['temp-chart','pop-chart','wind-chart'].forEach(id=>el(id).innerHTML='');return;}const temps=chartData.temp.filter(v=>v!=null),maxT=Math.max(...temps,80),minT=Math.min(...temps,30);draw(el('temp-chart'),[{values:chartData.temp,color:'--blue'}],[Math.floor((minT-5)/5)*5,Math.ceil((maxT+5)/5)*5],'°F');draw(el('pop-chart'),[{values:chartData.pop,color:'--cyan'}],[0,100],'%');const vals=[...chartData.wind,...chartData.gust].filter(v=>v!=null),maxW=Math.max(20,...vals);draw(el('wind-chart'),[{values:chartData.wind,color:'--green'},{values:chartData.gust,color:'--orange'}],[0,Math.ceil((maxW+3)/5)*5],'mph')}
+    function redraw(){
+      if(!chartData||!chartData.temp.length){['temp-chart','pop-chart','wind-chart'].forEach(id=>el(id).innerHTML='');return;}
+      el('temp-chart').setAttribute('aria-label',`Hourly temperature in degrees ${tempUnitLabel()==='C'?'Celsius':'Fahrenheit'}`);
+      el('wind-chart').setAttribute('aria-label',`Hourly sustained wind and gusts in ${windUnitLabel()==='mph'?'miles per hour':'kilometers per hour'}`);
+      const tempSeries=chartData.temp.map(v=>v==null?null:tempValue(v)),temps=tempSeries.filter(v=>v!=null),maxT=Math.max(...temps,tempValue(80)),minT=Math.min(...temps,tempValue(30));
+      draw(el('temp-chart'),[{values:tempSeries,color:'--blue'}],[Math.floor((minT-5)/5)*5,Math.ceil((maxT+5)/5)*5],`°${tempUnitLabel()}`);
+      draw(el('pop-chart'),[{values:chartData.pop,color:'--cyan'}],[0,100],'%');
+      const windSeries=chartData.wind.map(v=>v==null?null:windValue(v)),gustSeries=chartData.gust.map(v=>v==null?null:windValue(v)),vals=[...windSeries,...gustSeries].filter(v=>v!=null),maxW=Math.max(windValue(20),...vals);
+      draw(el('wind-chart'),[{values:windSeries,color:'--green'},{values:gustSeries,color:'--orange'}],[0,Math.ceil((maxW+3)/5)*5],windUnitLabel());
+    }
     let busy=false,lastLoad=0,hasLoaded=false;
     async function load(){if(busy)return;busy=true;lastLoad=Date.now();if(!hasLoaded){el('loading').classList.remove('hidden');el('error').classList.add('hidden');el('content').classList.add('hidden')}else{el('content').classList.add('refreshing')}try{
       const loc=await resolveLocation();currentLoc=loc;
@@ -132,6 +143,7 @@
     window.addEventListener('pageshow',e=>{if(e.persisted)load()});
     document.addEventListener('visibilitychange',autoRefresh);
     document.addEventListener('timezonechange',()=>load());
+    document.addEventListener('unitschange',()=>redraw());
     window.addEventListener('focus',autoRefresh);
     setInterval(()=>{if(document.visibilityState==='visible')load()},10*60000);
     setInterval(()=>{if(document.visibilityState==='visible')redraw()},60000);

@@ -36,10 +36,11 @@
   <script src="/assets/weather-core.js"></script>
   <script>
   (()=>{
-    const {el,resolveLocation,resolvePoint,json,local,emoji,dayRows,findTodayPeriods,renderDaysHTML,loadTodayCard,mountHeader,mountFooter,mountPullToRefresh}=WX;
+    const {el,resolveLocation,resolvePoint,json,local,emoji,dayRows,findTodayPeriods,renderDaysHTML,loadTodayCard,mountHeader,mountFooter,mountPullToRefresh,mountLocationSwitcher}=WX;
     let busy=false,lastLoad=0,hasLoaded=false;
     const header=mountHeader('forecast',()=>load());
     mountFooter();
+    mountLocationSwitcher(()=>load());
     async function load(){if(busy)return;busy=true;lastLoad=Date.now();if(!hasLoaded){el('loading').classList.remove('hidden');el('error').classList.add('hidden');el('content').classList.add('hidden')}else{el('content').classList.add('refreshing')}try{
       const loc=await resolveLocation();
       const {point,label,tz,officeId}=await resolvePoint(loc);
@@ -62,6 +63,7 @@
     window.addEventListener('pageshow',e=>{if(e.persisted)load()});
     document.addEventListener('visibilitychange',autoRefresh);
     document.addEventListener('timezonechange',()=>load());
+    document.addEventListener('unitschange',()=>load());
     window.addEventListener('focus',autoRefresh);
     setInterval(()=>{if(document.visibilityState==='visible')load()},10*60000);
     mountPullToRefresh(load);

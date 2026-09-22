@@ -1,5 +1,6 @@
 window.WX = (function(){
   const API='https://api.weather.gov',LOC_KEY='weather-location',POINT_CACHE_KEY='weather-point-cache',POINT_TTL=6*3600000,TIME_ZONE_KEY='weather-time-zone',DEFAULT_TIME_ZONE='America/Chicago',DEFAULT_LOC={lat:44.0136,lon:-92.4757,label:'Rochester, Minnesota',source:'default'};
+  const TEMP_UNIT_KEY='weather-temp-unit',WIND_UNIT_KEY='weather-wind-unit',HOUR_FORMAT_KEY='weather-hour-format';
   const TIME_ZONES=['America/New_York','America/Chicago','America/Denver','America/Phoenix','America/Los_Angeles','America/Anchorage','America/Adak','Pacific/Honolulu','America/Puerto_Rico','Pacific/Guam','Pacific/Pago_Pago'];
   const el=id=>document.getElementById(id);
   const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -7,6 +8,36 @@ window.WX = (function(){
 
   function getSavedLocation(){try{return JSON.parse(localStorage.getItem(LOC_KEY))}catch{return null}}
   function saveLocation(loc){currentLoc=loc;try{localStorage.setItem(LOC_KEY,JSON.stringify(loc))}catch{}}
+  // currentLoc (in-memory) is set even when resolveLocation() falls back to
+  // DEFAULT_LOC without persisting it, so prefer it over the possibly-stale
+  // or empty localStorage read.
+  function getCurrentLocation(){return currentLoc||getSavedLocation()||DEFAULT_LOC}
+
+  const SAVED_LOCS_KEY='weather-saved-locations',MAX_SAVED_LOCS=10;
+  // Rounded to the same precision as the point-lookup cache key so trivial
+  // GPS jitter doesn't register as a different place.
+  const savedLocKey=loc=>`${loc.lat.toFixed(2)},${loc.lon.toFixed(2)}`;
+  function getSavedLocations(){try{const list=JSON.parse(localStorage.getItem(SAVED_LOCS_KEY));return Array.isArray(list)?list:[]}catch{return[]}}
+  function setSavedLocations(list){try{localStorage.setItem(SAVED_LOCS_KEY,JSON.stringify(list))}catch{}document.dispatchEvent(new CustomEvent('savedlocationschange'))}
+  function findSavedLocation(loc){const key=savedLocKey(loc);return getSavedLocations().find(l=>savedLocKey(l)===key)||null}
+  function isLocationSaved(loc){return !!findSavedLocation(loc)}
+  function addSavedLocation(loc){
+    const key=savedLocKey(loc),list=getSavedLocations().filter(l=>savedLocKey(l)!==key);
+    list.unshift({lat:loc.lat,lon:loc.lon,label:loc.label||'Selected location',favorite:false});
+    setSavedLocations(list.slice(0,MAX_SAVED_LOCS));
+  }
+  function removeSavedLocation(loc){const key=savedLocKey(loc);setSavedLocations(getSavedLocations().filter(l=>savedLocKey(l)!==key))}
+  function toggleSavedLocation(loc){if(isLocationSaved(loc))removeSavedLocation(loc);else addSavedLocation(loc)}
+  // Only one favorite at a time — starring a second place un-stars the first.
+  function setFavoriteLocation(loc){
+    const key=savedLocKey(loc);
+    let list=getSavedLocations();
+    if(!list.some(l=>savedLocKey(l)===key))list=[{lat:loc.lat,lon:loc.lon,label:loc.label||'Selected location',favorite:false},...list].slice(0,MAX_SAVED_LOCS);
+    setSavedLocations(list.map(l=>({...l,favorite:savedLocKey(l)===key})));
+  }
+  function clearFavoriteLocation(){setSavedLocations(getSavedLocations().map(l=>l.favorite?{...l,favorite:false}:l))}
+  function toggleFavoriteLocation(loc){findSavedLocation(loc)?.favorite?clearFavoriteLocation():setFavoriteLocation(loc)}
+  function getFavoriteLocation(){return getSavedLocations().find(l=>l.favorite)||null}
   function validTimeZone(zone){try{new Intl.DateTimeFormat('en-US',{timeZone:zone}).format();return true}catch{return false}}
   function storedTimeZone(){try{const zone=localStorage.getItem(TIME_ZONE_KEY);return zone&&validTimeZone(zone)?zone:null}catch{return null}}
   function getTimeZone(){return storedTimeZone()||sessionTimeZone||DEFAULT_TIME_ZONE}
@@ -17,6 +48,30 @@ window.WX = (function(){
     try{return new Intl.DateTimeFormat('en-US',{timeZone:zone,timeZoneName:'longGeneric'}).formatToParts(new Date()).find(p=>p.type==='timeZoneName')?.value||zone}catch{return zone}
   }
   function deviceTimeZone(){try{const zone=Intl.DateTimeFormat().resolvedOptions().timeZone;return validTimeZone(zone)?zone:DEFAULT_TIME_ZONE}catch{return DEFAULT_TIME_ZONE}}
+  // Unit preferences (temperature, wind speed, clock format) follow the same
+  // stored-choice pattern as theme/time zone: 'unitschange' lets every page
+  // just re-render with the new preference instead of refetching data, since
+  // all underlying values are stored in Fahrenheit/mph regardless of display unit.
+  function getTempUnit(){try{return localStorage.getItem(TEMP_UNIT_KEY)==='C'?'C':'F'}catch{return'F'}}
+  function setTempUnit(unit){if(unit!=='F'&&unit!=='C')return;try{localStorage.setItem(TEMP_UNIT_KEY,unit)}catch{}document.dispatchEvent(new CustomEvent('unitschange'))}
+  function getWindUnit(){try{return localStorage.getItem(WIND_UNIT_KEY)==='kmh'?'kmh':'mph'}catch{return'mph'}}
+  function setWindUnit(unit){if(unit!=='mph'&&unit!=='kmh')return;try{localStorage.setItem(WIND_UNIT_KEY,unit)}catch{}document.dispatchEvent(new CustomEvent('unitschange'))}
+  function getHourFormat(){try{return localStorage.getItem(HOUR_FORMAT_KEY)==='24'?'24':'12'}catch{return'12'}}
+  function setHourFormat(format){if(format!=='12'&&format!=='24')return;try{localStorage.setItem(HOUR_FORMAT_KEY,format)}catch{}document.dispatchEvent(new CustomEvent('unitschange'))}
+  function hour12(){return getHourFormat()!=='24'}
+  function tempValue(f){return getTempUnit()==='C'?Math.round((f-32)*5/9):Math.round(f)}
+  function tempUnitLabel(){return getTempUnit()}
+  function fmtTemp(f){return f==null?'':`${tempValue(f)}°${tempUnitLabel()}`}
+  // Shared by every hi/lo or feels-like range so the unit only appears once,
+  // after the higher bound, instead of after each number in the pair.
+  function fmtTempRange(lo,hi){
+    if(lo==null&&hi==null)return'';
+    if(lo!=null&&hi!=null)return lo===hi?fmtTemp(lo):`${tempValue(lo)}°–${fmtTemp(hi)}`;
+    return fmtTemp(hi??lo);
+  }
+  function windValue(mph){return getWindUnit()==='kmh'?Math.round(mph*1.60934):Math.round(mph)}
+  function windUnitLabel(){return getWindUnit()==='kmh'?'km/h':'mph'}
+  function fmtWind(mph){return mph==null?'':`${windValue(mph)} ${windUnitLabel()}`}
   // Single source of truth for the Settings time-zone picker, used both by
   // settings.html's own markup and by the header's subpage-modal copy of it
   // (mountHeader fetches settings.html and reuses its .credit-list markup),
@@ -100,7 +155,7 @@ window.WX = (function(){
   }
 
   function emoji(text){const t=String(text).toLowerCase();return /thunder/.test(t)?'⛈️':/snow|blizzard/.test(t)?'🌨️':/ice|freezing|sleet/.test(t)?'🧊':/rain|shower|drizzle/.test(t)?'🌧️':/fog|mist/.test(t)?'☁️':/partly|mostly sunny/.test(t)?'🌤️':/cloud|overcast/.test(t)?'☁️':/sun|clear/.test(t)?'☀️':'🌡️'}
-  const local=(t,tz,options={})=>t?new Date(t).toLocaleString('en-US',{timeZone:tz||getTimeZone(),month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short',...options}):'Not provided';
+  const local=(t,tz,options={})=>t?new Date(t).toLocaleString('en-US',{timeZone:tz||getTimeZone(),month:'short',day:'numeric',hour:'numeric',minute:'2-digit',hour12:hour12(),timeZoneName:'short',...options}):'Not provided';
   function maxWind(s){const n=(String(s).match(/\d+/g)||[]).map(Number);return n.length?Math.max(...n):null}
   function gustFrom(text){const m=String(text).match(/gusts?(?: as high as| up to| near| to)?\s*(\d+)\s*mph/i);return m?+m[1]:null}
   function durationMs(iso){const m=iso.match(/P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?)?/);return m?((+m[1]||0)*864e5+(+m[2]||0)*36e5+(+m[3]||0)*6e4):36e5}
@@ -147,7 +202,7 @@ window.WX = (function(){
     const value=observation.temperature?.value;
     const unit=observation.temperature?.unitCode;
     const temperature=value==null?null:unit?.endsWith('degC')?cToF(value):unit?.endsWith('degF')?Math.round(value):null;
-    return `${condition}${temperature==null?'':` · ${temperature}°F`}`;
+    return `${condition}${temperature==null?'':` · ${fmtTemp(temperature)}`}`;
   }
   // NWS's modern CAP alert feed is normally already mixed-case, but the
   // classic teletype-style text products (HWO/AFD) are still issued in full
@@ -217,6 +272,7 @@ window.WX = (function(){
   }
   function hourLabel(date,tz){
     const h=+new Intl.DateTimeFormat('en-US',{timeZone:tz,hour:'numeric',hour12:false}).format(new Date(date))%24;
+    if(!hour12())return String(h).padStart(2,'0');
     const h12=h%12===0?12:h%12;
     return `${h12}${h<12?'a':'p'}`;
   }
@@ -277,12 +333,12 @@ window.WX = (function(){
     const apparent=gridMetricValuesForDate(grid,'apparentTemperature',dateKey,tz,asTemperature);
     const dewpoints=gridMetricValuesForDate(grid,'dewpoint',dateKey,tz,asTemperature);
     const clouds=gridMetricValuesForDate(grid,'skyCover',dateKey,tz);
-    const range=apparent.length?`${Math.min(...apparent)}°${Math.min(...apparent)===Math.max(...apparent)?'':`–${Math.max(...apparent)}°`}`:null;
+    const range=apparent.length?fmtTempRange(Math.min(...apparent),Math.max(...apparent)):null;
     const average=values=>values.length?Math.round(values.reduce((sum,value)=>sum+value,0)/values.length):null;
     const dewpoint=average(dewpoints),cloudCover=average(clouds);
     return [
       range==null?null:['Feels Like',range],
-      dewpoint==null?null:['Dew Point',`${dewpoint}°`],
+      dewpoint==null?null:['Dew Point',fmtTemp(dewpoint)],
       cloudCover==null?null:['Cloud Cover',`${cloudCover}%`]
     ].filter(Boolean);
   }
@@ -321,13 +377,13 @@ window.WX = (function(){
     // apps like Apple Weather handle it, instead of going blank.
     const hi=d?.temperature??gridHi;
     const lo=n?.temperature??gridLo;
-    const hiLo=hi!=null&&lo!=null?['H',`${hi}°`,'L',`${lo}°`]:hi!=null?['H',`${hi}°`]:lo!=null?['L',`${lo}°`]:null;
+    const hiLo=hi!=null&&lo!=null?['H',fmtTemp(hi),'L',fmtTemp(lo)]:hi!=null?['H',fmtTemp(hi)]:lo!=null?['L',fmtTemp(lo)]:null;
     return [
       hiLo,
       pop==null?null:['Rain %',pop],
       humidity==null?null:['Humidity',`${humidity}%`],
-      ['Wind',wind==null?esc(b.windSpeed):`${wind} mph`],
-      gust==null?null:['Gusts',`${gust} mph`],
+      ['Wind',wind==null?esc(b.windSpeed):fmtWind(wind)],
+      gust==null?null:['Gusts',fmtWind(gust)],
       uv==null?null:['Max UV',uv]
     ].filter(Boolean);
   }
@@ -388,7 +444,7 @@ window.WX = (function(){
   function sunMetrics(date,lat,lon,tz){
     if(lat==null||lon==null||!date)return[];
     const{sunrise,sunset}=sunTimes(dayKey(tz,date),lat,lon);
-    const fmt=d=>new Intl.DateTimeFormat('en-US',{timeZone:tz,hour:'numeric',minute:'2-digit'}).format(d);
+    const fmt=d=>new Intl.DateTimeFormat('en-US',{timeZone:tz,hour:'numeric',minute:'2-digit',hour12:hour12()}).format(d);
     return[sunrise?['Sunrise',fmt(sunrise)]:null,sunset?['Sunset',fmt(sunset)]:null].filter(Boolean);
   }
   // Per-hour version of the same clear-sky estimate uvForDate already uses
@@ -412,24 +468,24 @@ window.WX = (function(){
     const end=d?.endTime?new Date(d.endTime).getTime():NaN;
     const localHour=+new Intl.DateTimeFormat('en-US',{timeZone:tz,hour:'numeric',hour12:false}).format(at)%24;
     const nearingEvening=Number.isFinite(end)?at.getTime()>=end-2*3600000:localHour>=16;
-    const now=current||(d?`${d.shortForecast} with a high near ${d.temperature}°`:'Conditions unavailable');
-    const day=d&&!nearingEvening?`${d.shortForecast} with a high near ${d.temperature}°`:'';
-    const night=n?`${day?', becoming':'Becoming'} ${n.shortForecast.toLowerCase()} tonight with a low near ${n.temperature}°`:'';
+    const now=current||(d?`${d.shortForecast} with a high near ${fmtTemp(d.temperature)}`:'Conditions unavailable');
+    const day=d&&!nearingEvening?`${d.shortForecast} with a high near ${fmtTemp(d.temperature)}`:'';
+    const night=n?`${day?', becoming':'Becoming'} ${n.shortForecast.toLowerCase()} tonight with a low near ${fmtTemp(n.temperature)}`:'';
     const later=day||night?`${day}${night}.`:'';
     return {now,later};
   }
   function futureBrief(d,n){
     // "the evening", not "tonight" — these cards are never today, and
     // "tonight" specifically reads as "later today" to a reader.
-    const hi=d?`${d.shortForecast} with a high near ${d.temperature}°`:null;
-    const lo=n?`${hi?`becoming ${n.shortForecast.toLowerCase()} in the evening`:n.shortForecast} with a low near ${n.temperature}°`:null;
+    const hi=d?`${d.shortForecast} with a high near ${fmtTemp(d.temperature)}`:null;
+    const lo=n?`${hi?`becoming ${n.shortForecast.toLowerCase()} in the evening`:n.shortForecast} with a low near ${fmtTemp(n.temperature)}`:null;
     if(hi&&lo)return `${hi}, ${lo}.`;
     return `${hi||lo||'Forecast unavailable'}.`;
   }
   function futureHeadline(d,n,gridHi=null,gridLo=null){
     const condition=(d||n)?.shortForecast||'Conditions unavailable';
     const hi=d?.temperature??gridHi,lo=n?.temperature??gridLo;
-    const range=hi!=null&&lo!=null?`${lo}°–${hi}°`:hi!=null?`${hi}°`:lo!=null?`${lo}°`:'';
+    const range=fmtTempRange(lo,hi);
     return `${condition}${range?` · ${range}`:''}`;
   }
   function renderFutureCardHTML(title,d,n,metrics,gridHi=null,gridLo=null){
@@ -573,8 +629,19 @@ window.WX = (function(){
     const subpage=el('nav-subpage'),subpageContent=el('nav-subpage-content');
     let subpageTrigger=null,subpageCloseTimer=null;
     const subpageCache=new Map();
+    // Kept in sync with the identical CHOICE_GROUPS list in settings.html's own
+    // inline script, since mountHeader's subpage dialog reuses that page's markup.
+    const SUBPAGE_CHOICE_GROUPS=[
+      {id:'theme-choice-group',get:getThemeChoice,set:setTheme},
+      {id:'temp-unit-choice-group',get:getTempUnit,set:setTempUnit},
+      {id:'wind-unit-choice-group',get:getWindUnit,set:setWindUnit},
+      {id:'hour-format-choice-group',get:getHourFormat,set:setHourFormat}
+    ];
     function paintSubpageSettings(){
-      subpageContent.querySelectorAll('[data-choice]').forEach(b=>b.classList.toggle('active',b.dataset.choice===getThemeChoice()));
+      SUBPAGE_CHOICE_GROUPS.forEach(({id,get})=>{
+        const current=get();
+        subpageContent.querySelectorAll(`#${id} .choice-btn`).forEach(b=>b.classList.toggle('active',b.dataset.choice===current));
+      });
       const select=subpageContent.querySelector('#time-zone-choice'),current=getTimeZone();
       if(select){
         if(!select.options.length)select.innerHTML=timeZoneOptionsHTML();
@@ -598,7 +665,13 @@ window.WX = (function(){
         subpageContent.innerHTML=content;
         if(name==='settings'){
           paintSubpageSettings();
-          subpageContent.querySelectorAll('[data-choice]').forEach(b=>b.addEventListener('click',()=>{setTheme(b.dataset.choice);paintThemeBtn();paintSubpageSettings()}));
+          SUBPAGE_CHOICE_GROUPS.forEach(({id,set})=>{
+            subpageContent.querySelectorAll(`#${id} .choice-btn`).forEach(b=>b.addEventListener('click',()=>{
+              set(b.dataset.choice);
+              if(id==='theme-choice-group')paintThemeBtn();
+              paintSubpageSettings();
+            }));
+          });
           subpageContent.querySelector('#time-zone-choice')?.addEventListener('change',e=>setTimeZone(e.target.value));
         }
       }catch{
@@ -678,6 +751,75 @@ window.WX = (function(){
       catch{setKicker('Location access denied or unavailable')}
     });
     return {setKicker};
+  }
+
+  const STAR_FILLED_ICON='<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="m12 3 2.6 5.85 6.4.62-4.85 4.3 1.4 6.28L12 16.9l-5.55 3.15 1.4-6.28-4.85-4.3 6.4-.62Z" fill="currentColor"/></svg>';
+  const STAR_OUTLINE_ICON='<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="m12 3 2.6 5.85 6.4.62-4.85 4.3 1.4 6.28L12 16.9l-5.55 3.15 1.4-6.28-4.85-4.3 6.4-.62Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>';
+  // Makes the page's #headline (each page's own current-location text) act as
+  // the entry point for jumping between saved locations, since the headline
+  // lives in each page's own markup rather than mountHeader's shared header.
+  function mountLocationSwitcher(onLocationChange,triggerId='headline'){
+    const headline=el(triggerId);
+    if(!headline||headline.dataset.locationSwitcher)return;
+    headline.dataset.locationSwitcher='1';
+    headline.classList.add('location-switcher-trigger');
+    headline.setAttribute('role','button');
+    headline.setAttribute('tabindex','0');
+    headline.setAttribute('aria-haspopup','true');
+    headline.setAttribute('aria-expanded','false');
+    headline.setAttribute('aria-label','Switch location');
+    if(!el('location-switcher-panel')){
+      document.body.insertAdjacentHTML('beforeend',`
+        <div class="nav-scrim" id="location-switcher-scrim" aria-hidden="true"></div>
+        <div class="location-switcher-panel" id="location-switcher-panel" role="menu" aria-label="Saved locations" aria-hidden="true"></div>`);
+    }
+    const panel=el('location-switcher-panel'),scrim=el('location-switcher-scrim');
+    let open=false;
+    function render(){
+      const current=getCurrentLocation(),saved=isLocationSaved(current);
+      const list=getSavedLocations().slice().sort((a,b)=>(b.favorite?1:0)-(a.favorite?1:0));
+      const rows=list.length?list.map(loc=>{
+        const active=savedLocKey(loc)===savedLocKey(current);
+        return `<div class="location-switcher-row${active?' active':''}">
+          <button class="location-switcher-favorite" type="button" data-fav-lat="${loc.lat}" data-fav-lon="${loc.lon}" aria-pressed="${!!loc.favorite}" aria-label="${loc.favorite?'Remove favorite':'Set as favorite'}">${loc.favorite?STAR_FILLED_ICON:STAR_OUTLINE_ICON}</button>
+          <button class="location-switcher-jump" type="button" role="menuitem" data-jump-lat="${loc.lat}" data-jump-lon="${loc.lon}" data-jump-label="${esc(loc.label)}">${esc(loc.label)}</button>
+          <button class="location-switcher-remove" type="button" data-remove-lat="${loc.lat}" data-remove-lon="${loc.lon}" aria-label="Remove ${esc(loc.label)}">&times;</button>
+        </div>`;
+      }).join(''):'<p class="location-switcher-empty">No saved locations yet. Save this one below, or search for another.</p>';
+      panel.innerHTML=`<button class="location-switcher-save" type="button" data-toggle-save>${saved?`${STAR_FILLED_ICON} Saved — tap to remove`:`${STAR_OUTLINE_ICON} Save this location`}</button><div class="location-switcher-list">${rows}</div>`;
+    }
+    function position(){
+      const rect=headline.getBoundingClientRect();
+      panel.style.top=`${rect.bottom+6}px`;
+      panel.style.left=`${Math.max(12,Math.min(rect.left,window.innerWidth-panel.offsetWidth-12))}px`;
+    }
+    function setOpen(next){
+      open=next;
+      if(open){render();position()}
+      panel.classList.toggle('open',open);
+      scrim.classList.toggle('open',open);
+      panel.setAttribute('aria-hidden',String(!open));
+      headline.setAttribute('aria-expanded',String(open));
+      if(open)panel.querySelector('button')?.focus();else headline.focus()
+    }
+    headline.addEventListener('click',()=>setOpen(!open));
+    headline.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setOpen(!open)}});
+    scrim.addEventListener('click',()=>setOpen(false));
+    document.addEventListener('keydown',e=>{if(e.key==='Escape'&&open)setOpen(false)});
+    document.addEventListener('savedlocationschange',()=>{if(open){render();position()}});
+    panel.addEventListener('click',e=>{
+      if(e.target.closest('[data-toggle-save]')){toggleSavedLocation(getCurrentLocation());return}
+      const favBtn=e.target.closest('[data-fav-lat]');
+      if(favBtn){toggleFavoriteLocation({lat:+favBtn.dataset.favLat,lon:+favBtn.dataset.favLon});return}
+      const removeBtn=e.target.closest('[data-remove-lat]');
+      if(removeBtn){removeSavedLocation({lat:+removeBtn.dataset.removeLat,lon:+removeBtn.dataset.removeLon});return}
+      const jumpBtn=e.target.closest('[data-jump-lat]');
+      if(jumpBtn){
+        saveLocation({lat:+jumpBtn.dataset.jumpLat,lon:+jumpBtn.dataset.jumpLon,label:jumpBtn.dataset.jumpLabel,source:'saved'});
+        setOpen(false);
+        onLocationChange();
+      }
+    });
   }
 
   // Turns any light MapLibre/OpenMapTiles-schema style into a dark one by
@@ -883,7 +1025,9 @@ window.WX = (function(){
     });
   }
 
-  return {API,DEFAULT_LOC,DEFAULT_TIME_ZONE,el,esc,getSavedLocation,saveLocation,getTimeZone,setTimeZone,timeZoneLabel,timeZoneOptionsHTML,geolocate,geocodeSearch,resolveLocation,resolvePoint,json,
+  return {API,DEFAULT_LOC,DEFAULT_TIME_ZONE,el,esc,getSavedLocation,saveLocation,getCurrentLocation,getTimeZone,setTimeZone,timeZoneLabel,timeZoneOptionsHTML,geolocate,geocodeSearch,resolveLocation,resolvePoint,json,
+    getSavedLocations,isLocationSaved,addSavedLocation,removeSavedLocation,toggleSavedLocation,setFavoriteLocation,clearFavoriteLocation,toggleFavoriteLocation,getFavoriteLocation,mountLocationSwitcher,
+    getTempUnit,setTempUnit,getWindUnit,setWindUnit,getHourFormat,setHourFormat,hour12,tempValue,tempUnitLabel,fmtTemp,fmtTempRange,windValue,windUnitLabel,fmtWind,
     emoji,local,maxWind,gustFrom,durationMs,gridValues,kphToMph,cToF,product,
     currentObservation,currentHeadline,alertLine,dayKey,startOfDay,hourLabel,dayPartLabel,dayRows,uvForDate,humidityForDate,gustForDate,popForDate,maxTempForDate,minTempForDate,extraDayMetrics,dayMetrics,metricsHTML,
     todayBrief,futureBrief,renderFutureCardHTML,loadTodayCard,sunMetrics,hourlyUVEstimate,
