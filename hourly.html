@@ -37,11 +37,11 @@
   <script src="/assets/weather-core.js"></script>
   <script>
   (()=>{
-    const {el,esc,resolveLocation,resolvePoint,json,local,emoji,dayKey,maxWind,gridValues,kphToMph,mountHeader,mountFooter,mountPullToRefresh}=WX;
+    const {el,esc,resolveLocation,resolvePoint,json,local,emoji,dayKey,maxWind,gridValues,kphToMph,mountHeader,mountFooter,mountPullToRefresh,fmtTemp,windValue,windUnitLabel,hour12}=WX;
     let busy=false,lastLoad=0,hasLoaded=false;
     const header=mountHeader('hourly',()=>load());
     mountFooter();
-    const hourText=(value,tz)=>new Intl.DateTimeFormat('en-US',{timeZone:tz,hour:'numeric'}).format(new Date(value));
+    const hourText=(value,tz)=>new Intl.DateTimeFormat('en-US',{timeZone:tz,hour:'numeric',hour12:hour12()}).format(new Date(value));
     function localHourKey(date,tz){const parts=Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:tz,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).formatToParts(date).filter(part=>part.type!=='literal').map(part=>[part.type,part.value]));return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:00`}
     function hourlyValues(payload,field,times,tz){if(!payload?.hourly?.time||!payload.hourly[field])return times.map(()=>null);const values=new Map(payload.hourly.time.map((key,index)=>[key,payload.hourly[field][index]]));return times.map(time=>values.get(localHourKey(time,tz))??null)}
     function renderHours(periods,tz,gusts,uvValues){
@@ -56,9 +56,9 @@
         const date=new Intl.DateTimeFormat('en-US',{timeZone:tz,month:'short',day:'numeric'}).format(group.date);
         const rows=group.periods.map(({period,sourceIndex})=>{
           const rain=period.probabilityOfPrecipitation?.value,sustained=maxWind(period.windSpeed),gust=gusts[sourceIndex],uv=uvValues[sourceIndex],start=new Date(period.startTime),end=new Date(period.endTime),isCurrent=current>=start&&current<end;
-          const wind=sustained==null&&gust==null?null:`Wind/Gusts: ${sustained??'—'}/${gust??'—'} mph`,details=[rain==null?null:`Rain: ${Math.round(rain)}%`,wind,uv==null?null:`UV: ${Math.round(uv)}`].filter(Boolean).join(' · ');
+          const wind=sustained==null&&gust==null?null:`Wind/Gusts: ${sustained==null?'—':windValue(sustained)}/${gust==null?'—':windValue(gust)} ${windUnitLabel()}`,details=[rain==null?null:`Rain: ${Math.round(rain)}%`,wind,uv==null?null:`UV: ${Math.round(uv)}`].filter(Boolean).join(' · ');
           const progress=isCurrent?Math.max(0,Math.min(100,(current-start)/(end-start)*100)):0,tick=isCurrent?`<span class="hourly-current-tick" style="--hour-progress:${progress.toFixed(1)}%" aria-hidden="true"></span>`:'';
-          return `<article class="hourly-row">${tick}<time class="hourly-time" datetime="${esc(period.startTime)}">${esc(hourText(period.startTime,tz))}</time><span class="hourly-icon" aria-hidden="true">${emoji(period.shortForecast)}</span><span class="hourly-summary"><span class="hourly-condition">${esc(period.shortForecast)}</span><span class="hourly-summary-divider" aria-hidden="true">·</span><span class="hourly-temp">${Math.round(period.temperature)}°</span></span><span class="hourly-meta">${esc(details)}</span></article>`;
+          return `<article class="hourly-row">${tick}<time class="hourly-time" datetime="${esc(period.startTime)}">${esc(hourText(period.startTime,tz))}</time><span class="hourly-icon" aria-hidden="true">${emoji(period.shortForecast)}</span><span class="hourly-summary"><span class="hourly-condition">${esc(period.shortForecast)}</span><span class="hourly-summary-divider" aria-hidden="true">·</span><span class="hourly-temp">${esc(fmtTemp(period.temperature))}</span></span><span class="hourly-meta">${esc(details)}</span></article>`;
         }).join('');
         return `<section class="hourly-day" aria-labelledby="hourly-day-${groupIndex}"><h2 id="hourly-day-${groupIndex}">${day} · ${date}</h2><div class="hourly-list">${rows}</div></section>`;
       }).join('');
@@ -81,6 +81,7 @@
     window.addEventListener('pageshow',e=>{if(e.persisted)load()});
     document.addEventListener('visibilitychange',autoRefresh);
     document.addEventListener('timezonechange',()=>load());
+    document.addEventListener('unitschange',()=>load());
     window.addEventListener('focus',autoRefresh);
     setInterval(()=>{if(document.visibilityState==='visible')load()},10*60000);
     mountPullToRefresh(load);

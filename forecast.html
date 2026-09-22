@@ -62,6 +62,7 @@
     window.addEventListener('pageshow',e=>{if(e.persisted)load()});
     document.addEventListener('visibilitychange',autoRefresh);
     document.addEventListener('timezonechange',()=>load());
+    document.addEventListener('unitschange',()=>load());
     window.addEventListener('focus',autoRefresh);
     setInterval(()=>{if(document.visibilityState==='visible')load()},10*60000);
     mountPullToRefresh(load);

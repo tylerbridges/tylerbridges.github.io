@@ -197,7 +197,7 @@
   <script src="/assets/weather-core.js"></script>
   <script>
   (()=>{
-    const {el,geolocate,resolveLocation,resolvePoint,getTimeZone,getTheme,mountHeader,mountFooter,mountPullToRefresh,minimalRadarStyle}=WX;
+    const {el,geolocate,resolveLocation,resolvePoint,getTimeZone,getTheme,mountHeader,mountFooter,mountPullToRefresh,minimalRadarStyle,hour12}=WX;
     const header=mountHeader('radar',()=>centerOnLocation());
     mountFooter();
 
@@ -264,8 +264,8 @@
     const PLAY_ICON='<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>';
     const PAUSE_ICON='<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor"/></svg>';
 
-    const fmtTime=ms=>new Date(ms).toLocaleTimeString([],{timeZone:getTimeZone(),hour:'numeric',minute:'2-digit'});
-    const fmtFull=ms=>new Date(ms).toLocaleString([],{timeZone:getTimeZone(),month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'});
+    const fmtTime=ms=>new Date(ms).toLocaleTimeString([],{timeZone:getTimeZone(),hour:'numeric',minute:'2-digit',hour12:hour12()});
+    const fmtFull=ms=>new Date(ms).toLocaleString([],{timeZone:getTimeZone(),month:'short',day:'numeric',hour:'numeric',minute:'2-digit',hour12:hour12(),timeZoneName:'short'});
     const tileUrl=frame=>`${IEM_TILE_ROOT}/${frame.layer}/{z}/{x}/{y}.png`;
 
     function updateStatus(checkedNow){
@@ -561,6 +561,7 @@
       lastRefresh=Date.now();
       return loadFrames(true);
     }
+    document.addEventListener('unitschange',()=>{if(frames.length){showFrame(idx);updateStatus(false)}});
     document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')refreshFrames()});
     window.addEventListener('focus',()=>refreshFrames());
     window.addEventListener('pageshow',e=>{if(e.persisted)refreshFrames()});

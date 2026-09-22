@@ -35,6 +35,30 @@
         <label class="sr-only" for="time-zone-choice">Weather time zone</label>
         <select class="setting-select" id="time-zone-choice"></select>
       </article>
+      <article class="brief">
+        <h3>Temperature</h3>
+        <p>Choose the unit used for every temperature shown on the site.</p>
+        <div class="choice-group" id="temp-unit-choice-group">
+          <button class="choice-btn" type="button" data-choice="F">Fahrenheit</button>
+          <button class="choice-btn" type="button" data-choice="C">Celsius</button>
+        </div>
+      </article>
+      <article class="brief">
+        <h3>Wind speed</h3>
+        <p>Choose the unit used for wind and gust speeds.</p>
+        <div class="choice-group" id="wind-unit-choice-group">
+          <button class="choice-btn" type="button" data-choice="mph">mph</button>
+          <button class="choice-btn" type="button" data-choice="kmh">km/h</button>
+        </div>
+      </article>
+      <article class="brief">
+        <h3>Time format</h3>
+        <p>Choose how times are displayed throughout the site.</p>
+        <div class="choice-group" id="hour-format-choice-group">
+          <button class="choice-btn" type="button" data-choice="12">12-hour</button>
+          <button class="choice-btn" type="button" data-choice="24">24-hour</button>
+        </div>
+      </article>
     </div>
     <footer class="site-footer" id="site-footer"></footer>
   </main>
@@ -42,15 +66,28 @@
   <script>
     WX.mountHeader('',()=>{location.href='/'});
     WX.mountFooter();
-    function paintChoice(){
-      const current=WX.getThemeChoice();
-      document.querySelectorAll('#theme-choice-group .choice-btn').forEach(b=>{
-        b.classList.toggle('active',b.dataset.choice===current);
+    // Kept in sync with the identical SUBPAGE_CHOICE_GROUPS list in
+    // weather-core.js's mountHeader, since its subpage dialog reuses this
+    // page's markup.
+    const CHOICE_GROUPS=[
+      {id:'theme-choice-group',get:WX.getThemeChoice,set:WX.setTheme},
+      {id:'temp-unit-choice-group',get:WX.getTempUnit,set:WX.setTempUnit},
+      {id:'wind-unit-choice-group',get:WX.getWindUnit,set:WX.setWindUnit},
+      {id:'hour-format-choice-group',get:WX.getHourFormat,set:WX.setHourFormat}
+    ];
+    function paintChoices(){
+      CHOICE_GROUPS.forEach(({id,get})=>{
+        const current=get();
+        document.querySelectorAll(`#${id} .choice-btn`).forEach(b=>{
+          b.classList.toggle('active',b.dataset.choice===current);
+        });
       });
     }
-    paintChoice();
-    document.querySelectorAll('#theme-choice-group .choice-btn').forEach(b=>{
-      b.addEventListener('click',()=>{WX.setTheme(b.dataset.choice);paintChoice()});
+    paintChoices();
+    CHOICE_GROUPS.forEach(({id,set})=>{
+      document.querySelectorAll(`#${id} .choice-btn`).forEach(b=>{
+        b.addEventListener('click',()=>{set(b.dataset.choice);paintChoices()});
+      });
     });
     function paintTimeZone(){
       const select=document.getElementById('time-zone-choice'),current=WX.getTimeZone();
