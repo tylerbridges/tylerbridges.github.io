@@ -33,6 +33,10 @@ iteration loop: request, implement, review, publish, verify.
   must remain byte-identical unless the task explicitly separates them.
 - When changing a file listed in `SHELL` in `sw.js`, increment the
   `sky-report-vNN` cache key so installed clients refresh cleanly.
+- Each page carries a Content-Security-Policy `<meta>` that allows its inline
+  scripts by hash. After changing any inline `<script>`, run
+  `node scripts/csp.js` to refresh the hashes; `verify-site.sh` fails until
+  you do.
 - Keep the site dependency-light and compatible with static GitHub Pages
   hosting.
 - Prefer the existing design tokens and shared components in `assets/` over

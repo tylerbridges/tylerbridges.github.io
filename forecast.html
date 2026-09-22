@@ -1,8 +1,10 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <script>try{var t=localStorage.getItem('weather-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);else if(t!=='system')document.documentElement.setAttribute('data-theme','dark')}catch{}</script>
   <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'sha256-iaGyl+MesImCrVNj4kQ20S4RvzBpRSK0LS5TGRYQTug=' 'sha256-vxtdpWYi4gxKFJ2YVdxaA187yp9GTYUy9U9w7Mvixdg='; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob: https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org; connect-src 'self' https://api.weather.gov https://photon.komoot.io https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org; worker-src 'self' blob:; child-src 'self' blob:; font-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <script>try{var t=localStorage.getItem('weather-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);else if(t!=='system')document.documentElement.setAttribute('data-theme','dark')}catch{}</script>
+  <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#071522">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -48,29 +50,28 @@
   <script src="/assets/weather-core.js"></script>
   <script>
   (()=>{
-    const {el,resolveLocation,resolvePoint,json,local,emoji,dayRows,findTodayPeriods,renderDaysHTML,loadTodayCard,mountHeader,mountFooter,mountPullToRefresh,mountLocationSwitcher,scheduleAutoRefresh}=WX;
+    const {el,resolveLocation,resolvePoint,json,local,emoji,dayRows,findTodayPeriods,renderDaysHTML,loadTodayCard,mountHeader,mountFooter,mountPullToRefresh,mountLocationSwitcher,scheduleAutoRefresh,mountStatus,CACHE_TTL}=WX;
     let busy=false,lastLoad=0,hasLoaded=false;
     const header=mountHeader('forecast',()=>load());
     mountFooter();
     mountLocationSwitcher(()=>load());
-    async function load(){if(busy)return;busy=true;lastLoad=Date.now();if(!hasLoaded){el('loading').classList.remove('hidden');el('error').classList.add('hidden');el('content').classList.add('hidden')}else{el('content').classList.add('refreshing')}try{
-      const loc=await resolveLocation();
+    const status=mountStatus(()=>load());
+    async function load(){if(busy)return;busy=true;lastLoad=Date.now();let loc=null;if(!hasLoaded){el('loading').classList.remove('hidden');el('error').classList.add('hidden');el('content').classList.add('hidden')}else{el('content').classList.add('refreshing')}try{
+      loc=await resolveLocation();
       const {point,label,tz,officeId}=await resolvePoint(loc);
       header.setKicker('');el('headline').textContent=label;
-      const grid=await json(point.properties.forecastGridData).catch(()=>({properties:{}}));
-      const forecast=await json(point.properties.forecast);
+      const [grid,forecast]=await Promise.all([json(point.properties.forecastGridData,{ttl:CACHE_TTL.forecast}).catch(()=>({properties:{}})),json(point.properties.forecast,{ttl:CACHE_TTL.forecast})]);
       const now=new Date(),freshPeriods=forecast.properties.periods.filter(p=>new Date(p.endTime)>now);
-      if(!freshPeriods.length||!forecast.properties.updateTime)throw new Error('The 7-day forecast is unavailable.');
+      if(!freshPeriods.length||!forecast.properties.updateTime||now-new Date(forecast.properties.updateTime)>36*3600000)throw new Error('The NWS 7-day forecast is out of date or unavailable right now. Try again shortly.');
       const rows=dayRows(forecast.properties.periods,grid,tz,loc.lat);
       const today=findTodayPeriods(forecast.properties.periods,tz);
       const todayTitle=`${emoji((today.day||today.night).shortForecast)} Today · ${now.toLocaleDateString('en-US',{timeZone:tz,month:'short',day:'numeric'})}`;
       await loadTodayCard(el('today-card'),todayTitle,loc,point,officeId,today,grid,tz);
       el('days').innerHTML=renderDaysHTML(rows.slice(1),tz,loc);
-      el('updated').textContent=`Updated ${local(now,tz)}`;el('updated').classList.remove('hidden');
+      status.loaded({loc:{...loc,label},issued:forecast.properties.updateTime,tz});
       el('loading').classList.add('hidden');el('content').classList.remove('hidden');hasLoaded=true;
-    }catch(e){
-      if(!hasLoaded){el('loading').classList.add('hidden');el('error').classList.remove('hidden');el('error').textContent=e.message}
-    }finally{busy=false;el('content').classList.remove('refreshing')}}
+    }catch(e){status.failed(e,loc)}
+    finally{busy=false;el('content').classList.remove('refreshing')}}
     function autoRefresh(){if(document.visibilityState==='visible'&&Date.now()-lastLoad>5*60000)load()}
     window.addEventListener('pageshow',e=>{if(e.persisted)load()});
     document.addEventListener('visibilitychange',autoRefresh);

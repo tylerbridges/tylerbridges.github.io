@@ -1,0 +1,6 @@
+# GitHub Pages (Jekyll) build settings. Keeps repository-only files — agent
+# notes, maintenance scripts — out of the published site.
+exclude:
+  - AGENTS.md
+  - scripts/
+  - .codex/
