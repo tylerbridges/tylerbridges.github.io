@@ -25,8 +25,6 @@
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="preconnect" href="https://api.weather.gov">
   <link rel="dns-prefetch" href="https://api.weather.gov">
-  <link rel="preconnect" href="https://api.open-meteo.com" crossorigin>
-  <link rel="dns-prefetch" href="https://api.open-meteo.com">
   <link rel="preconnect" href="https://photon.komoot.io" crossorigin>
   <link rel="dns-prefetch" href="https://photon.komoot.io">
   <link rel="stylesheet" href="/assets/site.css">
@@ -55,7 +53,7 @@
   <script src="/assets/weather-core.js"></script>
   <script>
   (()=>{
-    const {el,resolveLocation,resolvePoint,json,emoji,local,maxWind,gridValues,kphToMph,cToF,
+    const {el,resolveLocation,resolvePoint,json,observationHistory,emoji,local,maxWind,gridValues,kphToMph,cToF,
       dayKey,startOfDay,hourLabel,dayRows,uvForDate,humidityForDate,gustForDate,popForDate,extraDayMetrics,dayMetrics,metricsHTML,sunMetrics,
       findTodayPeriods,renderFutureCardHTML,loadTodayCard,mountHeader,mountFooter,mountPullToRefresh,mountLocationSwitcher,DEFAULT_LOC,
       tempValue,windValue,tempUnitLabel,windUnitLabel,hour12}=WX;
@@ -63,8 +61,27 @@
     const header=mountHeader('today',()=>load());
     mountFooter();
     mountLocationSwitcher(()=>load());
-    function localHourKey(date,tz){const parts=Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:tz,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).formatToParts(date).filter(part=>part.type!=='literal').map(part=>[part.type,part.value]));return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:00`}
-    function modeledValues(payload,field,times,tz){if(!payload?.hourly?.time||!payload.hourly[field])return times.map(()=>null);const values=new Map(payload.hourly.time.map((key,index)=>[key,payload.hourly[field][index]]));return times.map(time=>{const value=values.get(localHourKey(time,tz));return value==null?null:Math.round(value)})}
+    // METARs land a few minutes either side of the hour, so each reading is
+    // filed under the hour it sits closest to, and the closest one wins.
+    // The chart’s own hour marks carry a sub-second offset (startOfDay keeps
+    // the current milliseconds), so both sides get rounded the same way.
+    const hourKey=ms=>Math.round(ms/3600000)*3600000;
+    function observedValues(readings,pick,times){
+      if(!readings?.length)return times.map(()=>null);
+      const byHour=new Map();
+      readings.forEach(reading=>{
+        const at=Date.parse(reading.timestamp);
+        if(!Number.isFinite(at))return;
+        const hour=hourKey(at),gap=Math.abs(at-hour),held=byHour.get(hour);
+        if(!held||gap<held.gap)byHour.set(hour,{reading,gap});
+      });
+      return times.map(time=>{const held=byHour.get(hourKey(time.getTime()));if(!held)return null;const value=pick(held.reading);return Number.isFinite(value)?value:null});
+    }
+    const obsTemp=o=>{const v=o.temperature?.value;return v==null?null:o.temperature.unitCode?.includes('degC')?cToF(v):Math.round(v)};
+    const obsWind=o=>{const v=o.windSpeed?.value;return v==null?null:o.windSpeed.unitCode?.includes('km_h')?kphToMph(v):Math.round(v)};
+    // A null gust is not missing data — it means nothing gusted above the
+    // sustained wind, so that hour's peak is the sustained reading.
+    const obsGust=o=>{const v=o.windGust?.value;return v==null?obsWind(o):o.windGust.unitCode?.includes('km_h')?kphToMph(v):Math.round(v)};
     function mergeChartSeries(history,nws,times,now){return times.map((time,index)=>time<now?(history[index]??nws[index]):(nws[index]??history[index]))}
     function draw(svg,series,domain,yTitle){
       const w=Math.max(320,svg.clientWidth||320),h=215,m={l:64,r:32,t:12,b:28},span=chartData.spanHours||48,
@@ -116,13 +133,12 @@
       const loc=await resolveLocation();currentLoc=loc;
       const {point,label,tz,officeId}=await resolvePoint(loc);
       header.setKicker('');el('headline').textContent=label;
-      const chartHistoryURL=`https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}&hourly=temperature_2m,precipitation_probability,wind_speed_10m,wind_gusts_10m&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=${encodeURIComponent(tz)}&past_days=1&forecast_days=3`;
-      const results=await Promise.allSettled([json(point.properties.forecast),json(point.properties.forecastHourly),json(point.properties.forecastGridData),json(chartHistoryURL)]);
+      const windowStart=startOfDay(tz);
+      const results=await Promise.allSettled([json(point.properties.forecast),json(point.properties.forecastHourly),json(point.properties.forecastGridData),observationHistory(point,windowStart)]);
       if(results[0].status!=='fulfilled')throw new Error('The current seven-day forecast is unavailable.');
-      const forecast=results[0].value,hourly=results[1].value,grid=results[2].value||{properties:{}},modeled=results[3].value||null;
+      const forecast=results[0].value,hourly=results[1].value,grid=results[2].value||{properties:{}},observed=results[3].value||null;
       const now=new Date(),periods=forecast.properties.periods.filter(p=>new Date(p.endTime)>now);
       if(!periods.length||!forecast.properties.updateTime||now-new Date(forecast.properties.updateTime)>36*3600000)throw new Error('NWS forecast is stale or cannot be verified.');
-      const windowStart=startOfDay(tz);
       const hourlyFresh=hourly?.properties?.updateTime&&now-new Date(hourly.properties.updateTime)<36*3600000;
       const hourlyPeriods=hourlyFresh?hourly.properties.periods:[];
       const times=Array.from({length:49},(_,i)=>new Date(windowStart.getTime()+i*3600000));
@@ -143,7 +159,10 @@
       const gridWind=gridValues(grid.properties.windSpeed,times,v=>grid.properties.windSpeed.uom?.includes('km_h')?kphToMph(v):Math.round(v));
       const gridGust=gridValues(grid.properties.windGust,times,v=>grid.properties.windGust.uom?.includes('km_h')?kphToMph(v):Math.round(v));
       const nwsTemp=hours.map((hour,index)=>hour?.temperature??gridTemp[index]),nwsPop=hours.map((hour,index)=>hour?.probabilityOfPrecipitation?.value??gridPop[index]),nwsWind=hours.map((hour,index)=>hour?maxWind(hour.windSpeed):gridWind[index]);
-      const temp=mergeChartSeries(modeledValues(modeled,'temperature_2m',times,tz),nwsTemp,times,now),pop=mergeChartSeries(modeledValues(modeled,'precipitation_probability',times,tz),nwsPop,times,now),wind=mergeChartSeries(modeledValues(modeled,'wind_speed_10m',times,tz),nwsWind,times,now),gust=mergeChartSeries(modeledValues(modeled,'wind_gusts_10m',times,tz),gridGust,times,now);
+      // Observations cover temperature and wind for the elapsed hours. There
+      // is no observed equivalent of a precipitation *probability*, so that
+      // chart just starts wherever NWS grid data begins.
+      const temp=mergeChartSeries(observedValues(observed,obsTemp,times),nwsTemp,times,now),pop=nwsPop,wind=mergeChartSeries(observedValues(observed,obsWind,times),nwsWind,times,now),gust=mergeChartSeries(observedValues(observed,obsGust,times),gridGust,times,now);
       const timeTicks=Array.from({length:9},(_,n)=>{const i=n*6;return{i,label:i===0?'Today':i===24?'Tom':i===48?new Intl.DateTimeFormat('en-US',{timeZone:tz,weekday:'short'}).format(times[i]):hourLabel(times[i],tz),day:i%24===0}});
       chartData={temp,pop,wind,gust,timeTicks,windowStart,tz,spanHours:48};
       el('updated').textContent=`Updated ${local(now,tz)}`;el('updated').classList.remove('hidden');

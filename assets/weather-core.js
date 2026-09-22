@@ -169,8 +169,16 @@ window.WX = (function(){
     const a=Math.sin(dLat/2)**2+Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
     return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
   }
-  async function currentObservation(point){
-    const stations=await json(point.properties.observationStations);
+  // A gridpoint's station list is static metadata, and both the current
+  // conditions and the chart history need it on every refresh — fetch it
+  // once per location instead of twice every ten minutes.
+  const stationListCache=new Map();
+  function stationList(url){
+    if(!stationListCache.has(url))stationListCache.set(url,json(url).catch(e=>{stationListCache.delete(url);throw e}));
+    return stationListCache.get(url);
+  }
+  async function stationCandidates(point){
+    const stations=await stationList(point.properties.observationStations);
     const origin=point.geometry?.coordinates;
     // NWS's own station list is ordered nearest-first, but "nearest" can
     // still be tens of miles away in sparsely-instrumented areas — cap how
@@ -183,6 +191,27 @@ window.WX = (function(){
     }
     const ids=candidates.slice(0,5).map(f=>f.id);
     if(!ids.length)throw new Error('No observation station within range.');
+    return ids;
+  }
+  // Observed hourly readings from `since` to now. NWS forecast data only
+  // describes the future, so this is what fills the already-elapsed part of
+  // today's charts — actual measurements rather than a back-dated forecast.
+  async function observationHistory(point,since){
+    const ids=await stationCandidates(point);
+    const start=new Date(since).toISOString();
+    let last=new Error('Observation history unavailable.');
+    for(const station of ids){
+      try{
+        const result=await json(`${station}/observations?start=${encodeURIComponent(start)}&limit=200`);
+        const readings=(result.features||[]).map(f=>f.properties).filter(p=>p&&p.timestamp);
+        if(!readings.length)throw new Error('Observation history unavailable.');
+        return readings;
+      }catch(e){last=e}
+    }
+    throw last;
+  }
+  async function currentObservation(point){
+    const ids=await stationCandidates(point);
     // The nearest station is sometimes offline or stale (unmaintained gauge,
     // outage, etc.) — try the next-closest ones in order rather than giving
     // up on the whole location after one bad station.
@@ -1050,7 +1079,7 @@ window.WX = (function(){
     getSavedLocations,isLocationSaved,addSavedLocation,removeSavedLocation,toggleSavedLocation,setFavoriteLocation,clearFavoriteLocation,toggleFavoriteLocation,getFavoriteLocation,mountLocationSwitcher,
     getTempUnit,setTempUnit,getWindUnit,setWindUnit,getHourFormat,setHourFormat,hour12,tempValue,tempUnitLabel,fmtTemp,fmtTempRange,windValue,windUnitLabel,fmtWind,
     emoji,local,maxWind,gustFrom,durationMs,gridValues,kphToMph,cToF,product,
-    currentObservation,currentHeadline,alertLine,dayKey,startOfDay,hourLabel,dayPartLabel,dayRows,uvForDate,humidityForDate,gustForDate,popForDate,maxTempForDate,minTempForDate,extraDayMetrics,dayMetrics,metricsHTML,
+    currentObservation,observationHistory,currentHeadline,alertLine,dayKey,startOfDay,hourLabel,dayPartLabel,dayRows,uvForDate,humidityForDate,gustForDate,popForDate,maxTempForDate,minTempForDate,extraDayMetrics,dayMetrics,metricsHTML,
     todayBrief,futureBrief,renderFutureCardHTML,loadTodayCard,sunMetrics,hourlyUVEstimate,
     findTodayPeriods,renderDaysHTML,mountHeader,mountFooter,mountPullToRefresh,getTheme,setTheme,getThemeChoice,recolorStyleDark,minimalRadarStyle};
 })();
