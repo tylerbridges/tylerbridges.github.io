@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'sha256-iaGyl+MesImCrVNj4kQ20S4RvzBpRSK0LS5TGRYQTug=' 'sha256-vxtdpWYi4gxKFJ2YVdxaA187yp9GTYUy9U9w7Mvixdg='; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob: https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org; connect-src 'self' https://api.weather.gov https://photon.komoot.io https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org; worker-src 'self' blob:; child-src 'self' blob:; font-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'sha256-iaGyl+MesImCrVNj4kQ20S4RvzBpRSK0LS5TGRYQTug=' 'sha256-6f5LoktxJtJcxbiRUvE6NaAsdW0bznH4o0kJx68M0Gk='; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob: https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org; connect-src 'self' https://api.weather.gov https://photon.komoot.io https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org; worker-src 'self' blob:; child-src 'self' blob:; font-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
   <script>try{var t=localStorage.getItem('weather-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);else if(t!=='system')document.documentElement.setAttribute('data-theme','dark')}catch{}</script>
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -43,6 +43,7 @@
     <div id="error" class="error hidden" role="alert"></div>
     <div id="content" class="hidden">
       <div id="today-card"></div>
+      <div id="forecaster-notes"></div>
       <div class="days" id="days"></div>
     </div>
     <footer class="site-footer" id="site-footer"></footer>
@@ -50,15 +51,18 @@
   <script src="/assets/weather-core.js"></script>
   <script>
   (()=>{
-    const {el,resolveLocation,resolvePoint,json,local,emoji,dayRows,findTodayPeriods,renderDaysHTML,loadTodayCard,mountHeader,mountFooter,mountPullToRefresh,mountLocationSwitcher,scheduleAutoRefresh,mountStatus,CACHE_TTL}=WX;
+    const {el,resolveLocation,resolvePoint,json,local,emoji,dayRows,findTodayPeriods,renderDaysHTML,loadTodayCard,mountHeader,mountFooter,mountPullToRefresh,mountLocationSwitcher,scheduleAutoRefresh,mountStatus,CACHE_TTL,mountForecasterNotes}=WX;
     let busy=false,lastLoad=0,hasLoaded=false;
     const header=mountHeader('forecast',()=>load());
     mountFooter();
     mountLocationSwitcher(()=>load());
     const status=mountStatus(()=>load());
+    let officeForNotes=null;
+    const notes=mountForecasterNotes(el('forecaster-notes'),()=>officeForNotes);
     async function load(){if(busy)return;busy=true;lastLoad=Date.now();let loc=null;if(!hasLoaded){el('loading').classList.remove('hidden');el('error').classList.add('hidden');el('content').classList.add('hidden')}else{el('content').classList.add('refreshing')}try{
       loc=await resolveLocation();
       const {point,label,tz,officeId}=await resolvePoint(loc);
+      if(officeForNotes!==officeId){officeForNotes=officeId;notes.reset()}
       header.setKicker('');el('headline').textContent=label;
       const [grid,forecast]=await Promise.all([json(point.properties.forecastGridData,{ttl:CACHE_TTL.forecast}).catch(()=>({properties:{}})),json(point.properties.forecast,{ttl:CACHE_TTL.forecast})]);
       const now=new Date(),freshPeriods=forecast.properties.periods.filter(p=>new Date(p.endTime)>now);
