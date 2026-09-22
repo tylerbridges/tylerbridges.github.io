@@ -8,6 +8,36 @@ window.WX = (function(){
 
   function getSavedLocation(){try{return JSON.parse(localStorage.getItem(LOC_KEY))}catch{return null}}
   function saveLocation(loc){currentLoc=loc;try{localStorage.setItem(LOC_KEY,JSON.stringify(loc))}catch{}}
+  // currentLoc (in-memory) is set even when resolveLocation() falls back to
+  // DEFAULT_LOC without persisting it, so prefer it over the possibly-stale
+  // or empty localStorage read.
+  function getCurrentLocation(){return currentLoc||getSavedLocation()||DEFAULT_LOC}
+
+  const SAVED_LOCS_KEY='weather-saved-locations',MAX_SAVED_LOCS=10;
+  // Rounded to the same precision as the point-lookup cache key so trivial
+  // GPS jitter doesn't register as a different place.
+  const savedLocKey=loc=>`${loc.lat.toFixed(2)},${loc.lon.toFixed(2)}`;
+  function getSavedLocations(){try{const list=JSON.parse(localStorage.getItem(SAVED_LOCS_KEY));return Array.isArray(list)?list:[]}catch{return[]}}
+  function setSavedLocations(list){try{localStorage.setItem(SAVED_LOCS_KEY,JSON.stringify(list))}catch{}document.dispatchEvent(new CustomEvent('savedlocationschange'))}
+  function findSavedLocation(loc){const key=savedLocKey(loc);return getSavedLocations().find(l=>savedLocKey(l)===key)||null}
+  function isLocationSaved(loc){return !!findSavedLocation(loc)}
+  function addSavedLocation(loc){
+    const key=savedLocKey(loc),list=getSavedLocations().filter(l=>savedLocKey(l)!==key);
+    list.unshift({lat:loc.lat,lon:loc.lon,label:loc.label||'Selected location',favorite:false});
+    setSavedLocations(list.slice(0,MAX_SAVED_LOCS));
+  }
+  function removeSavedLocation(loc){const key=savedLocKey(loc);setSavedLocations(getSavedLocations().filter(l=>savedLocKey(l)!==key))}
+  function toggleSavedLocation(loc){if(isLocationSaved(loc))removeSavedLocation(loc);else addSavedLocation(loc)}
+  // Only one favorite at a time — starring a second place un-stars the first.
+  function setFavoriteLocation(loc){
+    const key=savedLocKey(loc);
+    let list=getSavedLocations();
+    if(!list.some(l=>savedLocKey(l)===key))list=[{lat:loc.lat,lon:loc.lon,label:loc.label||'Selected location',favorite:false},...list].slice(0,MAX_SAVED_LOCS);
+    setSavedLocations(list.map(l=>({...l,favorite:savedLocKey(l)===key})));
+  }
+  function clearFavoriteLocation(){setSavedLocations(getSavedLocations().map(l=>l.favorite?{...l,favorite:false}:l))}
+  function toggleFavoriteLocation(loc){findSavedLocation(loc)?.favorite?clearFavoriteLocation():setFavoriteLocation(loc)}
+  function getFavoriteLocation(){return getSavedLocations().find(l=>l.favorite)||null}
   function validTimeZone(zone){try{new Intl.DateTimeFormat('en-US',{timeZone:zone}).format();return true}catch{return false}}
   function storedTimeZone(){try{const zone=localStorage.getItem(TIME_ZONE_KEY);return zone&&validTimeZone(zone)?zone:null}catch{return null}}
   function getTimeZone(){return storedTimeZone()||sessionTimeZone||DEFAULT_TIME_ZONE}
@@ -676,6 +706,75 @@ window.WX = (function(){
     return {setKicker};
   }
 
+  const STAR_FILLED_ICON='<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="m12 3 2.6 5.85 6.4.62-4.85 4.3 1.4 6.28L12 16.9l-5.55 3.15 1.4-6.28-4.85-4.3 6.4-.62Z" fill="currentColor"/></svg>';
+  const STAR_OUTLINE_ICON='<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="m12 3 2.6 5.85 6.4.62-4.85 4.3 1.4 6.28L12 16.9l-5.55 3.15 1.4-6.28-4.85-4.3 6.4-.62Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>';
+  // Makes the page's #headline (each page's own current-location text) act as
+  // the entry point for jumping between saved locations, since the headline
+  // lives in each page's own markup rather than mountHeader's shared header.
+  function mountLocationSwitcher(onLocationChange,triggerId='headline'){
+    const headline=el(triggerId);
+    if(!headline||headline.dataset.locationSwitcher)return;
+    headline.dataset.locationSwitcher='1';
+    headline.classList.add('location-switcher-trigger');
+    headline.setAttribute('role','button');
+    headline.setAttribute('tabindex','0');
+    headline.setAttribute('aria-haspopup','true');
+    headline.setAttribute('aria-expanded','false');
+    headline.setAttribute('aria-label','Switch location');
+    if(!el('location-switcher-panel')){
+      document.body.insertAdjacentHTML('beforeend',`
+        <div class="nav-scrim" id="location-switcher-scrim" aria-hidden="true"></div>
+        <div class="location-switcher-panel" id="location-switcher-panel" role="menu" aria-label="Saved locations" aria-hidden="true"></div>`);
+    }
+    const panel=el('location-switcher-panel'),scrim=el('location-switcher-scrim');
+    let open=false;
+    function render(){
+      const current=getCurrentLocation(),saved=isLocationSaved(current);
+      const list=getSavedLocations().slice().sort((a,b)=>(b.favorite?1:0)-(a.favorite?1:0));
+      const rows=list.length?list.map(loc=>{
+        const active=savedLocKey(loc)===savedLocKey(current);
+        return `<div class="location-switcher-row${active?' active':''}">
+          <button class="location-switcher-favorite" type="button" data-fav-lat="${loc.lat}" data-fav-lon="${loc.lon}" aria-pressed="${!!loc.favorite}" aria-label="${loc.favorite?'Remove favorite':'Set as favorite'}">${loc.favorite?STAR_FILLED_ICON:STAR_OUTLINE_ICON}</button>
+          <button class="location-switcher-jump" type="button" role="menuitem" data-jump-lat="${loc.lat}" data-jump-lon="${loc.lon}" data-jump-label="${esc(loc.label)}">${esc(loc.label)}</button>
+          <button class="location-switcher-remove" type="button" data-remove-lat="${loc.lat}" data-remove-lon="${loc.lon}" aria-label="Remove ${esc(loc.label)}">&times;</button>
+        </div>`;
+      }).join(''):'<p class="location-switcher-empty">No saved locations yet. Save this one below, or search for another.</p>';
+      panel.innerHTML=`<button class="location-switcher-save" type="button" data-toggle-save>${saved?`${STAR_FILLED_ICON} Saved — tap to remove`:`${STAR_OUTLINE_ICON} Save this location`}</button><div class="location-switcher-list">${rows}</div>`;
+    }
+    function position(){
+      const rect=headline.getBoundingClientRect();
+      panel.style.top=`${rect.bottom+6}px`;
+      panel.style.left=`${Math.max(12,Math.min(rect.left,window.innerWidth-panel.offsetWidth-12))}px`;
+    }
+    function setOpen(next){
+      open=next;
+      if(open){render();position()}
+      panel.classList.toggle('open',open);
+      scrim.classList.toggle('open',open);
+      panel.setAttribute('aria-hidden',String(!open));
+      headline.setAttribute('aria-expanded',String(open));
+      if(open)panel.querySelector('button')?.focus();else headline.focus()
+    }
+    headline.addEventListener('click',()=>setOpen(!open));
+    headline.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setOpen(!open)}});
+    scrim.addEventListener('click',()=>setOpen(false));
+    document.addEventListener('keydown',e=>{if(e.key==='Escape'&&open)setOpen(false)});
+    document.addEventListener('savedlocationschange',()=>{if(open){render();position()}});
+    panel.addEventListener('click',e=>{
+      if(e.target.closest('[data-toggle-save]')){toggleSavedLocation(getCurrentLocation());return}
+      const favBtn=e.target.closest('[data-fav-lat]');
+      if(favBtn){toggleFavoriteLocation({lat:+favBtn.dataset.favLat,lon:+favBtn.dataset.favLon});return}
+      const removeBtn=e.target.closest('[data-remove-lat]');
+      if(removeBtn){removeSavedLocation({lat:+removeBtn.dataset.removeLat,lon:+removeBtn.dataset.removeLon});return}
+      const jumpBtn=e.target.closest('[data-jump-lat]');
+      if(jumpBtn){
+        saveLocation({lat:+jumpBtn.dataset.jumpLat,lon:+jumpBtn.dataset.jumpLon,label:jumpBtn.dataset.jumpLabel,source:'saved'});
+        setOpen(false);
+        onLocationChange();
+      }
+    });
+  }
+
   // Turns any light MapLibre/OpenMapTiles-schema style into a dark one by
   // inverting the lightness of every paint color it finds, recursively (so
   // colors nested inside zoom-interpolated expressions get caught too), while
@@ -879,7 +978,8 @@ window.WX = (function(){
     });
   }
 
-  return {API,DEFAULT_LOC,DEFAULT_TIME_ZONE,el,esc,getSavedLocation,saveLocation,getTimeZone,setTimeZone,timeZoneLabel,timeZoneOptionsHTML,geolocate,geocodeSearch,resolveLocation,resolvePoint,json,
+  return {API,DEFAULT_LOC,DEFAULT_TIME_ZONE,el,esc,getSavedLocation,saveLocation,getCurrentLocation,getTimeZone,setTimeZone,timeZoneLabel,timeZoneOptionsHTML,geolocate,geocodeSearch,resolveLocation,resolvePoint,json,
+    getSavedLocations,isLocationSaved,addSavedLocation,removeSavedLocation,toggleSavedLocation,setFavoriteLocation,clearFavoriteLocation,toggleFavoriteLocation,getFavoriteLocation,mountLocationSwitcher,
     getTempUnit,setTempUnit,getWindUnit,setWindUnit,getHourFormat,setHourFormat,hour12,tempValue,tempUnitLabel,fmtTemp,fmtTempRange,windValue,windUnitLabel,fmtWind,
     emoji,local,maxWind,gustFrom,durationMs,gridValues,kphToMph,cToF,product,
     currentObservation,currentHeadline,alertLine,dayKey,startOfDay,hourLabel,dayPartLabel,dayRows,uvForDate,humidityForDate,gustForDate,maxTempForDate,minTempForDate,extraDayMetrics,dayMetrics,metricsHTML,

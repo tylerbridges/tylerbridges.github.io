@@ -197,9 +197,10 @@
   <script src="/assets/weather-core.js"></script>
   <script>
   (()=>{
-    const {el,geolocate,resolveLocation,resolvePoint,getTimeZone,getTheme,mountHeader,mountFooter,mountPullToRefresh,minimalRadarStyle,hour12}=WX;
+    const {el,geolocate,resolveLocation,resolvePoint,getTimeZone,getTheme,mountHeader,mountFooter,mountPullToRefresh,mountLocationSwitcher,minimalRadarStyle,hour12}=WX;
     const header=mountHeader('radar',()=>centerOnLocation());
     mountFooter();
+    mountLocationSwitcher(()=>centerOnLocation(),'kicker');
 
     // Iowa Environmental Mesonet's continuously updated CONUS N0Q mosaic uses
     // the standard NEXRAD reflectivity palette: green for light precipitation,

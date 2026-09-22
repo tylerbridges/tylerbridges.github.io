@@ -45,11 +45,12 @@
   (()=>{
     const {el,resolveLocation,resolvePoint,json,emoji,local,maxWind,gridValues,kphToMph,cToF,
       dayKey,startOfDay,hourLabel,dayRows,uvForDate,humidityForDate,gustForDate,extraDayMetrics,dayMetrics,metricsHTML,sunMetrics,
-      findTodayPeriods,renderFutureCardHTML,loadTodayCard,mountHeader,mountFooter,mountPullToRefresh,DEFAULT_LOC,
+      findTodayPeriods,renderFutureCardHTML,loadTodayCard,mountHeader,mountFooter,mountPullToRefresh,mountLocationSwitcher,DEFAULT_LOC,
       tempValue,windValue,tempUnitLabel,windUnitLabel,hour12}=WX;
     let chartData=null,currentLoc=null;
     const header=mountHeader('today',()=>load());
     mountFooter();
+    mountLocationSwitcher(()=>load());
     function localHourKey(date,tz){const parts=Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:tz,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).formatToParts(date).filter(part=>part.type!=='literal').map(part=>[part.type,part.value]));return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:00`}
     function modeledValues(payload,field,times,tz){if(!payload?.hourly?.time||!payload.hourly[field])return times.map(()=>null);const values=new Map(payload.hourly.time.map((key,index)=>[key,payload.hourly[field][index]]));return times.map(time=>{const value=values.get(localHourKey(time,tz));return value==null?null:Math.round(value)})}
     function mergeChartSeries(history,nws,times,now){return times.map((time,index)=>time<now?(history[index]??nws[index]):(nws[index]??history[index]))}
