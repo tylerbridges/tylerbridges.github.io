@@ -22,7 +22,12 @@
   <style>
     .radar-viewer{overflow:hidden;border:1px solid var(--line);border-radius:14px;background:var(--surface);box-shadow:var(--shadow)}
     .radar-card{position:relative;height:clamp(280px,58vw,520px);background:var(--surface-2)}
-    #map{position:absolute;inset:0;background:var(--surface-2)}
+    /* html/body restrict touch to pan-y/pinch-zoom for the pull-to-refresh
+       gesture; that inherited restriction would otherwise make the browser
+       claim a one-finger vertical drag as page scroll before MapLibre's own
+       touch handling sees it. Scoped to #map only, so a drag starting outside
+       the map still scrolls the page normally. */
+    #map{position:absolute;inset:0;background:var(--surface-2);touch-action:none}
     .radar-console.hidden{display:none}
     .radar-console{border-top:1px solid var(--line);background:var(--surface);color:var(--text)}
     .radar-frame-row{display:flex;align-items:baseline;justify-content:space-between;gap:.75rem;padding:.34rem .65rem .3rem}
@@ -400,7 +405,12 @@
         // fading in (localIdeographFontFamily already defaults to locally
         // rendering CJK glyphs instead of fetching them over the network).
         fadeDuration:0,
-        minZoom:3,maxZoom:MAP_MAX_ZOOM,cooperativeGestures:matchMedia('(pointer: coarse)').matches,
+        // Cooperative gestures (requiring two fingers to pan/zoom on touch)
+        // trades away exactly the interaction being asked for here: a single
+        // finger should drag/zoom the radar itself once it's on the map, while
+        // the page around it keeps scrolling normally under one finger too —
+        // the map only ever owns touches that start within its own bounds.
+        minZoom:3,maxZoom:MAP_MAX_ZOOM,cooperativeGestures:false,
         // Bound how many off-screen tiles MapLibre keeps warm; the radar map
         // is small and short-lived, so a large cache only costs memory.
         maxTileCacheSize:24,refreshExpiredTiles:false

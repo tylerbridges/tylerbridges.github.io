@@ -994,7 +994,9 @@ window.WX = (function(){
     function reset(){pulling=false;dist=0;armed=false;indicator.style.transition='transform .2s ease,opacity .2s ease';position(0);icon.style.transform=''}
     reset();
     document.addEventListener('touchstart',e=>{
-      if(refreshing||document.scrollingElement.scrollTop>0)return;
+      // #map (radar.html only) owns its own one-finger drag-to-pan; a touch
+      // starting there shouldn't also arm the page's pull-to-refresh.
+      if(refreshing||document.scrollingElement.scrollTop>0||e.target?.closest?.('#map'))return;
       startY=e.touches[0].clientY;pulling=true;armed=false;indicator.style.transition='none';
     },{passive:true});
     document.addEventListener('touchmove',e=>{
