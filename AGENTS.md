@@ -32,7 +32,7 @@ iteration loop: request, implement, review, publish, verify.
 - `index.html`, `brief.html`, and `live.html` are synchronized entry pages and
   must remain byte-identical unless the task explicitly separates them.
 - When changing a file listed in `SHELL` in `sw.js`, increment the
-  `rochester-weather-vNN` cache key so installed clients refresh cleanly.
+  `sky-report-vNN` cache key so installed clients refresh cleanly.
 - Keep the site dependency-light and compatible with static GitHub Pages
   hosting.
 - Prefer the existing design tokens and shared components in `assets/` over

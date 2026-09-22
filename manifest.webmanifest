@@ -1,6 +1,6 @@
 {
-  "name": "Rochester Weather",
-  "short_name": "RST Weather",
+  "name": "Sky Report",
+  "short_name": "Sky Report",
   "description": "Forecasts, hourly detail, a 7-day outlook and live NEXRAD radar for any US location, built on National Weather Service data.",
   "start_url": "/",
   "scope": "/",
