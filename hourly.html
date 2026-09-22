@@ -12,10 +12,8 @@
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="preconnect" href="https://api.weather.gov">
   <link rel="dns-prefetch" href="https://api.weather.gov">
-  <link rel="preconnect" href="https://api.open-meteo.com" crossorigin>
-  <link rel="dns-prefetch" href="https://api.open-meteo.com">
-  <link rel="preconnect" href="https://nominatim.openstreetmap.org" crossorigin>
-  <link rel="dns-prefetch" href="https://nominatim.openstreetmap.org">
+  <link rel="preconnect" href="https://photon.komoot.io" crossorigin>
+  <link rel="dns-prefetch" href="https://photon.komoot.io">
   <link rel="stylesheet" href="/assets/site.css">
   <title>Hourly Forecast — Rochester Weather</title>
 </head>
@@ -37,13 +35,11 @@
   <script src="/assets/weather-core.js"></script>
   <script>
   (()=>{
-    const {el,esc,resolveLocation,resolvePoint,json,local,emoji,dayKey,maxWind,gridValues,kphToMph,mountHeader,mountFooter,mountPullToRefresh}=WX;
+    const {el,esc,resolveLocation,resolvePoint,json,local,emoji,dayKey,maxWind,gridValues,kphToMph,hourlyUVEstimate,mountHeader,mountFooter,mountPullToRefresh}=WX;
     let busy=false,lastLoad=0,hasLoaded=false;
     const header=mountHeader('hourly',()=>load());
     mountFooter();
     const hourText=(value,tz)=>new Intl.DateTimeFormat('en-US',{timeZone:tz,hour:'numeric'}).format(new Date(value));
-    function localHourKey(date,tz){const parts=Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:tz,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).formatToParts(date).filter(part=>part.type!=='literal').map(part=>[part.type,part.value]));return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:00`}
-    function hourlyValues(payload,field,times,tz){if(!payload?.hourly?.time||!payload.hourly[field])return times.map(()=>null);const values=new Map(payload.hourly.time.map((key,index)=>[key,payload.hourly[field][index]]));return times.map(time=>values.get(localHourKey(time,tz))??null)}
     function renderHours(periods,tz,gusts,uvValues){
       const current=new Date(),groups=[];
       periods.forEach((period,sourceIndex)=>{
@@ -67,11 +63,10 @@
       const loc=await resolveLocation();
       const {point,label,tz}=await resolvePoint(loc);
       header.setKicker('');el('headline').textContent=label;
-      const uvURL=`https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}&hourly=uv_index,wind_gusts_10m&wind_speed_unit=mph&timezone=${encodeURIComponent(tz)}&forecast_days=3`;
-      const results=await Promise.allSettled([json(point.properties.forecastHourly),json(point.properties.forecastGridData),json(uvURL)]),hourly=results[0].value,grid=results[1].value||{properties:{}},uvData=results[2].value||null,now=new Date();
+      const results=await Promise.allSettled([json(point.properties.forecastHourly),json(point.properties.forecastGridData)]),hourly=results[0].value,grid=results[1].value||{properties:{}},now=new Date();
       if(!hourly?.properties?.periods?.length||!hourly.properties.updateTime||now-new Date(hourly.properties.updateTime)>36*3600000)throw new Error('The hourly forecast is stale or unavailable.');
       const periods=hourly.properties.periods.filter(period=>new Date(period.endTime)>now).slice(0,48),times=periods.map(period=>new Date(period.startTime));
-      const gridGusts=gridValues(grid.properties.windGust,times,value=>grid.properties.windGust.uom?.includes('km_h')?kphToMph(value):Math.round(value)),modeledGusts=hourlyValues(uvData,'wind_gusts_10m',times,tz),gusts=gridGusts.map((value,index)=>value??(modeledGusts[index]==null?null:Math.round(modeledGusts[index]))),uvValues=hourlyValues(uvData,'uv_index',times,tz);
+      const gusts=gridValues(grid.properties.windGust,times,value=>grid.properties.windGust.uom?.includes('km_h')?kphToMph(value):Math.round(value)),uvValues=times.map(time=>hourlyUVEstimate(time,loc.lat,loc.lon,tz));
       el('hourly-days').innerHTML=renderHours(periods,tz,gusts,uvValues);
       el('updated').textContent=`Updated ${local(now,tz)}`;el('updated').classList.remove('hidden');
       el('loading').classList.add('hidden');el('content').classList.remove('hidden');hasLoaded=true;

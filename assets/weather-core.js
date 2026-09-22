@@ -49,13 +49,28 @@ window.WX = (function(){
     ['jackson hole wyoming','Jackson, Wyoming']
   ]);
   function normalizedSearchQuery(query){const trimmed=String(query||'').trim(),key=trimmed.toLowerCase().replace(/[^a-z0-9]+/g,' ').trim().replace(/\s+/g,' ');return SEARCH_ALIASES.get(key)||trimmed}
-  async function geocodeSearch(query){const results=await json(`https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=${encodeURIComponent(normalizedSearchQuery(query))}`);if(!results.length)throw new Error('Location not found.');return {lat:+(+results[0].lat).toFixed(4),lon:+(+results[0].lon).toFixed(4)}}
+  // Photon (komoot.io) instead of Nominatim's own public endpoint: same
+  // underlying OpenStreetMap place data and general place-search behavior
+  // (unlike a street-address-focused geocoder), but explicitly positioned
+  // for this kind of public reuse rather than Nominatim's "light use only"
+  // policy. Nominatim's countrycodes=us restricts results server-side;
+  // Photon's public API has no equivalent country filter, so results are
+  // over-fetched and filtered to US matches client-side instead, to keep
+  // ambiguous place names (e.g. a city sharing a name abroad) resolving the
+  // way they did before.
+  const GEOCODE_ROOT='https://photon.komoot.io/api/';
+  async function geocodePhoton(query,limit){
+    const data=await json(`${GEOCODE_ROOT}?limit=${limit}&lang=en&q=${encodeURIComponent(normalizedSearchQuery(query))}`);
+    return (data.features||[]).filter(f=>f.properties?.countrycode==='US');
+  }
+  function photonPosition(feature){const[lon,lat]=feature.geometry.coordinates;return {lat:+(+lat).toFixed(4),lon:+(+lon).toFixed(4)}}
+  async function geocodeSearch(query){const features=await geocodePhoton(query,10);if(!features.length)throw new Error('Location not found.');return photonPosition(features[0])}
   const US_STATE_ABBR={Alabama:'AL',Alaska:'AK',Arizona:'AZ',Arkansas:'AR',California:'CA',Colorado:'CO',Connecticut:'CT',Delaware:'DE',Florida:'FL',Georgia:'GA',Hawaii:'HI',Idaho:'ID',Illinois:'IL',Indiana:'IN',Iowa:'IA',Kansas:'KS',Kentucky:'KY',Louisiana:'LA',Maine:'ME',Maryland:'MD',Massachusetts:'MA',Michigan:'MI',Minnesota:'MN',Mississippi:'MS',Missouri:'MO',Montana:'MT',Nebraska:'NE',Nevada:'NV','New Hampshire':'NH','New Jersey':'NJ','New Mexico':'NM','New York':'NY','North Carolina':'NC','North Dakota':'ND',Ohio:'OH',Oklahoma:'OK',Oregon:'OR',Pennsylvania:'PA','Rhode Island':'RI','South Carolina':'SC','South Dakota':'SD',Tennessee:'TN',Texas:'TX',Utah:'UT',Vermont:'VT',Virginia:'VA',Washington:'WA','West Virginia':'WV',Wisconsin:'WI',Wyoming:'WY','District of Columbia':'DC','Puerto Rico':'PR',Guam:'GU','American Samoa':'AS','U.S. Virgin Islands':'VI','Northern Mariana Islands':'MP'};
-  function normalizedLabel(result){
-    const a=result.address||{};
-    const city=a.city||a.town||a.village||a.hamlet||a.municipality||a.suburb||a.county;
-    const state=US_STATE_ABBR[a.state]||a.state;
-    return city&&state?`${city}, ${state}`:result.display_name;
+  function normalizedLabel(feature){
+    const p=feature.properties||{};
+    const city=p.city||p.town||p.village||p.county||p.name;
+    const state=US_STATE_ABBR[p.state]||p.state;
+    return city&&state?`${city}, ${state}`:[p.name,p.state].filter(Boolean).join(', ');
   }
   function refreshGeoInBackground(saved){geolocate({maximumAge:0}).then(pos=>{const sameSpot=saved.lat===pos.lat&&saved.lon===pos.lon;saveLocation({...pos,label:sameSpot?saved.label:null,source:'geo'})}).catch(()=>{})}
   async function resolveLocation(){
@@ -334,12 +349,26 @@ window.WX = (function(){
   // calculator), accurate to within a minute or two — no API, no key,
   // computed entirely from lat/lon/date the way Apple Weather's astro data
   // is, just without needing a bundled library like SunCalc.
-  function sunTimes(date,lat,lon){
+  // Takes a 'YYYY-MM-DD' date key (the same shape dayKey()/uvForDate()
+  // already use) rather than an arbitrary instant — deliberately, after an
+  // earlier version that took a Date here mispredicted which calendar day's
+  // sunrise/sunset to return for roughly half of every 24 hours. Julian Day
+  // numbers turn over at noon UTC, and the standard sunrise-equation's own
+  // rounding epsilon (below) is tuned for a J_date that ISN'T sitting
+  // exactly on that boundary, so anchoring at that exact instant (as a
+  // date's own UTC noon does) systematically rounds to the wrong day;
+  // anchoring at UTC midnight of the target calendar day avoids the
+  // boundary entirely and was verified against known sunrise/sunset times
+  // across multiple US latitudes/longitudes (including east of the date
+  // line, e.g. Guam) before shipping.
+  function sunTimes(dateKey,lat,lon){
     const rad=Math.PI/180;
     const toJulian=d=>d.getTime()/86400000+2440587.5;
     const fromJulian=j=>new Date((j-2440587.5)*86400000);
     const J2000=2451545.0;
-    const n=Math.ceil(toJulian(date)-J2000+0.0008);
+    const[y,m,d]=dateKey.split('-').map(Number);
+    const midnight=new Date(Date.UTC(y,m-1,d));
+    const n=Math.ceil(toJulian(midnight)-J2000+0.0008);
     const meanSolarNoon=n-lon/360;
     const M=(357.5291+0.98560028*meanSolarNoon)%360;
     const C=1.9148*Math.sin(M*rad)+0.02*Math.sin(2*M*rad)+0.0003*Math.sin(3*M*rad);
@@ -353,9 +382,22 @@ window.WX = (function(){
   }
   function sunMetrics(date,lat,lon,tz){
     if(lat==null||lon==null||!date)return[];
-    const{sunrise,sunset}=sunTimes(date,lat,lon);
+    const{sunrise,sunset}=sunTimes(dayKey(tz,date),lat,lon);
     const fmt=d=>new Intl.DateTimeFormat('en-US',{timeZone:tz,hour:'numeric',minute:'2-digit'}).format(d);
     return[sunrise?['Sunrise',fmt(sunrise)]:null,sunset?['Sunset',fmt(sunset)]:null].filter(Boolean);
+  }
+  // Per-hour version of the same clear-sky estimate uvForDate already uses
+  // for the daily "Max UV" metric: scale that day's peak across daylight
+  // hours with a sine curve (0 at sunrise/sunset, peak near solar noon).
+  // Replaces a live hourly UV feed with no bundled library and no API call.
+  function hourlyUVEstimate(date,lat,lon,tz){
+    if(lat==null||lon==null)return null;
+    const key=dayKey(tz,date);
+    const{sunrise,sunset}=sunTimes(key,lat,lon);
+    if(!sunrise||!sunset||date<=sunrise||date>=sunset)return 0;
+    const dayMax=uvForDate(key,lat);
+    if(dayMax==null)return null;
+    return Math.max(0,Math.round(dayMax*Math.sin((date-sunrise)/(sunset-sunrise)*Math.PI)));
   }
   // Always keep the live observation in today's bold first line. Earlier in
   // the day, use the italic line for today's full forecast arc; in the final
@@ -607,10 +649,10 @@ window.WX = (function(){
       if(q.length<3){suggestionMap.clear();return}
       suggestTimer=setTimeout(async()=>{
         try{
-          const results=await json(`https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=4&countrycodes=us&q=${encodeURIComponent(normalizedSearchQuery(q))}`);
+          const features=await geocodePhoton(q,10);
           if(request!==suggestRequest||q!==locationInput.value.trim())return;
           suggestionMap=new Map();
-          results.forEach(r=>{const label=normalizedLabel(r);if(!suggestionMap.has(label))suggestionMap.set(label,{lat:+(+r.lat).toFixed(4),lon:+(+r.lon).toFixed(4)})});
+          features.slice(0,4).forEach(f=>{const label=normalizedLabel(f);if(!suggestionMap.has(label))suggestionMap.set(label,photonPosition(f))});
           renderSuggestions();
         }catch{}
       },350);
@@ -839,6 +881,6 @@ window.WX = (function(){
   return {API,DEFAULT_LOC,DEFAULT_TIME_ZONE,el,esc,getSavedLocation,saveLocation,getTimeZone,setTimeZone,timeZoneLabel,timeZoneOptionsHTML,geolocate,geocodeSearch,resolveLocation,resolvePoint,json,
     emoji,local,maxWind,gustFrom,durationMs,gridValues,kphToMph,cToF,product,
     currentObservation,currentHeadline,alertLine,dayKey,startOfDay,hourLabel,dayPartLabel,dayRows,uvForDate,humidityForDate,gustForDate,maxTempForDate,minTempForDate,extraDayMetrics,dayMetrics,metricsHTML,
-    todayBrief,futureBrief,renderFutureCardHTML,loadTodayCard,sunMetrics,
+    todayBrief,futureBrief,renderFutureCardHTML,loadTodayCard,sunMetrics,hourlyUVEstimate,
     findTodayPeriods,renderDaysHTML,mountHeader,mountFooter,mountPullToRefresh,getTheme,setTheme,getThemeChoice,recolorStyleDark,minimalRadarStyle};
 })();
