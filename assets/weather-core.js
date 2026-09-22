@@ -640,7 +640,14 @@ window.WX = (function(){
     function paintSubpageSettings(){
       SUBPAGE_CHOICE_GROUPS.forEach(({id,get})=>{
         const current=get();
-        subpageContent.querySelectorAll(`#${id} .choice-btn`).forEach(b=>b.classList.toggle('active',b.dataset.choice===current));
+        // aria-pressed alongside the class: the blue .active background is
+        // the only other cue that a unit/theme is the selected one, which
+        // assistive tech and high-contrast modes can't convey.
+        subpageContent.querySelectorAll(`#${id} .choice-btn`).forEach(b=>{
+          const on=b.dataset.choice===current;
+          b.classList.toggle('active',on);
+          b.setAttribute('aria-pressed',String(on));
+        });
       });
       const select=subpageContent.querySelector('#time-zone-choice'),current=getTimeZone();
       if(select){
@@ -767,13 +774,21 @@ window.WX = (function(){
     if(!headline||headline.dataset.locationSwitcher)return;
     headline.dataset.locationSwitcher='1';
     headline.classList.add('location-switcher-trigger');
-    headline.setAttribute('role','button');
     headline.setAttribute('tabindex','0');
-    headline.setAttribute('aria-haspopup','true');
+    headline.setAttribute('aria-haspopup','menu');
     headline.setAttribute('aria-expanded','false');
-    headline.setAttribute('aria-label','Switch location');
+    // Deliberately NOT role="button" with an aria-label: this element is the
+    // page's only <h1>, and its text is the current location. Overriding the
+    // role dropped the page out of heading navigation, and the label replaced
+    // the accessible name, so the location itself was never announced — the
+    // heading read as "Switch location, button". Keeping the heading intact
+    // leaves the location as the name; the hint below explains the action,
+    // and lives outside the h1 so page code that rewrites textContent on
+    // every load can't clobber it.
+    headline.setAttribute('aria-describedby','location-switcher-hint');
     if(!el('location-switcher-panel')){
       document.body.insertAdjacentHTML('beforeend',`
+        <span class="sr-only" id="location-switcher-hint">Activate to switch or save locations.</span>
         <div class="nav-scrim" id="location-switcher-scrim" aria-hidden="true"></div>
         <div class="location-switcher-panel" id="location-switcher-panel" role="menu" aria-label="Saved locations" aria-hidden="true"></div>`);
     }
