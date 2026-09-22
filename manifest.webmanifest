@@ -1,12 +1,16 @@
 {
   "name": "Rochester Weather",
   "short_name": "RST Weather",
-  "description": "A weather.gov-only forecast dashboard for Rochester, Minnesota ZIP 55901.",
+  "description": "Forecasts, hourly detail, a 7-day outlook and live NEXRAD radar for any US location, built on National Weather Service data.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#071522",
   "theme_color": "#071522",
   "icons": [
-    {"src":"/favicon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}
+    {"src":"/favicon.svg","sizes":"any","type":"image/svg+xml","purpose":"any"},
+    {"src":"/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any"},
+    {"src":"/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any"},
+    {"src":"/icon-maskable-512.png","sizes":"512x512","type":"image/png","purpose":"maskable"}
   ]
 }
