@@ -143,7 +143,10 @@
     window.addEventListener('pageshow',e=>{if(e.persisted)load()});
     document.addEventListener('visibilitychange',autoRefresh);
     document.addEventListener('timezonechange',()=>load());
-    document.addEventListener('unitschange',()=>redraw());
+    // load(), not redraw(): redraw() only repaints the three charts, which
+    // left the today/tomorrow cards and the "Updated" line in the previous
+    // units until the next manual reload — showing °F and °C at once.
+    document.addEventListener('unitschange',()=>load());
     window.addEventListener('focus',autoRefresh);
     setInterval(()=>{if(document.visibilityState==='visible')load()},10*60000);
     setInterval(()=>{if(document.visibilityState==='visible')redraw()},60000);

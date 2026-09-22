@@ -691,7 +691,11 @@ window.WX = (function(){
     document.addEventListener('keydown',e=>{if(e.key==='Escape'&&drawerOpen)setDrawer(false)});
     const locationInput=el('location-input'),suggestions=el('location-suggestions');
     let suggestionMap=new Map(),suggestTimer=null,suggestRequest=0,activeSuggestion=-1;
-    function setKicker(text){const k=el('kicker');if(k){k.textContent=text;k.style.display=text?'':'none'}}
+    // Toggles both mechanisms: some pages hide the kicker with the hidden
+    // attribute and some with inline display, and clearing only the inline
+    // style can't defeat [hidden] — which silently swallowed "Searching…"
+    // and location-search errors on the pages using the attribute.
+    function setKicker(text){const k=el('kicker');if(k){k.textContent=text;k.hidden=!text;k.style.display=text?'':'none'}}
     function closeSuggestions(){suggestions.classList.add('hidden');suggestions.innerHTML='';locationInput.setAttribute('aria-expanded','false');locationInput.removeAttribute('aria-activedescendant');activeSuggestion=-1}
     function highlightSuggestion(index){
       const options=[...suggestions.querySelectorAll('[role="option"]')];
