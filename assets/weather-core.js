@@ -4,7 +4,7 @@ window.WX = (function(){
   const TIME_ZONES=['America/New_York','America/Chicago','America/Denver','America/Phoenix','America/Los_Angeles','America/Anchorage','America/Adak','Pacific/Honolulu','America/Puerto_Rico','Pacific/Guam','Pacific/Pago_Pago'];
   const el=id=>document.getElementById(id);
   const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  let currentLoc=null,sessionTimeZone=null,timeZoneSetupPromise=null;
+  let currentLoc=null,sessionTimeZone=null,timeZoneSetupPromise=null,hasCheckedStartupLocation=false;
 
   function getSavedLocation(){try{return JSON.parse(localStorage.getItem(LOC_KEY))}catch{return null}}
   function saveLocation(loc){currentLoc=loc;try{localStorage.setItem(LOC_KEY,JSON.stringify(loc))}catch{}}
@@ -38,6 +38,10 @@ window.WX = (function(){
   function clearFavoriteLocation(){setSavedLocations(getSavedLocations().map(l=>l.favorite?{...l,favorite:false}:l))}
   function toggleFavoriteLocation(loc){findSavedLocation(loc)?.favorite?clearFavoriteLocation():setFavoriteLocation(loc)}
   function getFavoriteLocation(){return getSavedLocations().find(l=>l.favorite)||null}
+
+  const STARTUP_MODE_KEY='weather-startup-mode';
+  function getStartupMode(){try{return localStorage.getItem(STARTUP_MODE_KEY)==='favorite'?'favorite':'last'}catch{return'last'}}
+  function setStartupMode(mode){if(mode!=='last'&&mode!=='favorite')return;try{localStorage.setItem(STARTUP_MODE_KEY,mode)}catch{}}
   function validTimeZone(zone){try{new Intl.DateTimeFormat('en-US',{timeZone:zone}).format();return true}catch{return false}}
   function storedTimeZone(){try{const zone=localStorage.getItem(TIME_ZONE_KEY);return zone&&validTimeZone(zone)?zone:null}catch{return null}}
   function getTimeZone(){return storedTimeZone()||sessionTimeZone||DEFAULT_TIME_ZONE}
@@ -72,6 +76,21 @@ window.WX = (function(){
   function windValue(mph){return getWindUnit()==='kmh'?Math.round(mph*1.60934):Math.round(mph)}
   function windUnitLabel(){return getWindUnit()==='kmh'?'km/h':'mph'}
   function fmtWind(mph){return mph==null?'':`${windValue(mph)} ${windUnitLabel()}`}
+  const SHOW_FEELS_LIKE_KEY='weather-show-feels-like';
+  function getShowFeelsLike(){try{return localStorage.getItem(SHOW_FEELS_LIKE_KEY)!=='false'}catch{return true}}
+  function setShowFeelsLike(show){try{localStorage.setItem(SHOW_FEELS_LIKE_KEY,show?'true':'false')}catch{}document.dispatchEvent(new CustomEvent('unitschange'))}
+  const REFRESH_KEY='weather-refresh-minutes',REFRESH_OPTIONS=[0,5,10,30];
+  function getRefreshInterval(){try{const v=parseInt(localStorage.getItem(REFRESH_KEY),10);return REFRESH_OPTIONS.includes(v)?v:10}catch{return 10}}
+  function setRefreshInterval(minutes){if(!REFRESH_OPTIONS.includes(minutes))return;try{localStorage.setItem(REFRESH_KEY,String(minutes))}catch{}document.dispatchEvent(new CustomEvent('refreshintervalchange'))}
+  // Lets each page hand a single callback to a shared, restartable timer
+  // instead of hardcoding its own setInterval, so changing the auto-refresh
+  // setting takes effect immediately on an already-open page.
+  function scheduleAutoRefresh(callback){
+    let timer=null;
+    function arm(){clearInterval(timer);const minutes=getRefreshInterval();if(minutes>0)timer=setInterval(callback,minutes*60000)}
+    arm();
+    document.addEventListener('refreshintervalchange',arm);
+  }
   // Single source of truth for the Settings time-zone picker, used both by
   // settings.html's own markup and by the header's subpage-modal copy of it
   // (mountHeader fetches settings.html and reuses its .credit-list markup),
@@ -130,6 +149,20 @@ window.WX = (function(){
   function refreshGeoInBackground(saved){geolocate({maximumAge:0}).then(pos=>{const sameSpot=saved.lat===pos.lat&&saved.lon===pos.lon;saveLocation({...pos,label:sameSpot?saved.label:null,source:'geo'})}).catch(()=>{})}
   async function resolveLocation(){
     await ensureTimeZone();
+    // Only overrides the very first resolve of this page load (cold start),
+    // never a later auto-refresh/focus/pull-to-refresh call — otherwise
+    // "always show favorite" would fight a location the user just searched
+    // for or jumped to earlier in the same session. It also only takes
+    // effect when a favorite actually exists; otherwise this falls through
+    // to the normal last-used/geolocation order below exactly as if the
+    // setting were off.
+    if(!hasCheckedStartupLocation){
+      hasCheckedStartupLocation=true;
+      if(getStartupMode()==='favorite'){
+        const favorite=getFavoriteLocation();
+        if(favorite){currentLoc=favorite;return favorite}
+      }
+    }
     const saved=getSavedLocation();
     if(saved){
       currentLoc=saved;
@@ -337,7 +370,7 @@ window.WX = (function(){
     const average=values=>values.length?Math.round(values.reduce((sum,value)=>sum+value,0)/values.length):null;
     const dewpoint=average(dewpoints),cloudCover=average(clouds);
     return [
-      range==null?null:['Feels Like',range],
+      (range==null||!getShowFeelsLike())?null:['Feels Like',range],
       dewpoint==null?null:['Dew Point',fmtTemp(dewpoint)],
       cloudCover==null?null:['Cloud Cover',`${cloudCover}%`]
     ].filter(Boolean);
@@ -590,8 +623,25 @@ window.WX = (function(){
       document.body.insertAdjacentHTML('beforeend',`
         <div class="nav-scrim" id="nav-scrim" aria-hidden="true"></div>
         <nav class="nav-drawer" id="nav-drawer" aria-label="Site menu" aria-hidden="true">
+          <div class="drawer-section">
+            <h2 class="drawer-heading">Locations</h2>
+            <div id="drawer-locations-content"></div>
+          </div>
+          <div class="drawer-section">
+            <h2 class="drawer-heading">Quick settings</h2>
+            <div class="choice-group" id="drawer-temp-group">
+              <button class="choice-btn" type="button" data-choice="F">°F</button>
+              <button class="choice-btn" type="button" data-choice="C">°C</button>
+            </div>
+            <div class="choice-group" id="drawer-hour-group">
+              <button class="choice-btn" type="button" data-choice="12">12h</button>
+              <button class="choice-btn" type="button" data-choice="24">24h</button>
+            </div>
+          </div>
           <a href="/settings.html" data-subpage="settings">Settings</a>
           <a href="/credits.html" class="nav-drawer-bottom" data-subpage="credits">Credits</a>
+          <a href="/privacy.html">Privacy</a>
+          <a href="/terms.html">Terms</a>
         </nav>
         <dialog class="nav-subpage" id="nav-subpage" aria-labelledby="nav-subpage-title">
           <div class="nav-subpage-shell">
@@ -611,18 +661,41 @@ window.WX = (function(){
     paintThemeBtn();
     el('theme-btn').addEventListener('click',()=>{setTheme(getTheme()==='dark'?'light':'dark');paintThemeBtn()});
     let drawerOpen=false;
+    function paintDrawerLocations(){el('drawer-locations-content').innerHTML=locationSwitcherHTML()}
+    paintDrawerLocations();
+    wireLocationActions(el('drawer-locations-content'),()=>{setDrawer(false);onLocationChange()});
+    document.addEventListener('savedlocationschange',()=>{if(drawerOpen)paintDrawerLocations()});
+    // Kept in sync with the identical CHOICE_GROUPS list in settings.html's
+    // own script — a smaller, always-visible copy of the same two settings
+    // for one-tap access without leaving the current page.
+    const DRAWER_CHOICE_GROUPS=[
+      {id:'drawer-temp-group',get:getTempUnit,set:setTempUnit},
+      {id:'drawer-hour-group',get:getHourFormat,set:setHourFormat}
+    ];
+    function paintDrawerChoices(){
+      DRAWER_CHOICE_GROUPS.forEach(({id,get})=>{
+        const current=get();
+        el(id).querySelectorAll('.choice-btn').forEach(b=>b.classList.toggle('active',b.dataset.choice===current));
+      });
+    }
+    paintDrawerChoices();
+    DRAWER_CHOICE_GROUPS.forEach(({id,set})=>{
+      el(id).querySelectorAll('.choice-btn').forEach(b=>b.addEventListener('click',()=>{set(b.dataset.choice);paintDrawerChoices()}));
+    });
+    document.addEventListener('unitschange',paintDrawerChoices);
     function setDrawer(open,restoreFocus=true){
       drawerOpen=open;
       if(open){
         const top=`${el('menu-btn').getBoundingClientRect().bottom}px`;
         el('nav-drawer').style.top=top;
         el('nav-scrim').style.top=top;
+        paintDrawerLocations();
       }
       el('nav-drawer').classList.toggle('open',open);
       el('nav-scrim').classList.toggle('open',open);
       el('nav-drawer').setAttribute('aria-hidden',String(!open));
       el('menu-btn').setAttribute('aria-expanded',String(open));
-      if(open)el('nav-drawer').querySelector('a')?.focus();else if(restoreFocus)el('menu-btn').focus();
+      if(open)el('nav-drawer').querySelector('a, button')?.focus();else if(restoreFocus)el('menu-btn').focus();
     }
     el('menu-btn').addEventListener('click',()=>setDrawer(!drawerOpen));
     el('nav-scrim').addEventListener('click',()=>setDrawer(false));
@@ -635,7 +708,9 @@ window.WX = (function(){
       {id:'theme-choice-group',get:getThemeChoice,set:setTheme},
       {id:'temp-unit-choice-group',get:getTempUnit,set:setTempUnit},
       {id:'wind-unit-choice-group',get:getWindUnit,set:setWindUnit},
-      {id:'hour-format-choice-group',get:getHourFormat,set:setHourFormat}
+      {id:'hour-format-choice-group',get:getHourFormat,set:setHourFormat},
+      {id:'feels-like-choice-group',get:()=>getShowFeelsLike()?'show':'hide',set:v=>setShowFeelsLike(v==='show')},
+      {id:'startup-mode-choice-group',get:getStartupMode,set:setStartupMode}
     ];
     function paintSubpageSettings(){
       SUBPAGE_CHOICE_GROUPS.forEach(({id,get})=>{
@@ -648,6 +723,8 @@ window.WX = (function(){
         if(![...select.options].some(option=>option.value===current))select.add(new Option(timeZoneLabel(current),current),0);
         select.value=current;
       }
+      const refreshSelect=subpageContent.querySelector('#refresh-interval-choice');
+      if(refreshSelect)refreshSelect.value=String(getRefreshInterval());
     }
     async function openSubpage(name,href){
       clearTimeout(subpageCloseTimer);subpageTrigger=el('menu-btn');setDrawer(false,false);
@@ -673,6 +750,7 @@ window.WX = (function(){
             }));
           });
           subpageContent.querySelector('#time-zone-choice')?.addEventListener('change',e=>setTimeZone(e.target.value));
+          subpageContent.querySelector('#refresh-interval-choice')?.addEventListener('change',e=>setRefreshInterval(parseInt(e.target.value,10)));
         }
       }catch{
         if(!subpage.open)return;
@@ -755,6 +833,39 @@ window.WX = (function(){
 
   const STAR_FILLED_ICON='<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="m12 3 2.6 5.85 6.4.62-4.85 4.3 1.4 6.28L12 16.9l-5.55 3.15 1.4-6.28-4.85-4.3 6.4-.62Z" fill="currentColor"/></svg>';
   const STAR_OUTLINE_ICON='<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="m12 3 2.6 5.85 6.4.62-4.85 4.3 1.4 6.28L12 16.9l-5.55 3.15 1.4-6.28-4.85-4.3 6.4-.62Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>';
+  // Shared by the headline popover (mountLocationSwitcher) and the nav
+  // drawer's own "Locations" section, so the two never drift apart.
+  function locationSwitcherHTML(){
+    const current=getCurrentLocation(),saved=isLocationSaved(current);
+    const list=getSavedLocations().slice().sort((a,b)=>(b.favorite?1:0)-(a.favorite?1:0));
+    const rows=list.length?list.map(loc=>{
+      const active=savedLocKey(loc)===savedLocKey(current);
+      return `<div class="location-switcher-row${active?' active':''}">
+        <button class="location-switcher-favorite" type="button" data-fav-lat="${loc.lat}" data-fav-lon="${loc.lon}" aria-pressed="${!!loc.favorite}" aria-label="${loc.favorite?'Remove favorite':'Set as favorite'}">${loc.favorite?STAR_FILLED_ICON:STAR_OUTLINE_ICON}</button>
+        <button class="location-switcher-jump" type="button" role="menuitem" data-jump-lat="${loc.lat}" data-jump-lon="${loc.lon}" data-jump-label="${esc(loc.label)}">${esc(loc.label)}</button>
+        <button class="location-switcher-remove" type="button" data-remove-lat="${loc.lat}" data-remove-lon="${loc.lon}" aria-label="Remove ${esc(loc.label)}">&times;</button>
+      </div>`;
+    }).join(''):'<p class="location-switcher-empty">No saved locations yet. Save this one below, or search for another.</p>';
+    return `<button class="location-switcher-save" type="button" data-toggle-save>${saved?`${STAR_FILLED_ICON} Saved — tap to remove`:`${STAR_OUTLINE_ICON} Save this location`}</button><div class="location-switcher-list">${rows}</div>`;
+  }
+  // Delegated click handling for a location-switcher-HTML container,
+  // shared the same way. onJump fires only for a jump-to-location click,
+  // since that's the one action the caller needs to react to (closing a
+  // panel/drawer, reloading the page's data); the rest are self-contained.
+  function wireLocationActions(container,onJump){
+    container.addEventListener('click',e=>{
+      if(e.target.closest('[data-toggle-save]')){toggleSavedLocation(getCurrentLocation());return}
+      const favBtn=e.target.closest('[data-fav-lat]');
+      if(favBtn){toggleFavoriteLocation({lat:+favBtn.dataset.favLat,lon:+favBtn.dataset.favLon});return}
+      const removeBtn=e.target.closest('[data-remove-lat]');
+      if(removeBtn){removeSavedLocation({lat:+removeBtn.dataset.removeLat,lon:+removeBtn.dataset.removeLon});return}
+      const jumpBtn=e.target.closest('[data-jump-lat]');
+      if(jumpBtn){
+        saveLocation({lat:+jumpBtn.dataset.jumpLat,lon:+jumpBtn.dataset.jumpLon,label:jumpBtn.dataset.jumpLabel,source:'saved'});
+        onJump();
+      }
+    });
+  }
   // Makes the page's #headline (each page's own current-location text) act as
   // the entry point for jumping between saved locations, since the headline
   // lives in each page's own markup rather than mountHeader's shared header.
@@ -775,19 +886,6 @@ window.WX = (function(){
     }
     const panel=el('location-switcher-panel'),scrim=el('location-switcher-scrim');
     let open=false;
-    function render(){
-      const current=getCurrentLocation(),saved=isLocationSaved(current);
-      const list=getSavedLocations().slice().sort((a,b)=>(b.favorite?1:0)-(a.favorite?1:0));
-      const rows=list.length?list.map(loc=>{
-        const active=savedLocKey(loc)===savedLocKey(current);
-        return `<div class="location-switcher-row${active?' active':''}">
-          <button class="location-switcher-favorite" type="button" data-fav-lat="${loc.lat}" data-fav-lon="${loc.lon}" aria-pressed="${!!loc.favorite}" aria-label="${loc.favorite?'Remove favorite':'Set as favorite'}">${loc.favorite?STAR_FILLED_ICON:STAR_OUTLINE_ICON}</button>
-          <button class="location-switcher-jump" type="button" role="menuitem" data-jump-lat="${loc.lat}" data-jump-lon="${loc.lon}" data-jump-label="${esc(loc.label)}">${esc(loc.label)}</button>
-          <button class="location-switcher-remove" type="button" data-remove-lat="${loc.lat}" data-remove-lon="${loc.lon}" aria-label="Remove ${esc(loc.label)}">&times;</button>
-        </div>`;
-      }).join(''):'<p class="location-switcher-empty">No saved locations yet. Save this one below, or search for another.</p>';
-      panel.innerHTML=`<button class="location-switcher-save" type="button" data-toggle-save>${saved?`${STAR_FILLED_ICON} Saved — tap to remove`:`${STAR_OUTLINE_ICON} Save this location`}</button><div class="location-switcher-list">${rows}</div>`;
-    }
     function position(){
       const rect=headline.getBoundingClientRect();
       panel.style.top=`${rect.bottom+6}px`;
@@ -795,7 +893,7 @@ window.WX = (function(){
     }
     function setOpen(next){
       open=next;
-      if(open){render();position()}
+      if(open){panel.innerHTML=locationSwitcherHTML();position()}
       panel.classList.toggle('open',open);
       scrim.classList.toggle('open',open);
       panel.setAttribute('aria-hidden',String(!open));
@@ -806,20 +904,8 @@ window.WX = (function(){
     headline.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setOpen(!open)}});
     scrim.addEventListener('click',()=>setOpen(false));
     document.addEventListener('keydown',e=>{if(e.key==='Escape'&&open)setOpen(false)});
-    document.addEventListener('savedlocationschange',()=>{if(open){render();position()}});
-    panel.addEventListener('click',e=>{
-      if(e.target.closest('[data-toggle-save]')){toggleSavedLocation(getCurrentLocation());return}
-      const favBtn=e.target.closest('[data-fav-lat]');
-      if(favBtn){toggleFavoriteLocation({lat:+favBtn.dataset.favLat,lon:+favBtn.dataset.favLon});return}
-      const removeBtn=e.target.closest('[data-remove-lat]');
-      if(removeBtn){removeSavedLocation({lat:+removeBtn.dataset.removeLat,lon:+removeBtn.dataset.removeLon});return}
-      const jumpBtn=e.target.closest('[data-jump-lat]');
-      if(jumpBtn){
-        saveLocation({lat:+jumpBtn.dataset.jumpLat,lon:+jumpBtn.dataset.jumpLon,label:jumpBtn.dataset.jumpLabel,source:'saved'});
-        setOpen(false);
-        onLocationChange();
-      }
-    });
+    document.addEventListener('savedlocationschange',()=>{if(open){panel.innerHTML=locationSwitcherHTML();position()}});
+    wireLocationActions(panel,()=>{setOpen(false);onLocationChange()});
   }
 
   // Turns any light MapLibre/OpenMapTiles-schema style into a dark one by
@@ -1029,7 +1115,9 @@ window.WX = (function(){
 
   return {API,DEFAULT_LOC,DEFAULT_TIME_ZONE,el,esc,getSavedLocation,saveLocation,getCurrentLocation,getTimeZone,setTimeZone,timeZoneLabel,timeZoneOptionsHTML,geolocate,geocodeSearch,resolveLocation,resolvePoint,json,
     getSavedLocations,isLocationSaved,addSavedLocation,removeSavedLocation,toggleSavedLocation,setFavoriteLocation,clearFavoriteLocation,toggleFavoriteLocation,getFavoriteLocation,mountLocationSwitcher,
+    getStartupMode,setStartupMode,
     getTempUnit,setTempUnit,getWindUnit,setWindUnit,getHourFormat,setHourFormat,hour12,tempValue,tempUnitLabel,fmtTemp,fmtTempRange,windValue,windUnitLabel,fmtWind,
+    getShowFeelsLike,setShowFeelsLike,getRefreshInterval,setRefreshInterval,scheduleAutoRefresh,
     emoji,local,maxWind,gustFrom,durationMs,gridValues,kphToMph,cToF,product,
     currentObservation,currentHeadline,alertLine,dayKey,startOfDay,hourLabel,dayPartLabel,dayRows,uvForDate,humidityForDate,gustForDate,popForDate,maxTempForDate,minTempForDate,extraDayMetrics,dayMetrics,metricsHTML,
     todayBrief,futureBrief,renderFutureCardHTML,loadTodayCard,sunMetrics,hourlyUVEstimate,

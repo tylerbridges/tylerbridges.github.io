@@ -35,7 +35,7 @@
   <script src="/assets/weather-core.js"></script>
   <script>
   (()=>{
-    const {el,esc,resolveLocation,resolvePoint,json,local,emoji,dayKey,maxWind,gridValues,kphToMph,hourlyUVEstimate,mountHeader,mountFooter,mountPullToRefresh,mountLocationSwitcher,fmtTemp,windValue,windUnitLabel,hour12}=WX;
+    const {el,esc,resolveLocation,resolvePoint,json,local,emoji,dayKey,maxWind,gridValues,kphToMph,hourlyUVEstimate,mountHeader,mountFooter,mountPullToRefresh,mountLocationSwitcher,fmtTemp,windValue,windUnitLabel,hour12,scheduleAutoRefresh}=WX;
     let busy=false,lastLoad=0,hasLoaded=false;
     const header=mountHeader('hourly',()=>load());
     mountFooter();
@@ -79,7 +79,7 @@
     document.addEventListener('timezonechange',()=>load());
     document.addEventListener('unitschange',()=>load());
     window.addEventListener('focus',autoRefresh);
-    setInterval(()=>{if(document.visibilityState==='visible')load()},10*60000);
+    scheduleAutoRefresh(()=>{if(document.visibilityState==='visible')load()});
     mountPullToRefresh(load);
     if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
     load();
