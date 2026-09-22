@@ -324,7 +324,7 @@ window.WX = (function(){
     const hiLo=hi!=null&&lo!=null?['H',`${hi}°`,'L',`${lo}°`]:hi!=null?['H',`${hi}°`]:lo!=null?['L',`${lo}°`]:null;
     return [
       hiLo,
-      pop==null?null:['Rain %',`${pop}%`],
+      pop==null?null:['Rain %',pop],
       humidity==null?null:['Humidity',`${humidity}%`],
       ['Wind',wind==null?esc(b.windSpeed):`${wind} mph`],
       gust==null?null:['Gusts',`${gust} mph`],
