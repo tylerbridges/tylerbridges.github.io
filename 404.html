@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <script>try{var t=localStorage.getItem('weather-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);else if(t!=='system')document.documentElement.setAttribute('data-theme','dark')}catch{}</script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#071522">
+  <meta name="robots" content="noindex">
+  <meta name="description" content="That page could not be found.">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="/assets/site.css">
+  <title>Page not found — Rochester Weather</title>
+</head>
+<body>
+  <main class="shell">
+    <header id="site-header"></header>
+    <div class="page-head">
+      <p class="kicker">Error 404</p>
+      <h1>That page doesn't exist</h1>
+    </div>
+    <div class="credit-list">
+      <article class="brief">
+        <h3>Try one of these instead</h3>
+        <p>The link may be out of date, or the address may have a typo.</p>
+        <ul>
+          <li><a href="/">Today's forecast</a></li>
+          <li><a href="/hourly.html">Hourly forecast</a></li>
+          <li><a href="/forecast.html">7-day forecast</a></li>
+          <li><a href="/radar.html">Live radar</a></li>
+        </ul>
+      </article>
+    </div>
+    <footer class="site-footer" id="site-footer"></footer>
+  </main>
+  <script src="/assets/weather-core.js"></script>
+  <script>
+    WX.mountHeader('',()=>{location.href='/'});
+    WX.mountFooter();
+    if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
+  </script>
+</body>
+</html>

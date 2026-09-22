@@ -202,8 +202,16 @@ window.WX = (function(){
     const a=Math.sin(dLat/2)**2+Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
     return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
   }
-  async function currentObservation(point){
-    const stations=await json(point.properties.observationStations);
+  // A gridpoint's station list is static metadata, and both the current
+  // conditions and the chart history need it on every refresh — fetch it
+  // once per location instead of twice every ten minutes.
+  const stationListCache=new Map();
+  function stationList(url){
+    if(!stationListCache.has(url))stationListCache.set(url,json(url).catch(e=>{stationListCache.delete(url);throw e}));
+    return stationListCache.get(url);
+  }
+  async function stationCandidates(point){
+    const stations=await stationList(point.properties.observationStations);
     const origin=point.geometry?.coordinates;
     // NWS's own station list is ordered nearest-first, but "nearest" can
     // still be tens of miles away in sparsely-instrumented areas — cap how
@@ -216,6 +224,27 @@ window.WX = (function(){
     }
     const ids=candidates.slice(0,5).map(f=>f.id);
     if(!ids.length)throw new Error('No observation station within range.');
+    return ids;
+  }
+  // Observed hourly readings from `since` to now. NWS forecast data only
+  // describes the future, so this is what fills the already-elapsed part of
+  // today's charts — actual measurements rather than a back-dated forecast.
+  async function observationHistory(point,since){
+    const ids=await stationCandidates(point);
+    const start=new Date(since).toISOString();
+    let last=new Error('Observation history unavailable.');
+    for(const station of ids){
+      try{
+        const result=await json(`${station}/observations?start=${encodeURIComponent(start)}&limit=200`);
+        const readings=(result.features||[]).map(f=>f.properties).filter(p=>p&&p.timestamp);
+        if(!readings.length)throw new Error('Observation history unavailable.');
+        return readings;
+      }catch(e){last=e}
+    }
+    throw last;
+  }
+  async function currentObservation(point){
+    const ids=await stationCandidates(point);
     // The nearest station is sometimes offline or stale (unmaintained gauge,
     // outage, etc.) — try the next-closest ones in order rather than giving
     // up on the whole location after one bad station.
@@ -629,11 +658,11 @@ window.WX = (function(){
           </div>
           <div class="drawer-section">
             <h2 class="drawer-heading">Quick settings</h2>
-            <div class="choice-group" id="drawer-temp-group">
+            <div class="choice-group" role="group" aria-label="Temperature unit" id="drawer-temp-group">
               <button class="choice-btn" type="button" data-choice="F">°F</button>
               <button class="choice-btn" type="button" data-choice="C">°C</button>
             </div>
-            <div class="choice-group" id="drawer-hour-group">
+            <div class="choice-group" role="group" aria-label="Time format" id="drawer-hour-group">
               <button class="choice-btn" type="button" data-choice="12">12h</button>
               <button class="choice-btn" type="button" data-choice="24">24h</button>
             </div>
@@ -675,7 +704,11 @@ window.WX = (function(){
     function paintDrawerChoices(){
       DRAWER_CHOICE_GROUPS.forEach(({id,get})=>{
         const current=get();
-        el(id).querySelectorAll('.choice-btn').forEach(b=>b.classList.toggle('active',b.dataset.choice===current));
+        el(id).querySelectorAll('.choice-btn').forEach(b=>{
+          const on=b.dataset.choice===current;
+          b.classList.toggle('active',on);
+          b.setAttribute('aria-pressed',String(on));
+        });
       });
     }
     paintDrawerChoices();
@@ -715,7 +748,14 @@ window.WX = (function(){
     function paintSubpageSettings(){
       SUBPAGE_CHOICE_GROUPS.forEach(({id,get})=>{
         const current=get();
-        subpageContent.querySelectorAll(`#${id} .choice-btn`).forEach(b=>b.classList.toggle('active',b.dataset.choice===current));
+        // aria-pressed alongside the class: the blue .active background is
+        // the only other cue that a unit/theme is the selected one, which
+        // assistive tech and high-contrast modes can't convey.
+        subpageContent.querySelectorAll(`#${id} .choice-btn`).forEach(b=>{
+          const on=b.dataset.choice===current;
+          b.classList.toggle('active',on);
+          b.setAttribute('aria-pressed',String(on));
+        });
       });
       const select=subpageContent.querySelector('#time-zone-choice'),current=getTimeZone();
       if(select){
@@ -769,7 +809,11 @@ window.WX = (function(){
     document.addEventListener('keydown',e=>{if(e.key==='Escape'&&drawerOpen)setDrawer(false)});
     const locationInput=el('location-input'),suggestions=el('location-suggestions');
     let suggestionMap=new Map(),suggestTimer=null,suggestRequest=0,activeSuggestion=-1;
-    function setKicker(text){const k=el('kicker');if(k){k.textContent=text;k.style.display=text?'':'none'}}
+    // Toggles both mechanisms: some pages hide the kicker with the hidden
+    // attribute and some with inline display, and clearing only the inline
+    // style can't defeat [hidden] — which silently swallowed "Searching…"
+    // and location-search errors on the pages using the attribute.
+    function setKicker(text){const k=el('kicker');if(k){k.textContent=text;k.hidden=!text;k.style.display=text?'':'none'}}
     function closeSuggestions(){suggestions.classList.add('hidden');suggestions.innerHTML='';locationInput.setAttribute('aria-expanded','false');locationInput.removeAttribute('aria-activedescendant');activeSuggestion=-1}
     function highlightSuggestion(index){
       const options=[...suggestions.querySelectorAll('[role="option"]')];
@@ -874,13 +918,21 @@ window.WX = (function(){
     if(!headline||headline.dataset.locationSwitcher)return;
     headline.dataset.locationSwitcher='1';
     headline.classList.add('location-switcher-trigger');
-    headline.setAttribute('role','button');
     headline.setAttribute('tabindex','0');
-    headline.setAttribute('aria-haspopup','true');
+    headline.setAttribute('aria-haspopup','menu');
     headline.setAttribute('aria-expanded','false');
-    headline.setAttribute('aria-label','Switch location');
+    // Deliberately NOT role="button" with an aria-label: this element is the
+    // page's only <h1>, and its text is the current location. Overriding the
+    // role dropped the page out of heading navigation, and the label replaced
+    // the accessible name, so the location itself was never announced — the
+    // heading read as "Switch location, button". Keeping the heading intact
+    // leaves the location as the name; the hint below explains the action,
+    // and lives outside the h1 so page code that rewrites textContent on
+    // every load can't clobber it.
+    headline.setAttribute('aria-describedby','location-switcher-hint');
     if(!el('location-switcher-panel')){
       document.body.insertAdjacentHTML('beforeend',`
+        <span class="sr-only" id="location-switcher-hint">Activate to switch or save locations.</span>
         <div class="nav-scrim" id="location-switcher-scrim" aria-hidden="true"></div>
         <div class="location-switcher-panel" id="location-switcher-panel" role="menu" aria-label="Saved locations" aria-hidden="true"></div>`);
     }
@@ -1119,7 +1171,7 @@ window.WX = (function(){
     getTempUnit,setTempUnit,getWindUnit,setWindUnit,getHourFormat,setHourFormat,hour12,tempValue,tempUnitLabel,fmtTemp,fmtTempRange,windValue,windUnitLabel,fmtWind,
     getShowFeelsLike,setShowFeelsLike,getRefreshInterval,setRefreshInterval,scheduleAutoRefresh,
     emoji,local,maxWind,gustFrom,durationMs,gridValues,kphToMph,cToF,product,
-    currentObservation,currentHeadline,alertLine,dayKey,startOfDay,hourLabel,dayPartLabel,dayRows,uvForDate,humidityForDate,gustForDate,popForDate,maxTempForDate,minTempForDate,extraDayMetrics,dayMetrics,metricsHTML,
+    currentObservation,observationHistory,currentHeadline,alertLine,dayKey,startOfDay,hourLabel,dayPartLabel,dayRows,uvForDate,humidityForDate,gustForDate,popForDate,maxTempForDate,minTempForDate,extraDayMetrics,dayMetrics,metricsHTML,
     todayBrief,futureBrief,renderFutureCardHTML,loadTodayCard,sunMetrics,hourlyUVEstimate,
     findTodayPeriods,renderDaysHTML,mountHeader,mountFooter,mountPullToRefresh,getTheme,setTheme,getThemeChoice,recolorStyleDark,minimalRadarStyle};
 })();
