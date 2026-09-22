@@ -1,25 +1,27 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <script>try{var t=localStorage.getItem('weather-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);else if(t!=='system')document.documentElement.setAttribute('data-theme','dark')}catch{}</script>
   <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'sha256-iaGyl+MesImCrVNj4kQ20S4RvzBpRSK0LS5TGRYQTug=' 'sha256-Bie72zAD72XK6ZZ/Fgn5fNqY6dasHNszIjGNaRQKtmg='; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob: https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org https://server.arcgisonline.com https://services.arcgisonline.com; connect-src 'self' https://api.weather.gov https://photon.komoot.io https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org https://server.arcgisonline.com https://services.arcgisonline.com; worker-src 'self' blob:; child-src 'self' blob:; font-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <script>try{var t=localStorage.getItem('weather-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);else if(t!=='system')document.documentElement.setAttribute('data-theme','dark')}catch{}</script>
+  <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#071522">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Sky Report">
-  <meta name="description" content="A weather.gov-powered forecast dashboard that auto-detects your location, refreshes automatically, and lets you switch to any US location.">
+  <meta name="description" content="A weather.gov-powered forecast dashboard that uses your location when you allow it, refreshes automatically, and lets you switch to any US location.">
   <link rel="canonical" href="https://tylerbridges.github.io/">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Sky Report">
   <meta property="og:title" content="Sky Report">
-  <meta property="og:description" content="A weather.gov-powered forecast dashboard that auto-detects your location, refreshes automatically, and lets you switch to any US location.">
+  <meta property="og:description" content="A weather.gov-powered forecast dashboard that uses your location when you allow it, refreshes automatically, and lets you switch to any US location.">
   <meta property="og:url" content="https://tylerbridges.github.io/">
   <meta property="og:image" content="https://tylerbridges.github.io/og-image.png">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Sky Report">
-  <meta name="twitter:description" content="A weather.gov-powered forecast dashboard that auto-detects your location, refreshes automatically, and lets you switch to any US location.">
+  <meta name="twitter:description" content="A weather.gov-powered forecast dashboard that uses your location when you allow it, refreshes automatically, and lets you switch to any US location.">
   <meta name="twitter:image" content="https://tylerbridges.github.io/og-image.png">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
@@ -56,11 +58,12 @@
     const {el,resolveLocation,resolvePoint,json,observationHistory,emoji,local,maxWind,gridValues,kphToMph,cToF,
       dayKey,startOfDay,hourLabel,dayRows,uvForDate,humidityForDate,gustForDate,popForDate,extraDayMetrics,dayMetrics,metricsHTML,sunMetrics,
       findTodayPeriods,renderFutureCardHTML,loadTodayCard,mountHeader,mountFooter,mountPullToRefresh,mountLocationSwitcher,DEFAULT_LOC,
-      tempValue,windValue,tempUnitLabel,windUnitLabel,hour12,scheduleAutoRefresh}=WX;
+      tempValue,windValue,tempUnitLabel,windUnitLabel,hour12,scheduleAutoRefresh,mountStatus,CACHE_TTL}=WX;
     let chartData=null,currentLoc=null;
     const header=mountHeader('today',()=>load());
     mountFooter();
     mountLocationSwitcher(()=>load());
+    const status=mountStatus(()=>load());
     // METARs land a few minutes either side of the hour, so each reading is
     // filed under the hour it sits closest to, and the closest one wins.
     // The chart’s own hour marks carry a sub-second offset (startOfDay keeps
@@ -129,16 +132,16 @@
       draw(el('wind-chart'),[{values:windSeries,color:'--green'},{values:gustSeries,color:'--orange'}],[0,Math.ceil((maxW+3)/5)*5],windUnitLabel());
     }
     let busy=false,lastLoad=0,hasLoaded=false;
-    async function load(){if(busy)return;busy=true;lastLoad=Date.now();if(!hasLoaded){el('loading').classList.remove('hidden');el('error').classList.add('hidden');el('content').classList.add('hidden')}else{el('content').classList.add('refreshing')}try{
-      const loc=await resolveLocation();currentLoc=loc;
+    async function load(){if(busy)return;busy=true;lastLoad=Date.now();let loc=null;if(!hasLoaded){el('loading').classList.remove('hidden');el('error').classList.add('hidden');el('content').classList.add('hidden')}else{el('content').classList.add('refreshing')}try{
+      loc=await resolveLocation();currentLoc=loc;
       const {point,label,tz,officeId}=await resolvePoint(loc);
       header.setKicker('');el('headline').textContent=label;
       const windowStart=startOfDay(tz);
-      const results=await Promise.allSettled([json(point.properties.forecast),json(point.properties.forecastHourly),json(point.properties.forecastGridData),observationHistory(point,windowStart)]);
-      if(results[0].status!=='fulfilled')throw new Error('The current seven-day forecast is unavailable.');
+      const results=await Promise.allSettled([json(point.properties.forecast,{ttl:CACHE_TTL.forecast}),json(point.properties.forecastHourly,{ttl:CACHE_TTL.forecast}),json(point.properties.forecastGridData,{ttl:CACHE_TTL.forecast}),observationHistory(point,windowStart)]);
+      if(results[0].status!=='fulfilled')throw results[0].reason;
       const forecast=results[0].value,hourly=results[1].value,grid=results[2].value||{properties:{}},observed=results[3].value||null;
       const now=new Date(),periods=forecast.properties.periods.filter(p=>new Date(p.endTime)>now);
-      if(!periods.length||!forecast.properties.updateTime||now-new Date(forecast.properties.updateTime)>36*3600000)throw new Error('NWS forecast is stale or cannot be verified.');
+      if(!periods.length||!forecast.properties.updateTime||now-new Date(forecast.properties.updateTime)>36*3600000)throw new Error('The NWS forecast for this location is out of date or unavailable right now. Try again shortly.');
       const hourlyFresh=hourly?.properties?.updateTime&&now-new Date(hourly.properties.updateTime)<36*3600000;
       const hourlyPeriods=hourlyFresh?hourly.properties.periods:[];
       const times=Array.from({length:49},(_,i)=>new Date(windowStart.getTime()+i*3600000));
@@ -165,11 +168,10 @@
       const temp=mergeChartSeries(observedValues(observed,obsTemp,times),nwsTemp,times,now),pop=nwsPop,wind=mergeChartSeries(observedValues(observed,obsWind,times),nwsWind,times,now),gust=mergeChartSeries(observedValues(observed,obsGust,times),gridGust,times,now);
       const timeTicks=Array.from({length:9},(_,n)=>{const i=n*6;return{i,label:i===0?'Today':i===24?'Tom':i===48?new Intl.DateTimeFormat('en-US',{timeZone:tz,weekday:'short'}).format(times[i]):hourLabel(times[i],tz),day:i%24===0}});
       chartData={temp,pop,wind,gust,timeTicks,windowStart,tz,spanHours:48};
-      el('updated').textContent=`Updated ${local(now,tz)}`;el('updated').classList.remove('hidden');
+      status.loaded({loc:{...loc,label},issued:forecast.properties.updateTime,tz});
       el('loading').classList.add('hidden');el('content').classList.remove('hidden');requestAnimationFrame(redraw);hasLoaded=true;
-    }catch(e){
-      if(!hasLoaded){el('loading').classList.add('hidden');el('error').classList.remove('hidden');el('error').textContent=e.message}
-    }finally{busy=false;el('content').classList.remove('refreshing')}}
+    }catch(e){status.failed(e,loc)}
+    finally{busy=false;el('content').classList.remove('refreshing')}}
     function autoRefresh(){if(document.visibilityState==='visible'&&Date.now()-lastLoad>5*60000)load()}
     window.addEventListener('pageshow',e=>{if(e.persisted)load()});
     document.addEventListener('visibilitychange',autoRefresh);

@@ -23,6 +23,8 @@ fi
 
 "$node_bin" --check assets/weather-core.js
 "$node_bin" --check sw.js
+"$node_bin" --check scripts/csp.js
+"$node_bin" scripts/csp.js --check
 
 "$node_bin" <<'NODE'
 const fs = require('fs');

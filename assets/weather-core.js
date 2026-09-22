@@ -1,12 +1,17 @@
 window.WX = (function(){
-  const API='https://api.weather.gov',LOC_KEY='weather-location',POINT_CACHE_KEY='weather-point-cache',POINT_TTL=6*3600000,TIME_ZONE_KEY='weather-time-zone',DEFAULT_TIME_ZONE='America/Chicago',DEFAULT_LOC={lat:44.0136,lon:-92.4757,label:'Rochester, Minnesota',source:'default'};
+  const API='https://api.weather.gov',LOC_KEY='weather-location',POINT_CACHE_KEY='weather-point-cache',POINT_TTL=3*86400000,TIME_ZONE_KEY='weather-time-zone',DEFAULT_TIME_ZONE='America/Chicago',DEFAULT_LOC={lat:44.0136,lon:-92.4757,label:'Rochester, Minnesota',source:'default'};
   const TEMP_UNIT_KEY='weather-temp-unit',WIND_UNIT_KEY='weather-wind-unit',HOUR_FORMAT_KEY='weather-hour-format';
   const TIME_ZONES=['America/New_York','America/Chicago','America/Denver','America/Phoenix','America/Los_Angeles','America/Anchorage','America/Adak','Pacific/Honolulu','America/Puerto_Rico','Pacific/Guam','Pacific/Pago_Pago'];
   const el=id=>document.getElementById(id);
   const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  let currentLoc=null,sessionTimeZone=null,timeZoneSetupPromise=null,hasCheckedStartupLocation=false;
+  let currentLoc=null,sessionTimeZone=null,timeZoneSetupPromise=null;
 
-  function getSavedLocation(){try{return JSON.parse(localStorage.getItem(LOC_KEY))}catch{return null}}
+  // Anything read back from storage is validated before use: a corrupted or
+  // hand-edited entry (e.g. {} or {lat:"x"}) would otherwise throw deep inside
+  // .toFixed() or build an api.weather.gov URL containing "undefined".
+  const validLoc=l=>!!l&&typeof l==='object'&&Number.isFinite(l.lat)&&Number.isFinite(l.lon)&&Math.abs(l.lat)<=90&&Math.abs(l.lon)<=180;
+  const cleanLoc=l=>({...l,label:typeof l.label==='string'?l.label:null});
+  function getSavedLocation(){try{const loc=JSON.parse(localStorage.getItem(LOC_KEY));return validLoc(loc)?cleanLoc(loc):null}catch{return null}}
   function saveLocation(loc){currentLoc=loc;try{localStorage.setItem(LOC_KEY,JSON.stringify(loc))}catch{}}
   // currentLoc (in-memory) is set even when resolveLocation() falls back to
   // DEFAULT_LOC without persisting it, so prefer it over the possibly-stale
@@ -17,7 +22,7 @@ window.WX = (function(){
   // Rounded to the same precision as the point-lookup cache key so trivial
   // GPS jitter doesn't register as a different place.
   const savedLocKey=loc=>`${loc.lat.toFixed(2)},${loc.lon.toFixed(2)}`;
-  function getSavedLocations(){try{const list=JSON.parse(localStorage.getItem(SAVED_LOCS_KEY));return Array.isArray(list)?list:[]}catch{return[]}}
+  function getSavedLocations(){try{const list=JSON.parse(localStorage.getItem(SAVED_LOCS_KEY));return Array.isArray(list)?list.filter(validLoc).map(l=>({...cleanLoc(l),label:cleanLoc(l).label||'Selected location',favorite:l.favorite===true})):[]}catch{return[]}}
   function setSavedLocations(list){try{localStorage.setItem(SAVED_LOCS_KEY,JSON.stringify(list))}catch{}document.dispatchEvent(new CustomEvent('savedlocationschange'))}
   function findSavedLocation(loc){const key=savedLocKey(loc);return getSavedLocations().find(l=>savedLocKey(l)===key)||null}
   function isLocationSaved(loc){return !!findSavedLocation(loc)}
@@ -39,7 +44,7 @@ window.WX = (function(){
   function toggleFavoriteLocation(loc){findSavedLocation(loc)?.favorite?clearFavoriteLocation():setFavoriteLocation(loc)}
   function getFavoriteLocation(){return getSavedLocations().find(l=>l.favorite)||null}
 
-  const STARTUP_MODE_KEY='weather-startup-mode';
+  const STARTUP_MODE_KEY='weather-startup-mode',STARTUP_CHECKED_KEY='weather-startup-checked';
   function getStartupMode(){try{return localStorage.getItem(STARTUP_MODE_KEY)==='favorite'?'favorite':'last'}catch{return'last'}}
   function setStartupMode(mode){if(mode!=='last'&&mode!=='favorite')return;try{localStorage.setItem(STARTUP_MODE_KEY,mode)}catch{}}
   function validTimeZone(zone){try{new Intl.DateTimeFormat('en-US',{timeZone:zone}).format();return true}catch{return false}}
@@ -114,7 +119,7 @@ window.WX = (function(){
     return timeZoneSetupPromise;
   }
   function pointCacheKey(lat,lon){return `${lat.toFixed(2)},${lon.toFixed(2)}`}
-  function getCachedPoint(lat,lon){try{const all=JSON.parse(localStorage.getItem(POINT_CACHE_KEY)||'{}');const entry=all[pointCacheKey(lat,lon)];if(entry&&Date.now()-entry.ts<POINT_TTL)return entry.point}catch{}return null}
+  function getCachedPoint(lat,lon){try{const all=JSON.parse(localStorage.getItem(POINT_CACHE_KEY)||'{}');const entry=all[pointCacheKey(lat,lon)];if(entry&&Date.now()-entry.ts<POINT_TTL&&entry.point?.properties?.forecast)return entry.point}catch{}return null}
   function setCachedPoint(lat,lon,point){try{const all=JSON.parse(localStorage.getItem(POINT_CACHE_KEY)||'{}');all[pointCacheKey(lat,lon)]={point,ts:Date.now()};const keys=Object.keys(all);if(keys.length>5){keys.sort((a,b)=>all[a].ts-all[b].ts);delete all[keys[0]]}localStorage.setItem(POINT_CACHE_KEY,JSON.stringify(all))}catch{}}
   function geolocate(opts={}){return new Promise((resolve,reject)=>{if(!navigator.geolocation)return reject(new Error('Geolocation unsupported'));navigator.geolocation.getCurrentPosition(pos=>resolve({lat:+pos.coords.latitude.toFixed(4),lon:+pos.coords.longitude.toFixed(4)}),reject,{enableHighAccuracy:false,timeout:5000,maximumAge:600000,...opts})})}
   const SEARCH_ALIASES=new Map([
@@ -133,9 +138,18 @@ window.WX = (function(){
   // ambiguous place names (e.g. a city sharing a name abroad) resolving the
   // way they did before.
   const GEOCODE_ROOT='https://photon.komoot.io/api/';
-  async function geocodePhoton(query,limit){
-    const data=await json(`${GEOCODE_ROOT}?limit=${limit}&lang=en&q=${encodeURIComponent(normalizedSearchQuery(query))}`);
-    return (data.features||[]).filter(f=>f.properties?.countrycode==='US');
+  // Photon's public instance is fair-use only, so identical queries (the
+  // suggestion list and a follow-up Enter for the same text) are answered
+  // from memory instead of asking again.
+  const geocodeCache=new Map();
+  async function geocodePhoton(query,limit,signal){
+    const url=`${GEOCODE_ROOT}?limit=${limit}&lang=en&q=${encodeURIComponent(normalizedSearchQuery(query))}`;
+    if(geocodeCache.has(url))return geocodeCache.get(url);
+    const data=await json(url,{signal});
+    const features=(data.features||[]).filter(f=>f.properties?.countrycode==='US');
+    geocodeCache.set(url,features);
+    if(geocodeCache.size>50)geocodeCache.delete(geocodeCache.keys().next().value);
+    return features;
   }
   function photonPosition(feature){const[lon,lat]=feature.geometry.coordinates;return {lat:+(+lat).toFixed(4),lon:+(+lon).toFixed(4)}}
   async function geocodeSearch(query){const features=await geocodePhoton(query,10);if(!features.length)throw new Error('Location not found.');return photonPosition(features[0])}
@@ -146,18 +160,23 @@ window.WX = (function(){
     const state=US_STATE_ABBR[p.state]||p.state;
     return city&&state?`${city}, ${state}`:[p.name,p.state].filter(Boolean).join(', ');
   }
-  function refreshGeoInBackground(saved){geolocate({maximumAge:0}).then(pos=>{const sameSpot=saved.lat===pos.lat&&saved.lon===pos.lon;saveLocation({...pos,label:sameSpot?saved.label:null,source:'geo'})}).catch(()=>{})}
+  // Only ever re-reads the position when the person has already granted
+  // permission, so a background refresh can never surface a prompt.
+  async function geoPermissionGranted(){try{return (await navigator.permissions?.query({name:'geolocation'}))?.state==='granted'}catch{return false}}
+  function refreshGeoInBackground(saved){geoPermissionGranted().then(ok=>ok?geolocate({maximumAge:0}):Promise.reject()).then(pos=>{const sameSpot=saved.lat===pos.lat&&saved.lon===pos.lon;saveLocation({...pos,label:sameSpot?saved.label:null,source:'geo'})}).catch(()=>{})}
   async function resolveLocation(){
     await ensureTimeZone();
-    // Only overrides the very first resolve of this page load (cold start),
-    // never a later auto-refresh/focus/pull-to-refresh call — otherwise
-    // "always show favorite" would fight a location the user just searched
-    // for or jumped to earlier in the same session. It also only takes
-    // effect when a favorite actually exists; otherwise this falls through
-    // to the normal last-used/geolocation order below exactly as if the
-    // setting were off.
-    if(!hasCheckedStartupLocation){
-      hasCheckedStartupLocation=true;
+    // Only overrides the first resolve of a browsing session (cold start),
+    // never a later refresh or a move to another page in the same tab —
+    // otherwise "always show favorite" would fight a location the user just
+    // searched for or jumped to. The flag lives in sessionStorage because each
+    // tab (Today → Hourly) is a fresh page load that would reset an in-memory
+    // one. It also only takes effect when a favorite actually exists;
+    // otherwise this falls through to the normal last-used order below
+    // exactly as if the setting were off.
+    let startupChecked=false;
+    try{startupChecked=sessionStorage.getItem(STARTUP_CHECKED_KEY)==='1';sessionStorage.setItem(STARTUP_CHECKED_KEY,'1')}catch{}
+    if(!startupChecked){
       if(getStartupMode()==='favorite'){
         const favorite=getFavoriteLocation();
         if(favorite){currentLoc=favorite;return favorite}
@@ -169,10 +188,81 @@ window.WX = (function(){
       if(saved.source==='geo')refreshGeoInBackground(saved);
       return saved;
     }
-    try{const pos=await geolocate();const loc={...pos,label:null,source:'geo'};saveLocation(loc);return loc}
-    catch{const loc={...DEFAULT_LOC};currentLoc=loc;return loc}
+    // No prompt on a first visit: the browser's location request only ever
+    // follows the person pressing the locate button. Until then the default
+    // location is shown, and pages flag it as such (see mountStatus).
+    const loc={...DEFAULT_LOC};currentLoc=loc;return loc;
   }
-  async function json(url){let last;for(let i=0;i<2;i++){try{const r=await fetch(url,{cache:'no-store',headers:{Accept:'application/geo+json, application/json'},signal:AbortSignal.timeout(20000)});if(!r.ok)throw new Error(`weather.gov returned ${r.status}`);return await r.json()}catch(e){last=e}}throw last}
+  // Carries which service failed and how, so pages can say something useful
+  // ("the National Weather Service isn't responding") instead of a raw
+  // "Failed to fetch".
+  class FetchError extends Error{
+    constructor(message,{service,status=0,url=''}={}){super(message);this.name='FetchError';this.service=service;this.status=status;this.url=url}
+  }
+  const serviceName=url=>url.startsWith(API)?'the National Weather Service':url.startsWith(GEOCODE_ROOT)?'location search':'a weather data service';
+  // Short-lived response cache in sessionStorage. Every page is its own load,
+  // so without it moving Today → Hourly → 7-Day re-downloads the same
+  // forecast three times. A manual refresh raises cacheFloor so it always
+  // goes back to the network.
+  const RESPONSE_CACHE_PREFIX='wx-cache:',MAX_CACHED_CHARS=1500000;
+  const CACHE_TTL={forecast:5*60000,alerts:2*60000,products:10*60000,stations:86400000};
+  let cacheFloor=0;
+  function bypassCache(){cacheFloor=Date.now()}
+  function readCached(url,ttl){
+    try{const entry=JSON.parse(sessionStorage.getItem(RESPONSE_CACHE_PREFIX+url));if(entry&&entry.ts>cacheFloor&&Date.now()-entry.ts<ttl)return entry.data}catch{}
+    return null;
+  }
+  function clearResponseCache(){try{Object.keys(sessionStorage).filter(k=>k.startsWith(RESPONSE_CACHE_PREFIX)).forEach(k=>sessionStorage.removeItem(k))}catch{}}
+  function writeCached(url,data){
+    const value=JSON.stringify({ts:Date.now(),data});
+    if(value.length>MAX_CACHED_CHARS)return;
+    try{sessionStorage.setItem(RESPONSE_CACHE_PREFIX+url,value)}
+    catch{clearResponseCache();try{sessionStorage.setItem(RESPONSE_CACHE_PREFIX+url,value)}catch{}}
+  }
+  // One retry at most, after a randomized 1–2 s pause, and only for failures
+  // a retry can fix (network errors, timeouts, 5xx). A 4xx — including 429
+  // "slow down" — is final, so a struggling service is never hammered.
+  async function json(url,{ttl=0,signal}={}){
+    if(ttl){const hit=readCached(url,ttl);if(hit)return hit}
+    const service=serviceName(url);
+    let last;
+    for(let attempt=0;attempt<2;attempt++){
+      if(attempt)await new Promise(resolve=>setTimeout(resolve,1000+Math.random()*1000));
+      if(signal?.aborted)throw signal.reason;
+      const timeout=AbortSignal.timeout(20000),combined=signal&&AbortSignal.any?AbortSignal.any([signal,timeout]):signal||timeout;
+      let response;
+      try{response=await fetch(url,{headers:{Accept:'application/geo+json, application/json'},signal:combined})}
+      catch(e){
+        if(signal?.aborted)throw e;
+        last=new FetchError(`Couldn't reach ${service}.`,{service,url});
+        if(navigator.onLine===false)break;
+        continue;
+      }
+      if(!response.ok){
+        last=new FetchError(`${service[0].toUpperCase()+service.slice(1)} returned an error (${response.status}).`,{service,status:response.status,url});
+        if(response.status<500&&response.status!==408)break;
+        continue;
+      }
+      const data=await response.json();
+      if(ttl)writeCached(url,data);
+      return data;
+    }
+    throw last;
+  }
+  // Plain-language version of a load failure for the page's error/stale
+  // banners. Errors the pages throw themselves (stale forecast, etc.) are
+  // already written for people and pass straight through.
+  function friendlyError(e){
+    if(navigator.onLine===false)return "You're offline. The forecast will load again when your connection is back.";
+    // Only the page's own plain Error messages are written for people; a
+    // TypeError/SyntaxError from malformed data is not.
+    if(!(e instanceof FetchError))return e?.name==='Error'&&e.message?e.message:'Something went wrong loading the forecast. Try again in a moment.';
+    if(e.status===404&&/\/points\//.test(e.url))return 'Forecasts are only available for locations in the United States and its territories. Try searching for a US city or ZIP.';
+    if(e.status===429)return `${e.service[0].toUpperCase()+e.service.slice(1)} is limiting requests right now. Try again in a minute.`;
+    if(e.status>=500)return `${e.service[0].toUpperCase()+e.service.slice(1)} isn't responding right now (error ${e.status}). Try again in a few minutes.`;
+    if(e.status)return `${e.service[0].toUpperCase()+e.service.slice(1)} couldn't answer that request (error ${e.status}).`;
+    return `Couldn't reach ${e.service}. Check your connection and try again.`;
+  }
 
   async function resolvePoint(loc){
     let point=getCachedPoint(loc.lat,loc.lon);
@@ -194,7 +284,7 @@ window.WX = (function(){
   function durationMs(iso){const m=iso.match(/P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?)?/);return m?((+m[1]||0)*864e5+(+m[2]||0)*36e5+(+m[3]||0)*6e4):36e5}
   function gridValues(field,times,convert=v=>v){if(!field?.values)return times.map(()=>null);return times.map(t=>{const ms=t.getTime();for(const row of field.values){const [start,dur='PT1H']=row.validTime.split('/');const a=new Date(start).getTime();if(ms>=a&&ms<a+durationMs(dur))return row.value==null?null:convert(row.value)}return null})}
   const kphToMph=v=>Math.round(v*.621371), cToF=v=>Math.round(v*9/5+32);
-  async function product(type,officeId){try{const list=await json(`${API}/products/types/${type}/locations/${officeId}`);const item=(list['@graph']||[])[0];if(!item?.id)return null;return await json(item.id.startsWith('http')?item.id:`${API}/products/${item.id}`)}catch{return null}}
+  async function product(type,officeId){try{const list=await json(`${API}/products/types/${type}/locations/${officeId}`,{ttl:CACHE_TTL.products});const item=(list['@graph']||[])[0];if(!item?.id)return null;return await json(item.id.startsWith('http')?item.id:`${API}/products/${item.id}`,{ttl:CACHE_TTL.products})}catch{return null}}
   // Great-circle distance in miles between two [lon,lat] points.
   function milesBetween([lon1,lat1],[lon2,lat2]){
     const R=3958.8,toRad=d=>d*Math.PI/180;
@@ -207,7 +297,7 @@ window.WX = (function(){
   // once per location instead of twice every ten minutes.
   const stationListCache=new Map();
   function stationList(url){
-    if(!stationListCache.has(url))stationListCache.set(url,json(url).catch(e=>{stationListCache.delete(url);throw e}));
+    if(!stationListCache.has(url))stationListCache.set(url,json(url,{ttl:CACHE_TTL.stations}).catch(e=>{stationListCache.delete(url);throw e}));
     return stationListCache.get(url);
   }
   async function stationCandidates(point){
@@ -235,7 +325,7 @@ window.WX = (function(){
     let last=new Error('Observation history unavailable.');
     for(const station of ids){
       try{
-        const result=await json(`${station}/observations?start=${encodeURIComponent(start)}&limit=200`);
+        const result=await json(`${station}/observations?start=${encodeURIComponent(start)}&limit=200`,{ttl:CACHE_TTL.forecast});
         const readings=(result.features||[]).map(f=>f.properties).filter(p=>p&&p.timestamp);
         if(!readings.length)throw new Error('Observation history unavailable.');
         return readings;
@@ -251,7 +341,7 @@ window.WX = (function(){
     let last=new Error('Current conditions unavailable.');
     for(const station of ids){
       try{
-        const result=await json(`${station}/observations/latest`);
+        const result=await json(`${station}/observations/latest`,{ttl:CACHE_TTL.forecast});
         const observation=result.properties,age=Date.now()-Date.parse(observation?.timestamp);
         if(!Number.isFinite(age)||age< -300000||age>2*3600000||!observation.textDescription?.trim())throw new Error('Current conditions unavailable.');
         return {observation,confirmedAt:new Date()};
@@ -311,15 +401,48 @@ window.WX = (function(){
   function hwoCardHTML(hwo,officeId,loc,tz){
     const office=officeLabel(hwo.productText,officeId);
     const place=esc((loc.label||'your area').split(',')[0]);
-    const href=hwo['@id']||(hwo.id?`${API}/products/${hwo.id}`:null);
+    const href=safeNwsUrl(hwo['@id'])||(hwo.id?`${API}/products/${encodeURIComponent(hwo.id)}`:null);
     const linkHTML=href?`<a href="${esc(href)}" target="_blank" rel="noreferrer">Full NWS product</a>`:'';
     return `<div class="alert alert-outlook"><h4>Hazardous Weather Outlook — ${esc(office)}</h4><p>Regional guidance for the ${esc(office)} area — not an issued alert, and may not apply to ${place}.</p><p>Issued ${esc(local(hwo.issuanceTime,tz))}</p><p>${esc(hazardExcerpt(hwo.productText)||'See the full outlook for details.')}</p>${linkHTML}</div>`;
   }
+  // Links taken from API data are only used when they point back at
+  // api.weather.gov itself; esc() alone would let a javascript: URL through.
+  const safeNwsUrl=url=>typeof url==='string'&&url.startsWith(`${API}/`)?url:null;
+  // Colour-codes alerts the way NWS does in its own products: warnings
+  // (act now) above watches (be ready) above advisories and statements.
+  const ALERT_LEVELS=['warning','watch','advisory','statement'];
+  function alertLevel(p){
+    const event=String(p?.event||'');
+    if(/warning|emergency/i.test(event)||p?.severity==='Extreme')return 'warning';
+    if(/watch/i.test(event))return 'watch';
+    if(/advisory/i.test(event))return 'advisory';
+    return 'statement';
+  }
+  function activeAlerts(loc){
+    return json(`${API}/alerts/active?point=${loc.lat},${loc.lon}`,{ttl:CACHE_TTL.alerts})
+      .then(res=>(res?.features||[]).filter(a=>a?.properties).sort((a,b)=>ALERT_LEVELS.indexOf(alertLevel(a.properties))-ALERT_LEVELS.indexOf(alertLevel(b.properties))));
+  }
   function alertLine(a,tz){
-    const p=a.properties;
+    const p=a.properties,level=alertLevel(p);
     const title=`${esc(p.event)} — ${esc(officeLabel(p.senderName))}`;
     const body=toSentenceCase((p.instruction||p.description||'See NWS alert for instructions.').replace(/\s+/g,' '));
-    return `<div class="alert alert-warning"><h4>${title}</h4><p>${esc(p.areaDesc)}</p><p>${esc(local(p.onset||p.effective,tz))}–${esc(local(p.ends||p.expires,tz))}</p><p>${esc(body)}</p><a href="${esc(p['@id']||a.id)}" target="_blank" rel="noreferrer">Full NWS alert</a></div>`;
+    const href=safeNwsUrl(p['@id'])||safeNwsUrl(a.id);
+    return `<div class="alert alert-${level}"><h4>${title}</h4><p>${esc(p.areaDesc)}</p><p>${esc(local(p.onset||p.effective,tz))}–${esc(local(p.ends||p.expires,tz))}</p><p>${esc(body)}</p>${href?`<a href="${esc(href)}" target="_blank" rel="noreferrer">Full NWS alert</a>`:''}</div>`;
+  }
+  // Compact, collapsible version for pages without a Today card (Hourly,
+  // Radar), so an active warning is visible wherever someone is looking.
+  function alertBannerHTML(alerts,tz){
+    if(!alerts.length)return '';
+    return `<section class="alert-banner" aria-label="Active NWS alerts">${alerts.map(a=>{
+      const p=a.properties,level=alertLevel(p),until=p.ends||p.expires;
+      const body=toSentenceCase((p.instruction||p.description||'See NWS alert for instructions.').replace(/\s+/g,' '));
+      const href=safeNwsUrl(p['@id'])||safeNwsUrl(a.id);
+      return `<details class="alert alert-${level}"><summary><strong>${esc(p.event)}</strong>${until?` <span class="alert-until">until ${esc(local(until,tz))}</span>`:''}</summary><p>${esc(p.areaDesc)}</p><p>${esc(body)}</p>${href?`<a href="${esc(href)}" target="_blank" rel="noreferrer">Full NWS alert</a>`:''}</details>`;
+    }).join('')}</section>`;
+  }
+  async function renderAlertBanner(container,loc,tz){
+    if(!container)return;
+    try{container.innerHTML=alertBannerHTML(await activeAlerts(loc),tz)}catch{}
   }
   function dayKey(tz,date){return new Intl.DateTimeFormat('en-CA',{timeZone:tz,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(date))}
   function startOfDay(tz){
@@ -444,13 +567,13 @@ window.WX = (function(){
       hiLo,
       pop==null?null:['Rain',`${pop}%`],
       humidity==null?null:['Humidity',`${humidity}%`],
-      ['Wind',wind==null?esc(b.windSpeed):fmtWind(wind)],
+      ['Wind',wind==null?b.windSpeed:fmtWind(wind)],
       gust==null?null:['Gusts',fmtWind(gust)],
       uv==null?null:['Max UV',uv]
     ].filter(Boolean);
   }
   let metricsGroupId=0;
-  function metricPillsHTML(pairs){return pairs.map(([k,v,k2,v2])=>`<span class="metric"><b>${esc(k)}:</b> ${v}${k2?` <b>${esc(k2)}:</b> ${v2}`:''}</span>`).join('')}
+  function metricPillsHTML(pairs){return pairs.map(([k,v,k2,v2])=>`<span class="metric"><b>${esc(k)}:</b> ${esc(v)}${k2?` <b>${esc(k2)}:</b> ${esc(v2)}`:''}</span>`).join('')}
   function metricsHTML(pairs,primaryCount=4){
     const primary=pairs.slice(0,primaryCount),extra=pairs.slice(primaryCount);
     if(!extra.length)return `<div class="metric-row">${metricPillsHTML(primary)}</div>`;
@@ -572,8 +695,7 @@ window.WX = (function(){
     const current=await currentObservation(point).catch(()=>null);
     const currentText=current?currentHeadline(current.observation):null;
     const brief=todayBrief(currentText,todayPeriods.day,todayPeriods.night,new Date(),tz);
-    const alertsRes=await json(`${API}/alerts/active?point=${loc.lat},${loc.lon}`).catch(()=>null);
-    const active=alertsRes?.features||[];
+    const active=await activeAlerts(loc).catch(()=>[]);
     const laterHTML=brief.later?`<p class="condition">${esc(brief.later)}</p>`:'';
     // Only show the NWS Alerts block when there's a genuine active alert —
     // otherwise this card keeps the exact same shape (brief + metrics, no
@@ -690,7 +812,7 @@ window.WX = (function(){
     paintThemeBtn();
     el('theme-btn').addEventListener('click',()=>{setTheme(getTheme()==='dark'?'light':'dark');paintThemeBtn()});
     let drawerOpen=false;
-    function paintDrawerLocations(){el('drawer-locations-content').innerHTML=locationSwitcherHTML()}
+    function paintDrawerLocations(){repaintKeepingFocus(el('drawer-locations-content'),locationSwitcherHTML())}
     paintDrawerLocations();
     wireLocationActions(el('drawer-locations-content'),()=>{setDrawer(false);onLocationChange()});
     document.addEventListener('savedlocationschange',()=>{if(drawerOpen)paintDrawerLocations()});
@@ -808,7 +930,7 @@ window.WX = (function(){
     subpage.addEventListener('cancel',e=>{e.preventDefault();closeSubpage()});
     document.addEventListener('keydown',e=>{if(e.key==='Escape'&&drawerOpen)setDrawer(false)});
     const locationInput=el('location-input'),suggestions=el('location-suggestions');
-    let suggestionMap=new Map(),suggestTimer=null,suggestRequest=0,activeSuggestion=-1;
+    let suggestionMap=new Map(),suggestTimer=null,suggestRequest=0,activeSuggestion=-1,suggestAbort=null;
     // Toggles both mechanisms: some pages hide the kicker with the hidden
     // attribute and some with inline display, and clearing only the inline
     // style can't defeat [hidden] — which silently swallowed "Searching…"
@@ -843,13 +965,14 @@ window.WX = (function(){
       else if(e.key==='Escape'&&!suggestions.classList.contains('hidden')){e.preventDefault();closeSuggestions()}
     });
     locationInput.addEventListener('input',()=>{
-      clearTimeout(suggestTimer);
+      clearTimeout(suggestTimer);suggestAbort?.abort();suggestAbort=null;
       const request=++suggestRequest,q=locationInput.value.trim();
       closeSuggestions();
       if(q.length<3){suggestionMap.clear();return}
       suggestTimer=setTimeout(async()=>{
         try{
-          const features=await geocodePhoton(q,10);
+          suggestAbort=new AbortController();
+          const features=await geocodePhoton(q,10,suggestAbort.signal);
           if(request!==suggestRequest||q!==locationInput.value.trim())return;
           suggestionMap=new Map();
           features.slice(0,4).forEach(f=>{const label=normalizedLabel(f);if(!suggestionMap.has(label))suggestionMap.set(label,photonPosition(f))});
@@ -865,7 +988,7 @@ window.WX = (function(){
       if(!q)return;
       setKicker('Searching…');
       try{pick(suggestionMap.get(q)||await geocodeSearch(q),q)}
-      catch(err){setKicker(err.message||'Location search failed')}
+      catch(err){setKicker(err instanceof FetchError?(navigator.onLine===false?"You're offline, so location search isn't available.":'Location search is unavailable right now. Try again shortly.'):err.message||'Location search failed')}
     });
     el('locate-btn').addEventListener('click',async()=>{
       setKicker('Locating…');
@@ -896,6 +1019,20 @@ window.WX = (function(){
   // shared the same way. onJump fires only for a jump-to-location click,
   // since that's the one action the caller needs to react to (closing a
   // panel/drawer, reloading the page's data); the rest are self-contained.
+  // Re-rendering the list after Save/Remove/Favorite replaces the button that
+  // had focus; put focus back on its replacement (or the Save button, when
+  // the row itself was removed) so keyboard users aren't dropped to <body>.
+  function repaintKeepingFocus(container,html){
+    const active=document.activeElement,hadFocus=container.contains(active);
+    let selector=null;
+    if(hadFocus){
+      if(active.hasAttribute('data-toggle-save'))selector='[data-toggle-save]';
+      else if(active.dataset.favLat)selector=`[data-fav-lat="${active.dataset.favLat}"][data-fav-lon="${active.dataset.favLon}"]`;
+      else if(active.dataset.jumpLat)selector=`[data-jump-lat="${active.dataset.jumpLat}"][data-jump-lon="${active.dataset.jumpLon}"]`;
+    }
+    container.innerHTML=html;
+    if(hadFocus)(selector&&container.querySelector(selector)||container.querySelector('[data-toggle-save]')||container.querySelector('button'))?.focus();
+  }
   function wireLocationActions(container,onJump){
     container.addEventListener('click',e=>{
       if(e.target.closest('[data-toggle-save]')){toggleSavedLocation(getCurrentLocation());return}
@@ -956,7 +1093,7 @@ window.WX = (function(){
     headline.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setOpen(!open)}});
     scrim.addEventListener('click',()=>setOpen(false));
     document.addEventListener('keydown',e=>{if(e.key==='Escape'&&open)setOpen(false)});
-    document.addEventListener('savedlocationschange',()=>{if(open){panel.innerHTML=locationSwitcherHTML();position()}});
+    document.addEventListener('savedlocationschange',()=>{if(open){repaintKeepingFocus(panel,locationSwitcherHTML());position()}});
     wireLocationActions(panel,()=>{setOpen(false);onLocationChange()});
   }
 
@@ -1115,6 +1252,62 @@ window.WX = (function(){
     if(!footer)return;
     footer.innerHTML=`<p class="disclaimer">Weather information on this site is for general informational purposes only and is not a substitute for official guidance. In hazardous weather, always follow instructions from the National Weather Service and your local authorities.</p><nav class="footer-links" aria-label="Legal"><a href="/privacy.html">Privacy</a><a href="/terms.html">Terms</a><a href="/credits.html">Credits</a></nav>`;
   }
+  // Tells people when they're looking at the built-in default location
+  // rather than their own, since the site no longer asks for location on
+  // its own. Shared by every data page, including Radar.
+  function showLocationNote(loc){
+    let note=el('location-note');
+    if(!note){document.querySelector('.page-head')?.insertAdjacentHTML('afterend','<p class="location-note hidden" id="location-note"></p>');note=el('location-note')}
+    if(!note)return;
+    const isDefault=loc?.source==='default';
+    note.textContent=isDefault?`Showing ${loc.label}, the default location. Search above, or use the arrow button to see the forecast where you are.`:'';
+    note.classList.toggle('hidden',!isDefault);
+  }
+  // Shared load-state UI for the forecast pages: a first-load error with a
+  // Try again button, a banner when a later refresh fails or the device goes
+  // offline while older data stays on screen (instead of silently showing it
+  // as current), the "NWS forecast updated … · Checked …" line, and a Refresh
+  // button for desktop, where pull-to-refresh doesn't exist.
+  function mountStatus(reload){
+    const updated=el('updated'),error=el('error');
+    const row=document.createElement('div');
+    row.className='updated-row';
+    updated.before(row);row.append(updated);
+    row.insertAdjacentHTML('beforeend','<button class="text-btn hidden" type="button" id="refresh-btn">Refresh</button>');
+    document.querySelector('.page-head').insertAdjacentHTML('afterend','<div class="status-banner hidden" id="status-banner" role="status"><span id="status-banner-text"></span><button class="text-btn" type="button" id="status-banner-retry">Try again</button></div>');
+    const banner=el('status-banner'),bannerText=el('status-banner-text'),refreshBtn=el('refresh-btn');
+    let loadedAt=null,loadedTz=null;
+    const time=(date,tz)=>new Intl.DateTimeFormat('en-US',{timeZone:tz||getTimeZone(),hour:'numeric',minute:'2-digit',hour12:hour12()}).format(date);
+    function manual(){bypassCache();reload()}
+    function showBanner(text){bannerText.textContent=text;banner.classList.remove('hidden')}
+    refreshBtn.addEventListener('click',manual);
+    el('status-banner-retry').addEventListener('click',manual);
+    error.addEventListener('click',e=>{if(e.target.closest('[data-retry]'))manual()});
+    window.addEventListener('offline',()=>{if(loadedAt)showBanner(`You're offline. Showing the forecast as of ${time(loadedAt,loadedTz)}.`)});
+    window.addEventListener('online',()=>reload());
+    return {
+      loaded({loc,issued,tz}){
+        loadedAt=new Date();loadedTz=tz;
+        // Time only when NWS issued it today; the date is added otherwise.
+        const issuedAt=issued?new Date(issued):null,issuedValid=issuedAt&&Number.isFinite(issuedAt.getTime());
+        const issuedText=issuedValid?`Forecast issued ${dayKey(tz,issuedAt)===dayKey(tz,loadedAt)?time(issuedAt,tz):local(issuedAt,tz)} · `:'';
+        updated.textContent=`${issuedText}Checked ${time(loadedAt,tz)}`;
+        updated.classList.remove('hidden');refreshBtn.classList.remove('hidden');
+        banner.classList.add('hidden');error.classList.add('hidden');
+        showLocationNote(loc);
+      },
+      failed(e,loc){
+        const message=friendlyError(e);
+        if(loadedAt){showBanner(`Couldn't refresh. ${message} Showing the forecast as of ${time(loadedAt,loadedTz)}.`);return}
+        el('loading').classList.add('hidden');
+        error.innerHTML=`<p>${esc(message)}</p><button class="text-btn" type="button" data-retry>Try again</button>`;
+        error.classList.remove('hidden');
+        const headline=el('headline');
+        if(headline&&headline.textContent==='Locating…')headline.textContent=loc?.label||'Weather unavailable';
+        if(loc)showLocationNote(loc);
+      }
+    };
+  }
   // iOS Safari has no built-in pull-to-refresh gesture (unlike some Android
   // browsers), so this reproduces the native-feeling gesture by hand: drag
   // down from the top of the page, release past a threshold, refresh.
@@ -1157,6 +1350,7 @@ window.WX = (function(){
         indicator.classList.add('spinning');
         icon.style.transform='';
         indicator.style.transform='translate(-50%, 16px)';indicator.style.opacity='1';
+        bypassCache();
         try{await onRefresh()}catch{}
         indicator.classList.remove('spinning');
         refreshing=false;
@@ -1165,7 +1359,7 @@ window.WX = (function(){
     });
   }
 
-  return {API,DEFAULT_LOC,DEFAULT_TIME_ZONE,el,esc,getSavedLocation,saveLocation,getCurrentLocation,getTimeZone,setTimeZone,timeZoneLabel,timeZoneOptionsHTML,geolocate,geocodeSearch,resolveLocation,resolvePoint,json,
+  return {API,DEFAULT_LOC,CACHE_TTL,bypassCache,friendlyError,mountStatus,showLocationNote,activeAlerts,renderAlertBanner,DEFAULT_TIME_ZONE,el,esc,getSavedLocation,saveLocation,getCurrentLocation,getTimeZone,setTimeZone,timeZoneLabel,timeZoneOptionsHTML,geolocate,geocodeSearch,resolveLocation,resolvePoint,json,
     getSavedLocations,isLocationSaved,addSavedLocation,removeSavedLocation,toggleSavedLocation,setFavoriteLocation,clearFavoriteLocation,toggleFavoriteLocation,getFavoriteLocation,mountLocationSwitcher,
     getStartupMode,setStartupMode,
     getTempUnit,setTempUnit,getWindUnit,setWindUnit,getHourFormat,setHourFormat,hour12,tempValue,tempUnitLabel,fmtTemp,fmtTempRange,windValue,windUnitLabel,fmtWind,

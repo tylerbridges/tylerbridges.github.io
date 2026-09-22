@@ -1,8 +1,10 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <script>try{var t=localStorage.getItem('weather-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);else if(t!=='system')document.documentElement.setAttribute('data-theme','dark')}catch{}</script>
   <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'sha256-iaGyl+MesImCrVNj4kQ20S4RvzBpRSK0LS5TGRYQTug=' 'sha256-QiP/q5RqMbTLV8W6bIMgpeHJN1Qkfnx06p1gU3ubqB4='; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob: https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org https://server.arcgisonline.com https://services.arcgisonline.com; connect-src 'self' https://api.weather.gov https://photon.komoot.io https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org https://server.arcgisonline.com https://services.arcgisonline.com; worker-src 'self' blob:; child-src 'self' blob:; font-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <script>try{var t=localStorage.getItem('weather-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);else if(t!=='system')document.documentElement.setAttribute('data-theme','dark')}catch{}</script>
+  <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#071522">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -40,6 +42,7 @@
     <div id="loading" class="loading" role="status" aria-live="polite">Loading hourly forecast…</div>
     <div id="error" class="error hidden" role="alert"></div>
     <div id="content" class="hidden">
+      <div id="hourly-alerts"></div>
       <div class="hourly-days" id="hourly-days"></div>
     </div>
     <footer class="site-footer" id="site-footer"></footer>
@@ -47,11 +50,12 @@
   <script src="/assets/weather-core.js"></script>
   <script>
   (()=>{
-    const {el,esc,resolveLocation,resolvePoint,json,local,emoji,dayKey,maxWind,gridValues,kphToMph,hourlyUVEstimate,mountHeader,mountFooter,mountPullToRefresh,mountLocationSwitcher,fmtTemp,windValue,windUnitLabel,hour12,scheduleAutoRefresh}=WX;
+    const {el,esc,resolveLocation,resolvePoint,json,local,emoji,dayKey,maxWind,gridValues,kphToMph,hourlyUVEstimate,mountHeader,mountFooter,mountPullToRefresh,mountLocationSwitcher,fmtTemp,windValue,windUnitLabel,hour12,scheduleAutoRefresh,mountStatus,renderAlertBanner,CACHE_TTL}=WX;
     let busy=false,lastLoad=0,hasLoaded=false;
     const header=mountHeader('hourly',()=>load());
     mountFooter();
     mountLocationSwitcher(()=>load());
+    const status=mountStatus(()=>load());
     const hourText=(value,tz)=>new Intl.DateTimeFormat('en-US',{timeZone:tz,hour:'numeric',hour12:hour12()}).format(new Date(value));
     function renderHours(periods,tz,gusts,uvValues){
       const current=new Date(),groups=[];
@@ -72,18 +76,19 @@
         return `<section class="hourly-day" aria-labelledby="hourly-day-${groupIndex}"><h2 id="hourly-day-${groupIndex}">${day} · ${date}</h2><div class="hourly-list">${rows}</div></section>`;
       }).join('');
     }
-    async function load(){if(busy)return;busy=true;lastLoad=Date.now();if(!hasLoaded){el('loading').classList.remove('hidden');el('error').classList.add('hidden');el('content').classList.add('hidden')}else{el('content').classList.add('refreshing')}try{
-      const loc=await resolveLocation();
+    async function load(){if(busy)return;busy=true;lastLoad=Date.now();let loc=null;if(!hasLoaded){el('loading').classList.remove('hidden');el('error').classList.add('hidden');el('content').classList.add('hidden')}else{el('content').classList.add('refreshing')}try{
+      loc=await resolveLocation();
       const {point,label,tz}=await resolvePoint(loc);
       header.setKicker('');el('headline').textContent=label;
-      const results=await Promise.allSettled([json(point.properties.forecastHourly),json(point.properties.forecastGridData)]),hourly=results[0].value,grid=results[1].value||{properties:{}},now=new Date();
-      if(!hourly?.properties?.periods?.length||!hourly.properties.updateTime||now-new Date(hourly.properties.updateTime)>36*3600000)throw new Error('The hourly forecast is stale or unavailable.');
+      const results=await Promise.allSettled([json(point.properties.forecastHourly,{ttl:CACHE_TTL.forecast}),json(point.properties.forecastGridData,{ttl:CACHE_TTL.forecast}),renderAlertBanner(el('hourly-alerts'),loc,tz)]),hourly=results[0].value,grid=results[1].value||{properties:{}},now=new Date();
+      if(results[0].status==='rejected')throw results[0].reason;
+      if(!hourly?.properties?.periods?.length||!hourly.properties.updateTime||now-new Date(hourly.properties.updateTime)>36*3600000)throw new Error('The NWS hourly forecast for this location is out of date or unavailable right now. Try again shortly.');
       const periods=hourly.properties.periods.filter(period=>new Date(period.endTime)>now).slice(0,48),times=periods.map(period=>new Date(period.startTime));
       const gusts=gridValues(grid.properties.windGust,times,value=>grid.properties.windGust.uom?.includes('km_h')?kphToMph(value):Math.round(value)),uvValues=times.map(time=>hourlyUVEstimate(time,loc.lat,loc.lon,tz));
       el('hourly-days').innerHTML=renderHours(periods,tz,gusts,uvValues);
-      el('updated').textContent=`Updated ${local(now,tz)}`;el('updated').classList.remove('hidden');
+      status.loaded({loc:{...loc,label},issued:hourly.properties.updateTime,tz});
       el('loading').classList.add('hidden');el('content').classList.remove('hidden');hasLoaded=true;
-    }catch(e){if(!hasLoaded){el('loading').classList.add('hidden');el('error').classList.remove('hidden');el('error').textContent=e.message}}
+    }catch(e){status.failed(e,loc)}
     finally{busy=false;el('content').classList.remove('refreshing')}}
     function autoRefresh(){if(document.visibilityState==='visible'&&Date.now()-lastLoad>5*60000)load()}
     window.addEventListener('pageshow',e=>{if(e.persisted)load()});

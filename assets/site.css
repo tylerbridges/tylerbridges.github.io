@@ -3,10 +3,10 @@
    unset for "system", which the media query below resolves — matching the
    device's own light/dark setting only when nothing explicit was chosen.
    Dark values mirror Apple's iOS system dark palette (true black). */
-:root{color-scheme:dark;--bg:#000;--surface:#1c1c1e;--surface-2:#2c2c2e;--text:#f5f5f7;--muted:#9a9aa1;--line:#38383a;--line-strong:#48484a;--blue:#0a84ff;--cyan:#64d2ff;--orange:#ff9f0a;--red:#ff453a;--green:#32d74b;--shadow:0 15px 34px rgba(0,0,0,.4);--seg-track:#1c1c1e;--seg-active:#3a3a3c}
-:root[data-theme="light"]{color-scheme:light;--bg:#f3f7fb;--surface:#fff;--surface-2:#eaf2fa;--text:#112337;--muted:#53677d;--line:#cbd8e6;--line-strong:#8198af;--blue:#1d67a9;--cyan:#28a8c7;--orange:#d77822;--red:#bd3d39;--green:#22765a;--shadow:0 12px 30px rgba(24,56,90,.09);--seg-track:#e4ecf5;--seg-active:#fff}
+:root{color-scheme:dark;--bg:#000;--surface:#1c1c1e;--surface-2:#2c2c2e;--text:#f5f5f7;--muted:#9a9aa1;--line:#38383a;--line-strong:#48484a;--blue:#0a84ff;--cyan:#64d2ff;--orange:#ff9f0a;--red:#ff453a;--green:#32d74b;--yellow:#ffd60a;--shadow:0 15px 34px rgba(0,0,0,.4);--seg-track:#1c1c1e;--seg-active:#3a3a3c}
+:root[data-theme="light"]{color-scheme:light;--bg:#f3f7fb;--surface:#fff;--surface-2:#eaf2fa;--text:#112337;--muted:#53677d;--line:#cbd8e6;--line-strong:#8198af;--blue:#1d67a9;--cyan:#28a8c7;--orange:#d77822;--red:#bd3d39;--green:#22765a;--yellow:#8a6a00;--shadow:0 12px 30px rgba(24,56,90,.09);--seg-track:#e4ecf5;--seg-active:#fff}
 @media(prefers-color-scheme:light){
-  :root:not([data-theme]){color-scheme:light;--bg:#f3f7fb;--surface:#fff;--surface-2:#eaf2fa;--text:#112337;--muted:#53677d;--line:#cbd8e6;--line-strong:#8198af;--blue:#1d67a9;--cyan:#28a8c7;--orange:#d77822;--red:#bd3d39;--green:#22765a;--shadow:0 12px 30px rgba(24,56,90,.09);--seg-track:#e4ecf5;--seg-active:#fff}
+  :root:not([data-theme]){color-scheme:light;--bg:#f3f7fb;--surface:#fff;--surface-2:#eaf2fa;--text:#112337;--muted:#53677d;--line:#cbd8e6;--line-strong:#8198af;--blue:#1d67a9;--cyan:#28a8c7;--orange:#d77822;--red:#bd3d39;--green:#22765a;--yellow:#8a6a00;--shadow:0 12px 30px rgba(24,56,90,.09);--seg-track:#e4ecf5;--seg-active:#fff}
 }
 .last-updated{margin:.45rem 0 0;color:var(--muted);font-size:.78rem;font-weight:400;line-height:1.5}
 html,body{overscroll-behavior-y:none;scroll-behavior:auto;touch-action:pan-y pinch-zoom}
@@ -94,13 +94,32 @@ hr{border:0;border-top:1px solid var(--line);margin:.85rem 0}
 #content{transition:opacity .2s ease}
 #content.refreshing{opacity:.55}
 @media(prefers-reduced-motion:reduce){#content{transition:none}}
-/* Orange = a genuine issued alert (watch/warning/advisory) from NWS's active
-   alerts feed. Green = informational guidance (e.g. the Hazardous Weather
-   Outlook) that isn't itself an alert, so it reads as clearly lower-stakes. */
+/* Issued NWS alerts are colour-coded by level, the way NWS ranks them:
+   red = warning (act now), orange = watch (be ready), yellow = advisory,
+   blue = statement. Green = informational guidance (e.g. the Hazardous
+   Weather Outlook) that isn't itself an alert, so it reads as lower-stakes. */
 .alert{margin:.65rem 0;padding:.75rem .9rem;border-radius:12px;border-left:4px solid var(--muted);background:var(--surface-2)}
 .alert p{margin:.35rem 0}
 .alert h4{margin:0;font-size:1rem}
-.alert-warning{border-left-color:var(--orange);background:color-mix(in srgb,var(--orange) 14%,var(--surface-2))}
+.alert-warning{border-left-color:var(--red);background:color-mix(in srgb,var(--red) 14%,var(--surface-2))}
+.alert-watch{border-left-color:var(--orange);background:color-mix(in srgb,var(--orange) 14%,var(--surface-2))}
+.alert-advisory{border-left-color:var(--yellow);background:color-mix(in srgb,var(--yellow) 12%,var(--surface-2))}
+.alert-statement{border-left-color:var(--blue);background:color-mix(in srgb,var(--blue) 12%,var(--surface-2))}
+.alert a{color:var(--blue)}
+.alert-banner{margin:0 0 1rem}
+.alert-banner .alert{margin:0 0 .5rem}
+.alert-banner summary{cursor:pointer;line-height:1.4}
+.alert-banner summary:focus-visible{outline:2px solid var(--blue);outline-offset:3px;border-radius:4px}
+.alert-until{color:var(--muted);font-size:.85rem}
+.updated-row{display:flex;flex-wrap:wrap;align-items:baseline;gap:.2rem .6rem}
+.updated-row .last-updated{margin-top:.45rem}
+.text-btn{min-height:32px;padding:.25rem .15rem;border:0;background:transparent;color:var(--blue);font:inherit;font-size:.8rem;font-weight:650;cursor:pointer}
+.text-btn:hover{text-decoration:underline}
+.text-btn:focus-visible{outline:2px solid var(--blue);outline-offset:2px;border-radius:6px}
+.error p{margin:0 0 .35rem}
+.status-banner{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem .75rem;margin:0 0 1rem;padding:.6rem .85rem;border-radius:12px;border:1px solid color-mix(in srgb,var(--orange) 40%,var(--line));background:color-mix(in srgb,var(--orange) 10%,var(--surface));font-size:.85rem}
+.status-banner.hidden{display:none}
+.location-note{margin:0 0 1rem;color:var(--muted);font-size:.82rem}
 .alert-outlook{border-left-color:var(--green);background:color-mix(in srgb,var(--green) 14%,var(--surface-2))}
 .location-form{position:relative;margin:0}
 .search-field{display:flex;align-items:center;gap:.3rem;height:38px;border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:3px;box-shadow:var(--shadow)}
@@ -114,7 +133,9 @@ hr{border:0;border-top:1px solid var(--line);margin:.85rem 0}
 .icon-btn{flex:0 0 auto;width:30px;height:30px;padding:0;border:0;border-radius:8px;background:var(--blue);color:#fff;display:flex;align-items:center;justify-content:center;transition:transform .15s ease-out}
 .icon-btn:active{transform:scale(.92)}
 .icon-row{display:flex;justify-content:space-between;align-items:center}
-.icon-btn.ghost{width:26px;height:26px;background:transparent;border:1px solid var(--line);color:var(--muted)}
+.icon-btn.ghost{position:relative;width:26px;height:26px;background:transparent;border:1px solid var(--line);color:var(--muted)}
+/* Invisible 44px touch target around the 26px menu/theme buttons. */
+.icon-btn.ghost::after{content:"";position:absolute;inset:-9px}
 .hamburger-btn{margin-left:calc(-1 * max(1rem,env(safe-area-inset-left)))}
 .nav-scrim{position:fixed;top:0;left:0;right:0;bottom:0;z-index:29;background:rgba(0,0,0,.45);opacity:0;pointer-events:none;transition:opacity .18s ease-out}
 .nav-scrim.open{opacity:1;pointer-events:auto}
