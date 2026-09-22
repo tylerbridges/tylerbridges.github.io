@@ -269,11 +269,11 @@
     // The radar basemap follows the site's resolved light/dark setting while
     // retaining a minimal roads-only treatment so forecast colors stay clear.
     const VECTOR_STYLE='https://tiles.openfreemap.org/styles/liberty';
-    // Attribution for all of these lives on /credits.html, linked below the
-    // map, rather than on-map controls — see the note by attributionControl.
+    // Each of these is credited in the map’s own attribution bar (see the
+    // note by attributionControl below); /credits.html carries the full list.
     const radarFallbackStyle=()=>{
       const dark=getTheme()==='dark',base=dark?'World_Dark_Gray_Base':'World_Light_Gray_Base',reference=dark?'World_Dark_Gray_Reference':'World_Light_Gray_Reference';
-      return {version:8,sources:{esri:{type:'raster',tiles:[`https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/${base}/MapServer/tile/{z}/{y}/{x}`],tileSize:256,maxzoom:16},'esri-reference':{type:'raster',tiles:[`https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/${reference}/MapServer/tile/{z}/{y}/{x}`],tileSize:256,maxzoom:16}},layers:[{id:'bg',type:'background',paint:{'background-color':dark?'#0a0a0a':'#eef4fa'}},{id:'esri',type:'raster',source:'esri'},{id:'esri-reference',type:'raster',source:'esri-reference'}]};
+      return {version:8,sources:{esri:{type:'raster',tiles:[`https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/${base}/MapServer/tile/{z}/{y}/{x}`],tileSize:256,maxzoom:16,attribution:'Powered by <a href="https://www.esri.com" target="_blank" rel="noreferrer">Esri</a>'},'esri-reference':{type:'raster',tiles:[`https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/${reference}/MapServer/tile/{z}/{y}/{x}`],tileSize:256,maxzoom:16}},layers:[{id:'bg',type:'background',paint:{'background-color':dark?'#0a0a0a':'#eef4fa'}},{id:'esri',type:'raster',source:'esri'},{id:'esri-reference',type:'raster',source:'esri-reference'}]};
     };
 
     const DEFAULT_ZOOM=7.2,MAP_MAX_ZOOM=16;
@@ -410,9 +410,8 @@
       catch{usingFallback=true;initialStyle=radarFallbackStyle()}
       map=new maplibregl.Map({
         container:'map',style:initialStyle,center:[latlng[1],latlng[0]],zoom:DEFAULT_ZOOM,
-        // No on-map attribution control — credited instead on a linked
-        // /credits.html page so the map stays visually clean. All required
-        // attributions (IEM, OpenFreeMap/OSM, Esri, MapLibre) live there.
+        // The default attribution control is off so a configured compact one
+        // can be added below instead; it is not that the map goes uncredited.
         attributionControl:false,dragRotate:false,pitchWithRotate:false,
         // Vector tiles are resolution-independent; render at the device's real
         // pixel ratio so the basemap is genuinely sharp rather than upscaled.
@@ -431,9 +430,28 @@
         // is small and short-lived, so a large cache only costs memory.
         maxTileCacheSize:24,refreshExpiredTiles:false
       });
-      // OSM's licence expects attribution on or next to the map, not only on
-      // a linked page; compact keeps it to an "i" that expands on tap.
-      map.addControl(new maplibregl.AttributionControl({compact:true,customAttribution:'&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors &middot; <a href="/credits.html">All sources</a>'}),'bottom-right');
+      // OSM’s licence expects attribution on or next to the map, not only on
+      // a linked page. Each basemap style already carries its own required
+      // credit (OpenFreeMap/OpenMapTiles/OSM, or Esri on the fallback), so
+      // only the link to the rest is added here — naming OSM again produced
+      // a bar that said “OpenStreetMap” twice.
+      map.addControl(new maplibregl.AttributionControl({compact:true,customAttribution:'<a href="/credits.html">All sources</a>'}),'bottom-right');
+      // MapLibre mounts a compact attribution already expanded and only
+      // minimizes it on drag, so on a phone it covers a third of the map
+      // before the reader has touched anything. Collapse it to the “i” the
+      // first time it appears; once it carries maplibregl-compact, MapLibre
+      // will not re-expand it, so this runs once and the state is then the
+      // reader’s to change.
+      let attributionCollapsed=false;
+      const collapseAttribution=()=>{
+        if(attributionCollapsed)return;
+        const bar=map.getContainer().querySelector('.maplibregl-ctrl-attrib.maplibregl-compact');
+        if(!bar)return;
+        bar.classList.remove('maplibregl-compact-show');
+        attributionCollapsed=true;
+      };
+      map.on('styledata',collapseAttribution);
+      map.on('idle',collapseAttribution);
       map.touchZoomRotate.disableRotation();
       map.on('style.load',onStyleReady);
       // If the vector style can't be reached, fall back to raster rather than
