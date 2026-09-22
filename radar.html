@@ -12,6 +12,7 @@
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="preconnect" href="https://api.weather.gov">
   <link rel="preconnect" href="https://mapservices.weather.noaa.gov" crossorigin>
+  <link rel="preconnect" href="https://nowcoast.noaa.gov" crossorigin>
   <link rel="preconnect" href="https://services.arcgisonline.com" crossorigin>
   <link rel="preconnect" href="https://mesonet.agron.iastate.edu" crossorigin>
   <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
@@ -208,6 +209,37 @@
     // the blue-only palette imposed by RainViewer's current public API.
     const IEM_TILE_ROOT='https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0';
     const TILE_SIZE=256,SCAN_INTERVAL=5*60000;
+    // NOAA's own nowCOAST portal (not a third party) publishes a time-enabled
+    // NEXRAD mosaic map service. It's a dynamic ArcGIS image service rather
+    // than a pre-cached tile pyramid, so it's requested the same way as a WMS
+    // layer — MapLibre's {bbox-epsg-3857} tile-URL placeholder asks for one
+    // image per tile's own bounding box instead of a fixed z/x/y path.
+    // Unverified from this environment (no network access to nowcoast.noaa.gov
+    // in this sandbox): probeNowcoast() checks the service's own metadata
+    // before ever relying on it, and IEM stays the source whenever that
+    // check fails, so a wrong guess here degrades to today's behavior
+    // instead of breaking the radar.
+    const NOWCOAST_RADAR='https://nowcoast.noaa.gov/arcgis/rest/services/nowcoast/radar_meteo_imagery_nexrad_time/MapServer';
+    let usingNowcoast=false,nowcoastChecked=false,nowcoastLayerId=0;
+    async function probeNowcoast(){
+      if(nowcoastChecked)return usingNowcoast;
+      nowcoastChecked=true;
+      try{
+        const meta=await fetch(`${NOWCOAST_RADAR}?f=json`,{cache:'no-store',signal:AbortSignal.timeout(6000)}).then(r=>{if(!r.ok)throw new Error('bad status');return r.json()});
+        if(!meta?.timeInfo||!Array.isArray(meta.layers)||!meta.layers.length)throw new Error('unexpected service shape');
+        nowcoastLayerId=meta.layers[0].id;
+        // Confirm an actual export at that layer returns a real image, not
+        // just that the service metadata parses — a wrong layer id or a
+        // service that's technically up but misconfigured would otherwise
+        // slip through as a false positive.
+        const probeUrl=`${NOWCOAST_RADAR}/export?bbox=-11000000,3500000,-9000000,5500000&bboxSR=3857&imageSR=3857&size=64,64&format=png32&transparent=true&f=image&layers=show:${nowcoastLayerId}&time=${Date.now()}`;
+        const img=await fetch(probeUrl,{cache:'no-store',signal:AbortSignal.timeout(8000)});
+        const type=img.headers.get('content-type')||'';
+        if(!img.ok||!type.startsWith('image/'))throw new Error('export did not return an image');
+        usingNowcoast=true;
+      }catch{usingNowcoast=false}
+      return usingNowcoast;
+    }
     // Vector tiles stay sharp at any zoom and at the device's full pixel ratio,
     // which raster basemaps cannot do. Raster Esri is kept only as a fallback
     // for when the vector style cannot be reached.
@@ -266,7 +298,9 @@
 
     const fmtTime=ms=>new Date(ms).toLocaleTimeString([],{timeZone:getTimeZone(),hour:'numeric',minute:'2-digit'});
     const fmtFull=ms=>new Date(ms).toLocaleString([],{timeZone:getTimeZone(),month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'});
-    const tileUrl=frame=>`${IEM_TILE_ROOT}/${frame.layer}/{z}/{x}/{y}.png`;
+    const tileUrl=frame=>usingNowcoast
+      ?`${NOWCOAST_RADAR}/export?bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&size=${TILE_SIZE},${TILE_SIZE}&format=png32&transparent=true&f=image&layers=show:${nowcoastLayerId}&time=${Math.round(frame.time*1000)}`
+      :`${IEM_TILE_ROOT}/${frame.layer}/{z}/{x}/{y}.png`;
 
     function updateStatus(checkedNow){
       if(!frames.length){el('radar-status').textContent='';return}
@@ -305,6 +339,10 @@
       if(loading)return;
       loading=true;
       try{
+        // Checked once (probeNowcoast memoizes); every subsequent call is
+        // free. If nowCOAST fails this check for any reason, every frame
+        // below is built from IEM instead, via tileUrl()'s own branch.
+        await probeNowcoast();
         // Allow a short publication delay, then align the displayed scan times
         // with IEM's five-minute current/past mosaic layers.
         const latest=Math.floor((Date.now()-2*60000)/SCAN_INTERVAL)*SCAN_INTERVAL;
