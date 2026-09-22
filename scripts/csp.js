@@ -15,9 +15,7 @@ const DATA_HOSTS = [
   'https://nowcoast.noaa.gov',
   'https://mesonet.agron.iastate.edu',
   'https://mapservices.weather.noaa.gov',
-  'https://tiles.openfreemap.org',
-  'https://server.arcgisonline.com',
-  'https://services.arcgisonline.com'
+  'https://tiles.openfreemap.org'
 ];
 
 function policy(hashes) {

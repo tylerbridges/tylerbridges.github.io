@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'sha256-iaGyl+MesImCrVNj4kQ20S4RvzBpRSK0LS5TGRYQTug=' 'sha256-vte6c/q+IkRXltmlsxFdOu7FjF+v3SuSoxSBrdMkiyc='; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob: https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org https://server.arcgisonline.com https://services.arcgisonline.com; connect-src 'self' https://api.weather.gov https://photon.komoot.io https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org https://server.arcgisonline.com https://services.arcgisonline.com; worker-src 'self' blob:; child-src 'self' blob:; font-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'sha256-iaGyl+MesImCrVNj4kQ20S4RvzBpRSK0LS5TGRYQTug=' 'sha256-XTfZlnH4fyI0AFpUSnosEBC3/W2E9KMpAK2sd23qfVU='; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob: https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org; connect-src 'self' https://api.weather.gov https://photon.komoot.io https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org; worker-src 'self' blob:; child-src 'self' blob:; font-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
   <script>try{var t=localStorage.getItem('weather-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);else if(t!=='system')document.documentElement.setAttribute('data-theme','dark')}catch{}</script>
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -27,7 +27,6 @@
   <link rel="preconnect" href="https://api.weather.gov">
   <link rel="preconnect" href="https://mapservices.weather.noaa.gov" crossorigin>
   <link rel="preconnect" href="https://nowcoast.noaa.gov" crossorigin>
-  <link rel="preconnect" href="https://services.arcgisonline.com" crossorigin>
   <link rel="preconnect" href="https://mesonet.agron.iastate.edu" crossorigin>
   <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
   <link rel="stylesheet" href="/assets/site.css">
@@ -190,7 +189,7 @@
           <span class="sr-only" id="forecast-map-area-help">Changes the geographic area shown by every forecast map.</span>
         </div>
         <div class="forecast-map-gallery" id="forecast-map-gallery" aria-label="Forecast map gallery"></div>
-        <p class="note forecast-map-credit" id="forecast-map-credit" hidden>Basemap and labels: Esri.</p>
+        <p class="note" id="forecast-map-basemap-note" hidden>The background map couldn't load, so forecast areas are shown without roads or place names.</p>
       </section>
     </div>
     <footer class="site-footer" id="site-footer"></footer>
@@ -211,7 +210,7 @@
       <div class="forecast-map-legend" id="forecast-map-legend"></div>
       <div class="forecast-map-dialog-foot">
         <button class="forecast-map-nav" id="forecast-map-prev" type="button" aria-label="Previous forecast map"><span aria-hidden="true">‹</span><span class="forecast-map-nav-label"> Previous</span></button>
-        <div class="forecast-map-meta"><p id="forecast-map-description"></p><p><a id="forecast-map-source" href="https://mapservices.weather.noaa.gov/" target="_blank" rel="noreferrer">View NOAA/NWS data source</a><span id="forecast-map-dialog-credit" hidden> · Basemap: Esri</span></p></div>
+        <div class="forecast-map-meta"><p id="forecast-map-description"></p><p><a id="forecast-map-source" href="https://mapservices.weather.noaa.gov/" target="_blank" rel="noreferrer">View NOAA/NWS data source</a></p></div>
         <button class="forecast-map-nav" id="forecast-map-next" type="button" aria-label="Next forecast map"><span class="forecast-map-nav-label">Next </span><span aria-hidden="true">›</span></button>
       </div>
     </div>
@@ -268,17 +267,17 @@
       return usingNowcoast;
     }
     // Vector tiles stay sharp at any zoom and at the device's full pixel ratio,
-    // which raster basemaps cannot do. Raster Esri is kept only as a fallback
-    // for when the vector style cannot be reached.
+    // which raster basemaps cannot do. If OpenFreeMap can't be reached, the
+    // map falls back to a plain background (no third-party basemap) so the
+    // radar itself still shows, and says so under the map.
     //
     // The radar basemap follows the site's resolved light/dark setting while
     // retaining a minimal roads-only treatment so forecast colors stay clear.
     const VECTOR_STYLE='https://tiles.openfreemap.org/styles/liberty';
-    // Each of these is credited in the map’s own attribution bar (see the
-    // note by attributionControl below); /credits.html carries the full list.
+    const BASEMAP_UNAVAILABLE="The background map couldn't load. Radar will still show where available.";
     const radarFallbackStyle=()=>{
-      const dark=getTheme()==='dark',base=dark?'World_Dark_Gray_Base':'World_Light_Gray_Base',reference=dark?'World_Dark_Gray_Reference':'World_Light_Gray_Reference';
-      return {version:8,sources:{esri:{type:'raster',tiles:[`https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/${base}/MapServer/tile/{z}/{y}/{x}`],tileSize:256,maxzoom:16,attribution:'Powered by <a href="https://www.esri.com" target="_blank" rel="noreferrer">Esri</a>'},'esri-reference':{type:'raster',tiles:[`https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/${reference}/MapServer/tile/{z}/{y}/{x}`],tileSize:256,maxzoom:16}},layers:[{id:'bg',type:'background',paint:{'background-color':dark?'#0a0a0a':'#eef4fa'}},{id:'esri',type:'raster',source:'esri'},{id:'esri-reference',type:'raster',source:'esri-reference'}]};
+      el('basemap-status').textContent=BASEMAP_UNAVAILABLE;
+      return {version:8,sources:{},layers:[{id:'bg',type:'background',paint:{'background-color':getTheme()==='dark'?'#0a0a0a':'#eef4fa'}}]};
     };
 
     const DEFAULT_ZOOM=7.2,MAP_MAX_ZOOM=16,MIN_ZOOM=3,ZOOM_KEY='radar-zoom';
@@ -294,8 +293,6 @@
     const WEATHER_SERVICE=`${NOAA_MAP_ROOT}/vector/rest/services/outlooks/natl_fcst_wx_chart/MapServer`;
     const RAIN_RISK_SERVICE=`${NOAA_MAP_ROOT}/vector/rest/services/hazards/wpc_precip_hazards/MapServer`;
     const WINTER_SERVICE=`${NOAA_MAP_ROOT}/vector/rest/services/precip/wpc_prob_winter_precip/MapServer`;
-    const FORECAST_BASE_SERVICES={light:'https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer',dark:'https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer'};
-    const FORECAST_LABEL_SERVICES={light:'https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer',dark:'https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer'};
     const NATIONAL_BBOX=[-14200000,2500000,-7200000,6700000];
     const FORECAST_AREAS={
       // Slightly wider than the radar's default mobile view, while remaining
@@ -368,7 +365,7 @@
       // animated "sweep" instead of a hard cut — kept under the shortest
       // frame interval (BASE_INTERVAL at the fastest speed) so it never
       // outlasts the frame it's fading into.
-      const referenceLayer=(map.getStyle().layers||[]).find(layer=>layer.type==='line'||layer.type==='symbol'||layer.id==='esri-reference');
+      const referenceLayer=(map.getStyle().layers||[]).find(layer=>layer.type==='line'||layer.type==='symbol');
       map.addLayer({id:'radar',type:'raster',source:'radar',paint:{'raster-opacity':1,'raster-fade-duration':RADAR_FADE_MS,'raster-resampling':'nearest'}},referenceLayer?.id);
     }
     function showFrame(i){
@@ -459,7 +456,7 @@
       });
       // OSM’s licence expects attribution on or next to the map, not only on
       // a linked page. Each basemap style already carries its own required
-      // credit (OpenFreeMap/OpenMapTiles/OSM, or Esri on the fallback), so
+      // credit (OpenFreeMap/OpenMapTiles/OSM), so
       // only the link to the rest is added here — naming OSM again produced
       // a bar that said “OpenStreetMap” twice.
       map.addControl(new maplibregl.AttributionControl({compact:true,customAttribution:'<a href="/credits.html">All sources</a>'}),'bottom-right');
@@ -493,10 +490,9 @@
         if(e.tile&&e.sourceId==='radar'){onRadarTileError();return}
         if(e.tile&&!basemapTileLoaded&&++basemapTileErrors>=6){
           basemapTileErrors=0;
-          // OpenFreeMap's style loaded but its tiles don't: try Esri once, and
-          // if that fails too, say so rather than leaving an empty rectangle.
+          // OpenFreeMap's style loaded but its tiles don't: drop to the plain
+          // background (which says so) rather than an empty rectangle.
           if(!usingFallback&&!changingTheme){usingFallback=true;restyleMap()}
-          else if(usingFallback)el('basemap-status').textContent="The background map couldn't load. Radar will still show where available.";
           return;
         }
         const msg=String(e?.error?.message||'');
@@ -581,23 +577,21 @@
       if(stamp)params.set('v',stamp);
       return `${service}/export?${params}`;
     }
-    const forecastBaseUrl=size=>forecastMapUrl(FORECAST_BASE_SERVICES[getTheme()],null,size,false);
-    const forecastLabelUrl=size=>forecastMapUrl(FORECAST_LABEL_SERVICES[getTheme()],null,size,true);
-    // Renders the forecast-map gallery's base/label imagery from OpenFreeMap
-    // instead of Esri's Canvas services, using one hidden MapLibre instance
-    // to rasterize the same minimalRadarStyle() basemap at an arbitrary
-    // bbox/size — the same "static image from a live map" technique the
-    // Esri /export endpoint does server-side, done here in the browser.
-    // Every step that can fail (WebGL missing, style/network error, a
-    // cross-origin-tainted canvas, or just taking too long) falls back to
-    // the exact original Esri URLs, so a problem here never breaks the
-    // gallery — it just quietly keeps today's behavior for that render.
+    // Renders the forecast-map gallery's base/label imagery from OpenFreeMap,
+    // using one hidden MapLibre instance to rasterize the same
+    // minimalRadarStyle() basemap at an arbitrary bbox/size. Every step that
+    // can fail (WebGL missing, style/network error, a cross-origin-tainted
+    // canvas, or just taking too long) resolves to no basemap instead, so the
+    // WPC forecast shading still shows on a plain background.
+    const NO_BASEMAP={base:'',labels:''};
+    // An empty src would request the page itself; remove it instead.
+    const setImage=(img,src)=>{if(src)img.src=src;else img.removeAttribute('src')};
     function mercatorToLngLat(x,y){
       const R=6378137;
       return [x/R*180/Math.PI,(2*Math.atan(Math.exp(y/R))-Math.PI/2)*180/Math.PI];
     }
-    // Esri's Base layer is roads/water/boundaries only; its Reference layer
-    // is place labels on a transparent background, meant to sit on TOP of
+    // The base image is roads/water/boundaries only; the labels image is
+    // place names on a transparent background, meant to sit on TOP of
     // the WPC precipitation overlay so text stays readable over it. Splits
     // minimalRadarStyle()'s single combined style the same way. Icons are
     // dropped from the label style entirely (not just for place labels, as
@@ -657,16 +651,16 @@
     const staticBasemapCache=new Map();
     async function forecastBasemapImages(size){
       const [w,h]=size.split(',').map(Number),bbox=forecastBbox(),theme=getTheme();
-      if(typeof maplibregl==='undefined')return {base:forecastBaseUrl(size),labels:forecastLabelUrl(size)};
+      if(typeof maplibregl==='undefined')return NO_BASEMAP;
       const key=`${bbox.map(n=>Math.round(n)).join(',')}_${w}x${h}_${theme}`;
       if(staticBasemapCache.has(key))return staticBasemapCache.get(key);
       const promise=withStaticMap(async()=>{
         if(!vectorStyleTemplate)vectorStyleTemplate=await fetch(VECTOR_STYLE).then(r=>r.json());
         const {base,labels}=staticBasemapStyles(vectorStyleTemplate,theme);
         return {base:await renderStaticStyle(base,bbox,w,h),labels:await renderStaticStyle(labels,bbox,w,h)};
-      }).catch(()=>({base:forecastBaseUrl(size),labels:forecastLabelUrl(size)}));
+      }).catch(()=>NO_BASEMAP);
       staticBasemapCache.set(key,promise);
-      promise.then(r=>{if(r.base.startsWith('http'))staticBasemapCache.delete(key)}); // don't cache a fallback result — retry next time
+      promise.then(r=>{if(!r.base)staticBasemapCache.delete(key)}); // don't cache a failed render — retry next time
       return promise;
     }
     const forecastOverlayUrl=(item,size)=>forecastMapUrl(item.service,item.layer,size,true,forecastRefreshStamp);
@@ -704,12 +698,12 @@
         button.querySelector('.forecast-map-overlay').addEventListener('load',()=>button.classList.remove('unavailable'));
       });
       FORECAST_MAPS.forEach(loadForecastMetadata);
-      // All six cards share the identical base/label bbox, so one render (or
-      // one Esri fetch pair on fallback) fills every card, instead of six.
+      // All six cards share the identical base/label bbox, so one render
+      // fills every card, instead of six.
       forecastBasemapImages(size).then(({base,labels})=>{
-        el('forecast-map-credit').hidden=!base.startsWith('http');
-        gallery.querySelectorAll('.forecast-map-base').forEach(img=>img.src=base);
-        gallery.querySelectorAll('.forecast-map-labels').forEach(img=>img.src=labels);
+        el('forecast-map-basemap-note').hidden=!!base;
+        gallery.querySelectorAll('.forecast-map-base').forEach(img=>setImage(img,base));
+        gallery.querySelectorAll('.forecast-map-labels').forEach(img=>setImage(img,labels));
       });
     }
     function paintForecastMap(){
@@ -720,7 +714,7 @@
       el('forecast-map-source').href=item.service;
       el('forecast-map-stage').setAttribute('aria-label',`${item.title} for ${forecastAreaLabel()} from the NOAA/NWS Weather Prediction Center`);
       el('forecast-map-overlay').src=forecastOverlayUrl(item,size);
-      forecastBasemapImages(size).then(({base,labels})=>{el('forecast-map-dialog-credit').hidden=!base.startsWith('http');el('forecast-map-base').src=base;el('forecast-map-labels').src=labels});
+      forecastBasemapImages(size).then(({base,labels})=>{setImage(el('forecast-map-base'),base);setImage(el('forecast-map-labels'),labels)});
       const pinStyle=forecastMarkerStyle();
       el('forecast-map-pin').style.cssText=pinStyle;
       el('forecast-map-pin').hidden=!pinStyle;
