@@ -43,7 +43,7 @@ h3{font-size:1rem;margin:0}
 .hourly-time{font-size:.82rem;font-weight:700;white-space:nowrap}
 .hourly-icon{font-size:1.15rem;line-height:1;text-align:center}
 .hourly-summary{min-width:0;display:flex;align-items:baseline;gap:.35rem}
-.hourly-condition{min-width:0;flex:0 1 auto;font-size:.86rem;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hourly-condition{min-width:0;flex:0 1 auto;font-size:.86rem;font-weight:650;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow-wrap:anywhere}
 .hourly-summary-divider{flex:0 0 auto;color:var(--muted);font-size:.86rem;font-weight:400}
 .hourly-temp{flex:0 0 auto;font-size:.86rem;font-weight:650}
 .hourly-meta{grid-column:3;color:var(--muted);font-size:.73rem;margin-top:.14rem;white-space:normal}

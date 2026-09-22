@@ -53,6 +53,8 @@
     mountFooter();
     mountLocationSwitcher(()=>load());
     const hourText=(value,tz)=>new Intl.DateTimeFormat('en-US',{timeZone:tz,hour:'numeric',hour12:hour12()}).format(new Date(value));
+    // Shorten long NWS phrases so the condition fits beside the temperature on phones.
+    const shortCondition=text=>String(text||'').replace(/\bThunderstorms?\b/gi,m=>/s$/i.test(m)?'T-storms':'T-storm').replace(/\s+And\s+/gi,' & ');
     function renderHours(periods,tz,gusts,uvValues){
       const current=new Date(),groups=[];
       periods.forEach((period,sourceIndex)=>{
@@ -67,7 +69,7 @@
           const rain=period.probabilityOfPrecipitation?.value,sustained=maxWind(period.windSpeed),gust=gusts[sourceIndex],uv=uvValues[sourceIndex],start=new Date(period.startTime),end=new Date(period.endTime),isCurrent=current>=start&&current<end;
           const wind=sustained==null&&gust==null?null:`Wind/Gusts: ${sustained==null?'—':windValue(sustained)}/${gust==null?'—':windValue(gust)} ${windUnitLabel()}`,details=[rain==null?null:`Rain: ${Math.round(rain)}%`,wind,uv==null?null:`UV: ${Math.round(uv)}`].filter(Boolean).join(' · ');
           const progress=isCurrent?Math.max(0,Math.min(100,(current-start)/(end-start)*100)):0,tick=isCurrent?`<span class="hourly-current-tick" style="--hour-progress:${progress.toFixed(1)}%" aria-hidden="true"></span>`:'';
-          return `<article class="hourly-row">${tick}<time class="hourly-time" datetime="${esc(period.startTime)}">${esc(hourText(period.startTime,tz))}</time><span class="hourly-icon" aria-hidden="true">${emoji(period.shortForecast)}</span><span class="hourly-summary"><span class="hourly-condition">${esc(period.shortForecast)}</span><span class="hourly-summary-divider" aria-hidden="true">·</span><span class="hourly-temp">${esc(fmtTemp(period.temperature))}</span></span><span class="hourly-meta">${esc(details)}</span></article>`;
+          return `<article class="hourly-row">${tick}<time class="hourly-time" datetime="${esc(period.startTime)}">${esc(hourText(period.startTime,tz))}</time><span class="hourly-icon" aria-hidden="true">${emoji(period.shortForecast)}</span><span class="hourly-summary"><span class="hourly-condition" title="${esc(period.shortForecast)}">${esc(shortCondition(period.shortForecast))}</span><span class="hourly-summary-divider" aria-hidden="true">·</span><span class="hourly-temp">${esc(fmtTemp(period.temperature))}</span></span><span class="hourly-meta">${esc(details)}</span></article>`;
         }).join('');
         return `<section class="hourly-day" aria-labelledby="hourly-day-${groupIndex}"><h2 id="hourly-day-${groupIndex}">${day} · ${date}</h2><div class="hourly-list">${rows}</div></section>`;
       }).join('');

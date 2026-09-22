@@ -160,9 +160,12 @@
       const gridGust=gridValues(grid.properties.windGust,times,v=>grid.properties.windGust.uom?.includes('km_h')?kphToMph(v):Math.round(v));
       const nwsTemp=hours.map((hour,index)=>hour?.temperature??gridTemp[index]),nwsPop=hours.map((hour,index)=>hour?.probabilityOfPrecipitation?.value??gridPop[index]),nwsWind=hours.map((hour,index)=>hour?maxWind(hour.windSpeed):gridWind[index]);
       // Observations cover temperature and wind for the elapsed hours. There
-      // is no observed equivalent of a precipitation *probability*, so that
-      // chart just starts wherever NWS grid data begins.
-      const temp=mergeChartSeries(observedValues(observed,obsTemp,times),nwsTemp,times,now),pop=nwsPop,wind=mergeChartSeries(observedValues(observed,obsWind,times),nwsWind,times,now),gust=mergeChartSeries(observedValues(observed,obsGust,times),gridGust,times,now);
+      // is no observed equivalent of a precipitation *probability*, and NWS
+      // grid data often begins partway through today, so elapsed hours before
+      // the first forecast value hold that value to keep the line full-width.
+      const firstPop=nwsPop.findIndex(v=>v!=null);
+      const pop=nwsPop.map((v,i)=>v==null&&firstPop>i&&times[i]<now?nwsPop[firstPop]:v);
+      const temp=mergeChartSeries(observedValues(observed,obsTemp,times),nwsTemp,times,now),wind=mergeChartSeries(observedValues(observed,obsWind,times),nwsWind,times,now),gust=mergeChartSeries(observedValues(observed,obsGust,times),gridGust,times,now);
       const timeTicks=Array.from({length:9},(_,n)=>{const i=n*6;return{i,label:i===0?'Today':i===24?'Tom':i===48?new Intl.DateTimeFormat('en-US',{timeZone:tz,weekday:'short'}).format(times[i]):hourLabel(times[i],tz),day:i%24===0}});
       chartData={temp,pop,wind,gust,timeTicks,windowStart,tz,spanHours:48};
       el('updated').textContent=`Updated ${local(now,tz)}`;el('updated').classList.remove('hidden');
