@@ -254,6 +254,11 @@ window.WX = (function(){
   }
   function humidityForDate(grid,dateKey,tz){const values=grid.properties?.relativeHumidity?.values||[];const vals=values.filter(row=>dayKey(tz,row.validTime.split('/')[0])===dateKey).map(r=>r.value).filter(v=>v!=null);if(!vals.length)return null;return Math.round(vals.reduce((a,b)=>a+b,0)/vals.length)}
   function gustForDate(grid,dateKey,tz){const field=grid.properties?.windGust;const values=field?.values||[];const kph=field?.uom?.includes('km_h');const vals=values.filter(row=>dayKey(tz,row.validTime.split('/')[0])===dateKey).map(r=>r.value).filter(v=>v!=null);if(!vals.length)return null;const max=Math.max(...vals);return Math.round(kph?max*.621371:max)}
+  // Gridpoint fallback for Rain %, matching the H/L pattern below: once
+  // today's daytime period has passed, NWS stops returning it (and the
+  // period-based probabilityOfPrecipitation with it), so the chip would
+  // otherwise vanish from today's card for the rest of the day.
+  function popForDate(grid,dateKey,tz){const values=grid.properties?.probabilityOfPrecipitation?.values||[];const vals=values.filter(row=>dayKey(tz,row.validTime.split('/')[0])===dateKey).map(r=>r.value).filter(v=>v!=null);return vals.length?Math.round(Math.max(...vals)):null}
   // NWS's gridpoint maxTemperature/minTemperature cover the full calendar day
   // regardless of the current time, unlike the text forecast's day/night
   // periods (which disappear once that period ends). Standard practice —
@@ -294,19 +299,19 @@ window.WX = (function(){
     });
     const todayKey=dayKey(tz,new Date());
     const startIdx=Math.max(0,order.indexOf(todayKey));
-    return order.slice(startIdx,startIdx+7).map(key=>({...byKey[key],uv:uvForDate(key,lat),humidity:humidityForDate(grid,key,tz),gust:gustForDate(grid,key,tz),hi:maxTempForDate(grid,key,tz),lo:minTempForDate(grid,key,tz),extraMetrics:extraDayMetrics(grid,key,tz)}));
+    return order.slice(startIdx,startIdx+7).map(key=>({...byKey[key],uv:uvForDate(key,lat),humidity:humidityForDate(grid,key,tz),gust:gustForDate(grid,key,tz),pop:popForDate(grid,key,tz),hi:maxTempForDate(grid,key,tz),lo:minTempForDate(grid,key,tz),extraMetrics:extraDayMetrics(grid,key,tz)}));
   }
   function windAvg(windSpeed){
     const nums=(String(windSpeed).match(/\d+/g)||[]).map(Number);
     if(!nums.length)return null;
     return Math.round(nums.reduce((a,b)=>a+b,0)/nums.length);
   }
-  function dayMetrics(d,n,uv,humidity,gridGust,gridHi,gridLo){
+  function dayMetrics(d,n,uv,humidity,gridGust,gridHi,gridLo,gridPop){
     const b=d||n;
     const gusts=[d,n].filter(Boolean).map(p=>gustFrom(p.detailedForecast)).filter(v=>v!=null);
     const textGust=gusts.length?Math.max(...gusts):null;
     const gust=gridGust??textGust;
-    const pop=d?.probabilityOfPrecipitation?.value;
+    const pop=d?.probabilityOfPrecipitation?.value??gridPop;
     const wind=windAvg(b.windSpeed);
     // Once today's daytime period has already passed, NWS stops returning it
     // entirely (its periods only run forward from now). Fall back to the
@@ -436,7 +441,7 @@ window.WX = (function(){
       const date=r.date.toLocaleDateString('en-US',{month:'short',day:'numeric',timeZone:tz});
       const day=index===0?'Tomorrow':r.date.toLocaleDateString('en-US',{weekday:'long',timeZone:tz});
       const title=`${emoji(b.shortForecast)} ${day} · ${date}`;
-      const metrics=metricsHTML([...dayMetrics(d,n,r.uv,r.humidity,r.gust,r.hi,r.lo).slice(1),...sunMetrics(r.date,loc?.lat,loc?.lon,tz),...(r.extraMetrics||[])]);
+      const metrics=metricsHTML([...dayMetrics(d,n,r.uv,r.humidity,r.gust,r.hi,r.lo,r.pop).slice(1),...sunMetrics(r.date,loc?.lat,loc?.lon,tz),...(r.extraMetrics||[])]);
       return renderFutureCardHTML(title,d,n,metrics,r.hi,r.lo);
     }).join('');
   }
@@ -445,7 +450,7 @@ window.WX = (function(){
   // Alerts section, fetched and rendered by this one function.
   async function loadTodayCard(container,title,loc,point,officeId,todayPeriods,grid,tz){
     const todayKey=dayKey(tz,new Date());
-    const metrics=metricsHTML([...dayMetrics(todayPeriods.day,todayPeriods.night,uvForDate(todayKey,loc.lat),humidityForDate(grid,todayKey,tz),gustForDate(grid,todayKey,tz),maxTempForDate(grid,todayKey,tz),minTempForDate(grid,todayKey,tz)),...sunMetrics(new Date(),loc.lat,loc.lon,tz),...extraDayMetrics(grid,todayKey,tz)]);
+    const metrics=metricsHTML([...dayMetrics(todayPeriods.day,todayPeriods.night,uvForDate(todayKey,loc.lat),humidityForDate(grid,todayKey,tz),gustForDate(grid,todayKey,tz),maxTempForDate(grid,todayKey,tz),minTempForDate(grid,todayKey,tz),popForDate(grid,todayKey,tz)),...sunMetrics(new Date(),loc.lat,loc.lon,tz),...extraDayMetrics(grid,todayKey,tz)]);
     const current=await currentObservation(point).catch(()=>null);
     const currentText=current?currentHeadline(current.observation):null;
     const brief=todayBrief(currentText,todayPeriods.day,todayPeriods.night,new Date(),tz);
@@ -880,7 +885,7 @@ window.WX = (function(){
 
   return {API,DEFAULT_LOC,DEFAULT_TIME_ZONE,el,esc,getSavedLocation,saveLocation,getTimeZone,setTimeZone,timeZoneLabel,timeZoneOptionsHTML,geolocate,geocodeSearch,resolveLocation,resolvePoint,json,
     emoji,local,maxWind,gustFrom,durationMs,gridValues,kphToMph,cToF,product,
-    currentObservation,currentHeadline,alertLine,dayKey,startOfDay,hourLabel,dayPartLabel,dayRows,uvForDate,humidityForDate,gustForDate,maxTempForDate,minTempForDate,extraDayMetrics,dayMetrics,metricsHTML,
+    currentObservation,currentHeadline,alertLine,dayKey,startOfDay,hourLabel,dayPartLabel,dayRows,uvForDate,humidityForDate,gustForDate,popForDate,maxTempForDate,minTempForDate,extraDayMetrics,dayMetrics,metricsHTML,
     todayBrief,futureBrief,renderFutureCardHTML,loadTodayCard,sunMetrics,hourlyUVEstimate,
     findTodayPeriods,renderDaysHTML,mountHeader,mountFooter,mountPullToRefresh,getTheme,setTheme,getThemeChoice,recolorStyleDark,minimalRadarStyle};
 })();

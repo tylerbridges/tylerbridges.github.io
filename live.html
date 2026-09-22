@@ -44,7 +44,7 @@
   <script>
   (()=>{
     const {el,resolveLocation,resolvePoint,json,emoji,local,maxWind,gridValues,kphToMph,cToF,
-      dayKey,startOfDay,hourLabel,dayRows,uvForDate,humidityForDate,gustForDate,extraDayMetrics,dayMetrics,metricsHTML,sunMetrics,
+      dayKey,startOfDay,hourLabel,dayRows,uvForDate,humidityForDate,gustForDate,popForDate,extraDayMetrics,dayMetrics,metricsHTML,sunMetrics,
       findTodayPeriods,renderFutureCardHTML,loadTodayCard,mountHeader,mountFooter,mountPullToRefresh,DEFAULT_LOC}=WX;
     let chartData=null,currentLoc=null;
     const header=mountHeader('today',()=>load());
@@ -112,7 +112,7 @@
       if(tomorrow){
         const tomorrowTitle=`${emoji((tomorrow.day||tomorrow.night).shortForecast)} Tomorrow · ${tomorrow.date.toLocaleDateString('en-US',{timeZone:tz,month:'short',day:'numeric'})}`;
         const tomorrowKey=dayKey(tz,tomorrow.date);
-        const tomorrowMetrics=metricsHTML([...dayMetrics(tomorrow.day,tomorrow.night,uvForDate(tomorrowKey,loc.lat),humidityForDate(grid,tomorrowKey,tz),gustForDate(grid,tomorrowKey,tz),tomorrow.hi,tomorrow.lo).slice(1),...sunMetrics(tomorrow.date,loc.lat,loc.lon,tz),...extraDayMetrics(grid,tomorrowKey,tz)]);
+        const tomorrowMetrics=metricsHTML([...dayMetrics(tomorrow.day,tomorrow.night,uvForDate(tomorrowKey,loc.lat),humidityForDate(grid,tomorrowKey,tz),gustForDate(grid,tomorrowKey,tz),tomorrow.hi,tomorrow.lo,popForDate(grid,tomorrowKey,tz)).slice(1),...sunMetrics(tomorrow.date,loc.lat,loc.lon,tz),...extraDayMetrics(grid,tomorrowKey,tz)]);
         el('tomorrow-card').innerHTML=renderFutureCardHTML(tomorrowTitle,tomorrow.day,tomorrow.night,tomorrowMetrics,tomorrow.hi,tomorrow.lo);
       }else{el('tomorrow-card').innerHTML=renderFutureCardHTML('Tomorrow',null,null,'')}
       const gridTemp=gridValues(grid.properties.temperature,times,v=>grid.properties.temperature.uom?.includes('degC')?cToF(v):Math.round(v));
