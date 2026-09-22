@@ -416,7 +416,7 @@ window.WX = (function(){
     const day=d&&!nearingEvening?`${d.shortForecast} with a high near ${d.temperature}°`:'';
     const night=n?`${day?', becoming':'Becoming'} ${n.shortForecast.toLowerCase()} tonight with a low near ${n.temperature}°`:'';
     const later=day||night?`${day}${night}.`:'';
-    return {now:`${now}.`,later};
+    return {now,later};
   }
   function futureBrief(d,n){
     // "the evening", not "tonight" — these cards are never today, and
