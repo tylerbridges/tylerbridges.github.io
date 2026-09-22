@@ -276,7 +276,12 @@
       return {version:8,sources:{esri:{type:'raster',tiles:[`https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/${base}/MapServer/tile/{z}/{y}/{x}`],tileSize:256,maxzoom:16,attribution:'Powered by <a href="https://www.esri.com" target="_blank" rel="noreferrer">Esri</a>'},'esri-reference':{type:'raster',tiles:[`https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/${reference}/MapServer/tile/{z}/{y}/{x}`],tileSize:256,maxzoom:16}},layers:[{id:'bg',type:'background',paint:{'background-color':dark?'#0a0a0a':'#eef4fa'}},{id:'esri',type:'raster',source:'esri'},{id:'esri-reference',type:'raster',source:'esri-reference'}]};
     };
 
-    const DEFAULT_ZOOM=7.2,MAP_MAX_ZOOM=16;
+    const DEFAULT_ZOOM=7.2,MAP_MAX_ZOOM=16,MIN_ZOOM=3,ZOOM_KEY='radar-zoom';
+    // Remembers how zoomed-in the person likes the radar, the same way
+    // SPEED_KEY below remembers playback speed. Only the zoom level persists
+    // — not a pixel-shifted pan — so the map still centers on whichever
+    // location is current rather than reopening at some unrelated old spot.
+    let savedZoom=(()=>{try{const v=parseFloat(localStorage.getItem(ZOOM_KEY));return v>=MIN_ZOOM&&v<=MAP_MAX_ZOOM?v:null}catch{return null}})();
     let map=null,marker=null,frames=[],pastCount=0,idx=0,playing=false,timer=null;
     let loading=false,onLatest=true,styleReady=false,usingFallback=false,changingTheme=false,vectorStyleTemplate=null;
     const NOAA_MAP_ROOT='https://mapservices.weather.noaa.gov';
@@ -409,7 +414,7 @@
       try{initialStyle=await radarStyle()}
       catch{usingFallback=true;initialStyle=radarFallbackStyle()}
       map=new maplibregl.Map({
-        container:'map',style:initialStyle,center:[latlng[1],latlng[0]],zoom:DEFAULT_ZOOM,
+        container:'map',style:initialStyle,center:[latlng[1],latlng[0]],zoom:savedZoom??DEFAULT_ZOOM,
         // The default attribution control is off so a configured compact one
         // can be added below instead; it is not that the map goes uncredited.
         attributionControl:false,dragRotate:false,pitchWithRotate:false,
@@ -425,7 +430,7 @@
         // finger should drag/zoom the radar itself once it's on the map, while
         // the page around it keeps scrolling normally under one finger too —
         // the map only ever owns touches that start within its own bounds.
-        minZoom:3,maxZoom:MAP_MAX_ZOOM,cooperativeGestures:false,
+        minZoom:MIN_ZOOM,maxZoom:MAP_MAX_ZOOM,cooperativeGestures:false,
         // Bound how many off-screen tiles MapLibre keeps warm; the radar map
         // is small and short-lived, so a large cache only costs memory.
         maxTileCacheSize:24,refreshExpiredTiles:false
@@ -453,6 +458,7 @@
       map.on('styledata',collapseAttribution);
       map.on('idle',collapseAttribution);
       map.touchZoomRotate.disableRotation();
+      map.on('zoomend',()=>{savedZoom=map.getZoom();try{localStorage.setItem(ZOOM_KEY,savedZoom)}catch{}});
       map.on('style.load',onStyleReady);
       // If the vector style can't be reached, fall back to raster rather than
       // leaving a black rectangle.

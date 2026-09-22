@@ -56,7 +56,7 @@
     const {el,resolveLocation,resolvePoint,json,observationHistory,emoji,local,maxWind,gridValues,kphToMph,cToF,
       dayKey,startOfDay,hourLabel,dayRows,uvForDate,humidityForDate,gustForDate,popForDate,extraDayMetrics,dayMetrics,metricsHTML,sunMetrics,
       findTodayPeriods,renderFutureCardHTML,loadTodayCard,mountHeader,mountFooter,mountPullToRefresh,mountLocationSwitcher,DEFAULT_LOC,
-      tempValue,windValue,tempUnitLabel,windUnitLabel,hour12}=WX;
+      tempValue,windValue,tempUnitLabel,windUnitLabel,hour12,scheduleAutoRefresh}=WX;
     let chartData=null,currentLoc=null;
     const header=mountHeader('today',()=>load());
     mountFooter();
@@ -179,7 +179,7 @@
     // units until the next manual reload — showing °F and °C at once.
     document.addEventListener('unitschange',()=>load());
     window.addEventListener('focus',autoRefresh);
-    setInterval(()=>{if(document.visibilityState==='visible')load()},10*60000);
+    scheduleAutoRefresh(()=>{if(document.visibilityState==='visible')load()});
     setInterval(()=>{if(document.visibilityState==='visible')redraw()},60000);
     mountPullToRefresh(load);
     let chartWidth=0;new ResizeObserver(entries=>{const width=entries[0].contentRect.width;if(width>0&&width!==chartWidth){chartWidth=width;requestAnimationFrame(redraw)}}).observe(document.querySelector('.charts'));window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',redraw);if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});load();

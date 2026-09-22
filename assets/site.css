@@ -118,11 +118,15 @@ hr{border:0;border-top:1px solid var(--line);margin:.85rem 0}
 .hamburger-btn{margin-left:calc(-1 * max(1rem,env(safe-area-inset-left)))}
 .nav-scrim{position:fixed;top:0;left:0;right:0;bottom:0;z-index:29;background:rgba(0,0,0,.45);opacity:0;pointer-events:none;transition:opacity .18s ease-out}
 .nav-scrim.open{opacity:1;pointer-events:auto}
-.nav-drawer{position:fixed;top:0;left:0;bottom:0;z-index:30;width:min(78vw,270px);display:flex;flex-direction:column;gap:.15rem;background:var(--surface);border-right:1px solid var(--line);box-shadow:var(--shadow);padding:1rem 1rem calc(env(safe-area-inset-bottom) + 1rem) max(1rem,env(safe-area-inset-left));transform:translateX(-100%);visibility:hidden;transition:transform .2s ease-out,visibility 0s linear .2s}
+.nav-drawer{position:fixed;top:0;left:0;bottom:0;z-index:30;width:min(78vw,270px);display:flex;flex-direction:column;gap:.15rem;overflow-y:auto;background:var(--surface);border-right:1px solid var(--line);box-shadow:var(--shadow);padding:1rem 1rem calc(env(safe-area-inset-bottom) + 1rem) max(1rem,env(safe-area-inset-left));transform:translateX(-100%);visibility:hidden;transition:transform .2s ease-out,visibility 0s linear .2s}
 .nav-drawer.open{transform:translateX(0);visibility:visible;transition:transform .2s ease-out,visibility 0s}
 .nav-drawer a{padding:.75rem .65rem;border-radius:10px;color:var(--text);font-weight:650;font-size:.95rem;text-decoration:none}
 .nav-drawer a:hover,.nav-drawer a:focus-visible{background:var(--surface-2);outline:0}
 .nav-drawer-bottom{margin-top:auto}
+.drawer-section{padding:.4rem .65rem .65rem;border-bottom:1px solid var(--line)}
+.drawer-heading{margin:0 0 .5rem;font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.drawer-section .choice-group+.choice-group{margin-top:.5rem}
+.drawer-section .location-switcher-list{border:1px solid var(--line);border-radius:12px;overflow:hidden}
 .nav-subpage{position:fixed;inset:0;width:100%;max-width:none;height:100dvh;max-height:none;margin:0;padding:0;border:0;background:var(--bg);color:var(--text);opacity:0;transform:translateX(100%);transition:opacity .18s ease-out,transform .2s ease-out}
 .nav-subpage.open{opacity:1;transform:translateX(0)}
 .nav-subpage::backdrop{background:rgba(0,0,0,.45)}

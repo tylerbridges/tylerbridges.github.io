@@ -71,6 +71,33 @@
           <button class="choice-btn" type="button" data-choice="24">24-hour</button>
         </div>
       </article>
+      <article class="brief">
+        <h3>Auto-refresh</h3>
+        <p>How often forecast pages refresh in the background while open.</p>
+        <label class="sr-only" for="refresh-interval-choice">Auto-refresh interval</label>
+        <select class="setting-select" id="refresh-interval-choice">
+          <option value="0">Off</option>
+          <option value="5">Every 5 minutes</option>
+          <option value="10">Every 10 minutes</option>
+          <option value="30">Every 30 minutes</option>
+        </select>
+      </article>
+      <article class="brief">
+        <h3>Feels Like</h3>
+        <p>Show or hide the "Feels Like" temperature metric.</p>
+        <div class="choice-group" role="group" aria-label="Feels Like visibility" id="feels-like-choice-group">
+          <button class="choice-btn" type="button" data-choice="show">Show</button>
+          <button class="choice-btn" type="button" data-choice="hide">Hide</button>
+        </div>
+      </article>
+      <article class="brief">
+        <h3>Default location</h3>
+        <p>What the site opens to: wherever you last left it, or always your favorite saved location.</p>
+        <div class="choice-group" role="group" aria-label="Default location" id="startup-mode-choice-group">
+          <button class="choice-btn" type="button" data-choice="last">Remember last</button>
+          <button class="choice-btn" type="button" data-choice="favorite">Always favorite</button>
+        </div>
+      </article>
     </div>
     <footer class="site-footer" id="site-footer"></footer>
   </main>
@@ -85,7 +112,9 @@
       {id:'theme-choice-group',get:WX.getThemeChoice,set:WX.setTheme},
       {id:'temp-unit-choice-group',get:WX.getTempUnit,set:WX.setTempUnit},
       {id:'wind-unit-choice-group',get:WX.getWindUnit,set:WX.setWindUnit},
-      {id:'hour-format-choice-group',get:WX.getHourFormat,set:WX.setHourFormat}
+      {id:'hour-format-choice-group',get:WX.getHourFormat,set:WX.setHourFormat},
+      {id:'feels-like-choice-group',get:()=>WX.getShowFeelsLike()?'show':'hide',set:v=>WX.setShowFeelsLike(v==='show')},
+      {id:'startup-mode-choice-group',get:WX.getStartupMode,set:WX.setStartupMode}
     ];
     function paintChoices(){
       CHOICE_GROUPS.forEach(({id,get})=>{
@@ -111,6 +140,11 @@
     }
     paintTimeZone();
     document.getElementById('time-zone-choice').addEventListener('change',e=>WX.setTimeZone(e.target.value));
+    function paintRefreshInterval(){
+      document.getElementById('refresh-interval-choice').value=String(WX.getRefreshInterval());
+    }
+    paintRefreshInterval();
+    document.getElementById('refresh-interval-choice').addEventListener('change',e=>WX.setRefreshInterval(parseInt(e.target.value,10)));
     if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
   </script>
 </body>
