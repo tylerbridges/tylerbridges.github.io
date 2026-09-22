@@ -64,6 +64,8 @@ h3{font-size:1rem;margin:0}
 .credit-list{display:grid;gap:.8rem}
 .credit-list h3{color:var(--blue);font-size:1.05rem}
 .credit-list p{margin:.4rem 0 0;color:var(--muted);font-size:.9rem}
+.credit-list ul{margin:.4rem 0 0;padding-left:1.15rem;color:var(--muted);font-size:.9rem}
+.credit-list li{margin:.2rem 0}
 .credit-list a{color:var(--blue)}
 .choice-group{display:flex;gap:.5rem;margin-top:.6rem}
 .choice-btn{flex:1;padding:.6rem;border-radius:10px;border:1px solid var(--line);background:var(--surface-2);color:var(--text);font-weight:650;font-size:.85rem;transition:background-color .15s ease-out,border-color .15s ease-out,color .15s ease-out}
