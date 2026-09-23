@@ -156,16 +156,16 @@ window.WX = (function(){
   function photonPosition(feature){const[lon,lat]=feature.geometry.coordinates;return {lat:+(+lat).toFixed(4),lon:+(+lon).toFixed(4)}}
   async function geocodeSearch(query){const features=await geocodePhoton(query,10);if(!features.length)throw new Error('Location not found.');return photonPosition(features[0])}
   const US_STATE_ABBR={Alabama:'AL',Alaska:'AK',Arizona:'AZ',Arkansas:'AR',California:'CA',Colorado:'CO',Connecticut:'CT',Delaware:'DE',Florida:'FL',Georgia:'GA',Hawaii:'HI',Idaho:'ID',Illinois:'IL',Indiana:'IN',Iowa:'IA',Kansas:'KS',Kentucky:'KY',Louisiana:'LA',Maine:'ME',Maryland:'MD',Massachusetts:'MA',Michigan:'MI',Minnesota:'MN',Mississippi:'MS',Missouri:'MO',Montana:'MT',Nebraska:'NE',Nevada:'NV','New Hampshire':'NH','New Jersey':'NJ','New Mexico':'NM','New York':'NY','North Carolina':'NC','North Dakota':'ND',Ohio:'OH',Oklahoma:'OK',Oregon:'OR',Pennsylvania:'PA','Rhode Island':'RI','South Carolina':'SC','South Dakota':'SD',Tennessee:'TN',Texas:'TX',Utah:'UT',Vermont:'VT',Virginia:'VA',Washington:'WA','West Virginia':'WV',Wisconsin:'WI',Wyoming:'WY','District of Columbia':'DC','Puerto Rico':'PR',Guam:'GU','American Samoa':'AS','U.S. Virgin Islands':'VI','Northern Mariana Islands':'MP'};
-  // Photon returns a town or village as the place itself (osm_key "place",
-  // or type "city"/"district"/"locality"): its own name is the answer, and
-  // it has no separate `city` field. Only things *inside* a place (streets,
-  // buildings, ZIP areas) carry `city`. Falling back to `county` for the
-  // former is what labelled Ellenboro, NC as "Rutherford, NC".
+  // A result's own name is the place, except for things *inside* a place —
+  // streets, addresses, businesses (Photon type "street"/"house") and ZIP
+  // areas — where the containing city is the useful label. Never falls back
+  // to the county: that is what labelled Ellenboro, NC as "Rutherford, NC".
   const isPostcode=p=>p.osm_value==='postcode'||p.type==='postcode';
-  const isSettlement=p=>!isPostcode(p)&&(p.osm_key==='place'||['city','district','locality'].includes(p.type));
+  const isInsidePlace=p=>p.type==='street'||p.type==='house'||!!p.housenumber||['highway','building','amenity','shop','tourism','leisure','office'].includes(p.osm_key);
+  const isSettlement=p=>!isPostcode(p)&&!isInsidePlace(p)&&p.type!=='county'&&p.type!=='state'&&p.osm_value!=='county';
   function normalizedLabel(feature){
     const p=feature.properties||{};
-    const place=isSettlement(p)?p.name:p.city||p.name||p.county;
+    const place=isSettlement(p)||!(p.city||p.district)?p.name:p.city||p.district;
     const state=US_STATE_ABBR[p.state]||p.state;
     return place&&state?`${place}, ${state}`:[place,p.state].filter(Boolean).join(', ');
   }
