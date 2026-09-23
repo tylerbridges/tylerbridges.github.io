@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'sha256-iaGyl+MesImCrVNj4kQ20S4RvzBpRSK0LS5TGRYQTug=' 'sha256-Z1GjEtaIyKOLNCouvX7WwiH+FmTQVTUOOvWIYpiv12s='; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob: https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org; connect-src 'self' https://api.weather.gov https://photon.komoot.io https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org; worker-src 'self' blob:; child-src 'self' blob:; font-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'sha256-iaGyl+MesImCrVNj4kQ20S4RvzBpRSK0LS5TGRYQTug=' 'sha256-emup0SrN1X8+JVv+botApD/JxPd/x9oYyv+WHz7OGj0='; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob: https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org; connect-src 'self' https://api.weather.gov https://photon.komoot.io https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org; worker-src 'self' blob:; child-src 'self' blob:; font-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
   <script>try{var t=localStorage.getItem('weather-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);else if(t!=='system')document.documentElement.setAttribute('data-theme','dark')}catch{}</script>
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -43,6 +43,7 @@
     <div id="loading" class="loading" role="status" aria-live="polite">Refreshing from weather.gov…</div>
     <div id="error" class="error hidden" role="alert"></div>
     <div id="content" class="hidden">
+      <section class="glance hidden" id="glance" aria-label="At a glance"></section>
       <section class="briefs" aria-label="Forecast highlights">
         <div id="today-card"></div>
         <div id="tomorrow-card"></div>
@@ -58,7 +59,7 @@
     const {el,resolveLocation,resolvePoint,json,observationHistory,emoji,local,maxWind,gridValues,kphToMph,cToF,
       dayKey,startOfDay,hourLabel,dayRows,uvForDate,humidityForDate,gustForDate,popForDate,extraDayMetrics,dayMetrics,metricsHTML,sunMetrics,
       findTodayPeriods,renderFutureCardHTML,loadTodayCard,mountHeader,mountFooter,mountPullToRefresh,mountLocationSwitcher,DEFAULT_LOC,
-      tempValue,windValue,tempUnitLabel,windUnitLabel,hour12,scheduleAutoRefresh,mountStatus,CACHE_TTL}=WX;
+      tempValue,windValue,tempUnitLabel,windUnitLabel,hour12,scheduleAutoRefresh,mountStatus,CACHE_TTL,renderGlance}=WX;
     let chartData=null,currentLoc=null;
     const header=mountHeader('today',()=>load());
     mountFooter();
@@ -150,6 +151,7 @@
       const today=findTodayPeriods(forecast.properties.periods,tz);
       const todayTitle=`${emoji((today.day||today.night).shortForecast)} Today · ${now.toLocaleDateString('en-US',{timeZone:tz,month:'short',day:'numeric'})}`;
       await loadTodayCard(el('today-card'),todayTitle,loc,point,officeId,today,grid,tz);
+      renderGlance(el('glance'),{hourly:hourlyPeriods,rows,loc,tz,gridKey:point.properties.forecast});
       const tomorrow=rows[1];
       if(tomorrow){
         const tomorrowTitle=`${emoji((tomorrow.day||tomorrow.night).shortForecast)} Tomorrow · ${tomorrow.date.toLocaleDateString('en-US',{timeZone:tz,month:'short',day:'numeric'})}`;

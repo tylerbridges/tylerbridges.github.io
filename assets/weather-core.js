@@ -645,27 +645,47 @@ window.WX = (function(){
     if(dayMax==null)return null;
     return Math.max(0,Math.round(dayMax*Math.sin((date-sunrise)/(sunset-sunrise)*Math.PI)));
   }
+  // NWS short forecasts are terse Title Case fragments ("Chance Showers And
+  // Thunderstorms then Showers And Thunderstorms Likely"). Rewrites them as
+  // plain phrases: "showers and thunderstorms possible, then likely",
+  // "a slight chance of rain", "patchy fog, then mostly sunny".
+  function naturalForecast(text){
+    const parts=String(text||'').trim().toLowerCase().split(/\s+then\s+/).filter(Boolean).map(part=>{
+      let m=part.match(/^(slight )?chance(?: of)? (.+)$/);
+      if(m)return {what:m[2],level:m[1]?'slight':'possible'};
+      m=part.match(/^(.+?) likely$/);
+      if(m)return {what:m[1],level:'likely'};
+      return {what:part,level:null};
+    });
+    if(!parts.length)return '';
+    // Same weather, rising odds: say it once ("… possible, then likely").
+    if(parts.length>1&&parts.every(p=>p.what===parts[0].what&&(p.level==='possible'||p.level==='likely')))
+      return `${parts[0].what} ${parts.map(p=>p.level).join(', then ')}`;
+    return parts.map(p=>p.level==='slight'?`a slight chance of ${p.what}`:p.level==='possible'?`a chance of ${p.what}`:p.level==='likely'?`${p.what} likely`:p.what).join(', then ');
+  }
+  const capitalize=text=>text?text[0].toUpperCase()+text.slice(1):text;
+  // "Mostly sunny with a high near 65°F" / "…, then likely, with a high near
+  // 63°F" — the comma keeps a multi-part phrase from running into the number.
+  function withTemp(phrase,kind,temp){return `${phrase}${phrase.includes(',')?',':''} with a ${kind} near ${fmtTemp(temp)}`}
   // Always keep the live observation in today's bold first line. Earlier in
-  // the day, use the italic line for today's full forecast arc; in the final
-  // two hours of the daytime period, trim that line to the transition into
-  // tonight because the daytime high and broad daytime forecast are stale.
+  // the day, the italic line covers the rest of today and tonight; in the
+  // final two hours of the daytime period it covers only tonight, because
+  // the daytime high and broad daytime forecast are stale by then.
   function todayBrief(current,d,n,at=new Date(),tz=getTimeZone()){
     const end=d?.endTime?new Date(d.endTime).getTime():NaN;
     const localHour=+new Intl.DateTimeFormat('en-US',{timeZone:tz,hour:'numeric',hour12:false}).format(at)%24;
     const nearingEvening=Number.isFinite(end)?at.getTime()>=end-2*3600000:localHour>=16;
-    const now=current||(d?`${d.shortForecast} with a high near ${fmtTemp(d.temperature)}`:'Conditions unavailable');
-    const day=d&&!nearingEvening?`${d.shortForecast} with a high near ${fmtTemp(d.temperature)}`:'';
-    const night=n?`${day?', becoming':'Becoming'} ${n.shortForecast.toLowerCase()} tonight with a low near ${fmtTemp(n.temperature)}`:'';
-    const later=day||night?`${day}${night}.`:'';
-    return {now,later};
+    const now=current||(d?capitalize(withTemp(naturalForecast(d.shortForecast),'high',d.temperature)):'Conditions unavailable');
+    const day=d&&!nearingEvening?`${capitalize(withTemp(naturalForecast(d.shortForecast),'high',d.temperature))}.`:'';
+    const night=n?`Tonight, ${withTemp(naturalForecast(n.shortForecast),'low',n.temperature)}.`:'';
+    return {now,later:[day,night].filter(Boolean).join(' ')};
   }
   function futureBrief(d,n){
-    // "the evening", not "tonight" — these cards are never today, and
-    // "tonight" specifically reads as "later today" to a reader.
-    const hi=d?`${d.shortForecast} with a high near ${fmtTemp(d.temperature)}`:null;
-    const lo=n?`${hi?`becoming ${n.shortForecast.toLowerCase()} in the evening`:n.shortForecast} with a low near ${fmtTemp(n.temperature)}`:null;
-    if(hi&&lo)return `${hi}, ${lo}.`;
-    return `${hi||lo||'Forecast unavailable'}.`;
+    // "Overnight", not "tonight" — these cards are never today, and
+    // "tonight" specifically reads as "later today".
+    const day=d?`${capitalize(withTemp(naturalForecast(d.shortForecast),'high',d.temperature))}.`:'';
+    const night=n?`${day?'Overnight, ':''}${day?withTemp(naturalForecast(n.shortForecast),'low',n.temperature):capitalize(withTemp(naturalForecast(n.shortForecast),'low',n.temperature))}.`:'';
+    return [day,night].filter(Boolean).join(' ')||'Forecast unavailable.';
   }
   function futureHeadline(d,n,gridHi=null,gridLo=null){
     const condition=(d||n)?.shortForecast||'Conditions unavailable';
@@ -714,6 +734,201 @@ window.WX = (function(){
       if(!hwo||!afd)extra+='<p class="note">Some regional hazard guidance could not be refreshed.</p>';
       if(extra){const slot=container.querySelector('#alerts');if(slot)slot.innerHTML+=extra}
     }
+  }
+
+  // ---- At a glance (Today page) ------------------------------------------
+  // A short list of answers rather than more data: will it rain and when,
+  // when is it nicest to be outside, is there a severe-storm risk, and what
+  // changed since you last looked. Each line only appears when it has
+  // something to say, so a quiet day stays a short list.
+  const popOf=p=>p?.probabilityOfPrecipitation?.value??0;
+  const hourText=(date,tz)=>new Intl.DateTimeFormat('en-US',{timeZone:tz,hour:'numeric',hour12:hour12()}).format(date);
+  function dayName(date,tz){
+    const key=dayKey(tz,date),today=dayKey(tz,new Date()),tomorrow=dayKey(tz,new Date(Date.now()+864e5));
+    return key===today?'today':key===tomorrow?'tomorrow':new Intl.DateTimeFormat('en-US',{timeZone:tz,weekday:'long'}).format(date);
+  }
+  const localHour=(date,tz)=>+new Intl.DateTimeFormat('en-US',{timeZone:tz,hour:'numeric',hour12:false}).format(date)%24;
+  // "around 8 PM", "tomorrow around 9 AM"; midnight belongs to the evening
+  // before ("until around midnight", not "until tomorrow around 12 AM").
+  function whenText(date,tz){
+    const h=localHour(date,tz),atMidnight=h===0,labelDate=atMidnight?new Date(date.getTime()-3600000):date;
+    const day=dayName(labelDate,tz),time=atMidnight&&hour12()?'midnight':h===12&&hour12()?'noon':hourText(date,tz);
+    return `${day==='today'?'':`${day} `}around ${time}`;
+  }
+  // "2–4 PM" rather than "2 PM–4 PM" when both ends share AM/PM.
+  function hourRange(a,b,tz){
+    const start=hourText(a,tz),end=hourText(b,tz),m1=start.match(/^(\d+) ([AP]M)$/),m2=end.match(/^(\d+) ([AP]M)$/);
+    return m1&&m2&&m1[2]===m2[2]?`${m1[1]}–${end}`:`${start}–${end}`;
+  }
+  function precipKind(text){const t=String(text).toLowerCase();return /snow|flurr|blizzard/.test(t)?'snow':/sleet|freezing|ice/.test(t)?'wintry mix':/thunder/.test(t)?'storms':'rain'}
+  function nextPrecip(hourly,tz){
+    const now=Date.now(),hours=(hourly||[]).filter(p=>Date.parse(p.endTime)>now).slice(0,24);
+    if(!hours.length)return null;
+    const kind=p=>precipKind(p.shortForecast),icon=k=>k==='snow'?'❄️':k==='storms'?'⛈️':'🌧️';
+    if(popOf(hours[0])>=50){
+      const k=kind(hours[0]),end=hours.findIndex(p=>popOf(p)<30);
+      return {icon:icon(k),text:end<0?`${capitalize(k)} likely through the next 24 hours`:`${capitalize(k)} likely until ${whenText(new Date(hours[end].startTime),tz)}`};
+    }
+    const likely=hours.findIndex(p=>popOf(p)>=50);
+    if(likely>=0){const p=hours[likely],k=kind(p);return {icon:icon(k),text:`${capitalize(k)} likely from ${whenText(new Date(p.startTime),tz)} (${popOf(p)}%)`}}
+    const chance=hours.findIndex(p=>popOf(p)>=30);
+    if(chance>=0){const p=hours[chance],k=kind(p);return {icon:icon(k),text:`Chance of ${k} from ${whenText(new Date(p.startTime),tz)} (${popOf(p)}%)`}}
+    return {icon:'🌂',text:'Dry for the next 24 hours'};
+  }
+  // Scores every two-hour daylight window left today (or tomorrow, once
+  // today's are used up) on rain chance, distance from a comfortable
+  // 60–75°F, wind, and thunder/snow, and only suggests one that is
+  // genuinely decent — no suggestion beats a bad one.
+  function bestOutdoorWindow(hourly,loc,tz){
+    const now=Date.now(),hours=(hourly||[]).filter(p=>Date.parse(p.endTime)>now).slice(0,48);
+    const penalty=p=>{
+      const t=p.temperature,w=maxWind(p.windSpeed)||0;
+      return Math.max(0,popOf(p)-10)*1.5+(t<60?60-t:t>75?t-75:0)*2+Math.max(0,w-12)*2+(/thunder|snow|sleet|freezing/i.test(p.shortForecast)?40:0);
+    };
+    const ok=p=>popOf(p)<=30&&p.temperature>=35&&p.temperature<=95&&!/thunder/i.test(p.shortForecast);
+    for(const target of [dayKey(tz,new Date()),dayKey(tz,new Date(now+864e5))]){
+      const {sunrise,sunset}=sunTimes(target,loc.lat,loc.lon);
+      if(!sunrise||!sunset)continue;
+      const day=hours.filter(p=>dayKey(tz,p.startTime)===target&&Date.parse(p.startTime)>=sunrise.getTime()-1800000&&Date.parse(p.endTime)<=sunset.getTime()+1800000);
+      let best=null;
+      for(let i=0;i+1<day.length;i++){
+        const pair=[day[i],day[i+1]];
+        if(Date.parse(pair[1].startTime)-Date.parse(pair[0].startTime)!==3600000||!pair.every(ok))continue;
+        const score=penalty(pair[0])+penalty(pair[1]);
+        if(!best||score<best.score)best={score,pair};
+      }
+      if(best&&best.score<=60){
+        const [a,b]=best.pair,temp=Math.round((a.temperature+b.temperature)/2),pop=Math.max(popOf(a),popOf(b)),wind=Math.max(maxWind(a.windSpeed)||0,maxWind(b.windSpeed)||0);
+        const label=dayName(new Date(a.startTime),tz)==='today'?'Best time outside':'Best time outside tomorrow';
+        const details=[fmtTemp(temp),pop<=10?'dry':`${pop}% rain`,wind>20?'windy':wind>12?'breezy':null].filter(Boolean).join(', ');
+        return {icon:'🚶',text:`${label}: ${hourRange(new Date(a.startTime),new Date(b.endTime),tz)} · ${details}`};
+      }
+    }
+    return null;
+  }
+  // "What changed since you last looked": keeps one snapshot per gridpoint
+  // in localStorage. The first load of a browsing session pins the previous
+  // snapshot as this session's baseline, so refreshes keep comparing against
+  // the same earlier forecast instead of the one from ten minutes ago.
+  const SNAPSHOT_KEY='weather-forecast-snapshots',SNAPSHOT_BASELINE_KEY='weather-forecast-baseline:';
+  function forecastChanges(gridKey,rows,tz){
+    const now=Date.now(),todayKey=dayKey(tz,new Date()),days={};
+    rows.forEach(r=>{const key=dayKey(tz,r.date);if(key>todayKey)days[key]={hi:r.hi??r.day?.temperature??null,lo:r.lo??r.night?.temperature??null,pop:r.pop??null}});
+    let baseline=null;
+    try{baseline=JSON.parse(sessionStorage.getItem(SNAPSHOT_BASELINE_KEY+gridKey))}catch{}
+    let all={};
+    try{all=JSON.parse(localStorage.getItem(SNAPSHOT_KEY))||{}}catch{}
+    if(!baseline){baseline=all[gridKey]||{};try{sessionStorage.setItem(SNAPSHOT_BASELINE_KEY+gridKey,JSON.stringify(baseline))}catch{}}
+    all[gridKey]={ts:now,days};
+    const keys=Object.keys(all).sort((a,b)=>all[b].ts-all[a].ts);
+    keys.slice(5).forEach(k=>delete all[k]);
+    try{localStorage.setItem(SNAPSHOT_KEY,JSON.stringify(all))}catch{}
+    const age=now-(baseline.ts||0);
+    if(!baseline.days||age<3600000||age>7*864e5)return null;
+    const changes=[];
+    for(const [key,cur] of Object.entries(days)){
+      const old=baseline.days[key];
+      if(!old)continue;
+      const [y,m,d]=key.split('-').map(Number),name=capitalize(dayName(new Date(Date.UTC(y,m-1,d,18)),tz));
+      for(const [field,label] of [['hi','high'],['lo','low']]){
+        if(cur[field]==null||old[field]==null)continue;
+        const diff=cur[field]-old[field];
+        if(Math.abs(diff)>=4)changes.push({weight:Math.abs(diff)/4,text:`${name}'s ${label} ${diff>0?'up':'down'} ${Math.abs(tempValue(cur[field])-tempValue(old[field]))}°, now ${fmtTemp(cur[field])}`});
+      }
+      if(cur.pop!=null&&old.pop!=null){
+        const diff=cur.pop-old.pop;
+        if(Math.abs(diff)>=20&&Math.max(cur.pop,old.pop)>=30)changes.push({weight:Math.abs(diff)/20,text:`${name}'s rain chance ${old.pop}% → ${cur.pop}%`});
+      }
+    }
+    if(!changes.length)return null;
+    const since=new Date(baseline.ts),sinceKey=dayKey(tz,since);
+    const sinceText=sinceKey===todayKey?'earlier today':sinceKey===dayKey(tz,new Date(now-864e5))?'yesterday':`on ${new Intl.DateTimeFormat('en-US',{timeZone:tz,weekday:'long'}).format(since)}`;
+    const top=changes.sort((a,b)=>b.weight-a.weight).slice(0,2).map(c=>c.text);
+    return {icon:'🔄',text:`Changed since ${sinceText}: ${top.join(' · ')}`};
+  }
+  // NOAA's own map service for the Storm Prediction Center's convective
+  // outlooks. Layer ids are looked up by name from the service metadata
+  // rather than hardcoded, and any mismatch just means no line is shown.
+  const SPC_SERVICE='https://mapservices.weather.noaa.gov/vector/rest/services/outlooks/SPC_wx_outlks/MapServer';
+  const SPC_LEVELS={MRGL:[1,'Marginal'],SLGT:[2,'Slight'],ENH:[3,'Enhanced'],MDT:[4,'Moderate'],HIGH:[5,'High']};
+  const SPC_DN={3:'MRGL',4:'SLGT',5:'ENH',6:'MDT',8:'HIGH'};
+  function spcCode(attributes){
+    const values=Object.entries(attributes||{});
+    for(const [,v] of values){const code=String(v??'').trim().toUpperCase();if(SPC_LEVELS[code])return code}
+    const dn=values.find(([k])=>/^dn$/i.test(k));
+    return dn?SPC_DN[dn[1]]||null:null;
+  }
+  async function severeRisk(loc){
+    const meta=await json(`${SPC_SERVICE}?f=json`,{ttl:CACHE_TTL.stations});
+    // Match on the full group path ("Day 1 Convective Outlook › Categorical"),
+    // since the day can live in either the group's name or the layer's own.
+    const all=meta.layers||[],byId=new Map(all.map(l=>[l.id,l]));
+    const path=l=>{const names=[];for(let x=l;x;x=byId.get(x.parentLayerId))names.unshift(x.name||'');return names.join(' ')};
+    const layers=all.filter(l=>!l.subLayerIds?.length).map(l=>({id:l.id,name:path(l)}));
+    let worst=null;
+    for(const [when,pattern] of [['today',/day\s*1\b.*categorical/i],['tomorrow',/day\s*2\b.*categorical/i]]){
+      const layer=layers.find(l=>pattern.test(l.name));
+      if(!layer)continue;
+      const params=new URLSearchParams({geometry:`${loc.lon},${loc.lat}`,geometryType:'esriGeometryPoint',inSR:'4326',spatialRel:'esriSpatialRelIntersects',outFields:'*',returnGeometry:'false',f:'json'});
+      const res=await json(`${SPC_SERVICE}/${layer.id}/query?${params}`,{ttl:30*60000});
+      for(const f of res.features||[]){
+        const code=spcCode(f.attributes);
+        if(code&&(!worst||SPC_LEVELS[code][0]>worst.level))worst={level:SPC_LEVELS[code][0],name:SPC_LEVELS[code][1],when};
+      }
+    }
+    return worst?{icon:'⚠️',tone:worst.level>=3?'high':'elevated',text:`${worst.name} risk of severe storms ${worst.when} (${worst.level} of 5)`,href:'https://www.spc.noaa.gov/products/outlook/'}:null;
+  }
+  function glanceHTML(items){
+    const list=items.filter(Boolean);
+    if(!list.length)return '';
+    return `<ul class="glance-list">${list.map(i=>`<li class="glance-item${i.tone?` glance-${i.tone}`:''}"><span class="glance-icon" aria-hidden="true">${i.icon}</span><span>${esc(i.text)}${i.href?` <a href="${esc(i.href)}" target="_blank" rel="noreferrer">Details</a>`:''}</span></li>`).join('')}</ul>`;
+  }
+  // Renders the synchronous lines immediately, then adds the severe-risk
+  // line (a separate NOAA service) at the top if and when it answers.
+  function renderGlance(container,{hourly,rows,loc,tz,gridKey}){
+    if(!container)return;
+    const base=[nextPrecip(hourly,tz),bestOutdoorWindow(hourly,loc,tz),gridKey?forecastChanges(gridKey,rows,tz):null];
+    const paint=items=>{container.innerHTML=glanceHTML(items);container.classList.toggle('hidden',!container.innerHTML)};
+    paint(base);
+    severeRisk(loc).then(risk=>{if(risk)paint([risk,...base])}).catch(()=>{});
+  }
+  // ---- Forecaster's notes (7-Day page) -----------------------------------
+  // Pulls the local NWS meteorologist's own "Key Messages" (or, for offices
+  // that don't write them, the opening of the synopsis) out of the Area
+  // Forecast Discussion — the reasoning and confidence behind the numbers.
+  function forecasterNotes(text){
+    if(!text)return null;
+    const t=`\n${String(text).replace(/\r/g,'')}`;
+    const section=name=>{const m=t.match(new RegExp(`\\n\\.${name}[^\\n]*?\\.\\.\\.([\\s\\S]*?)(?=\\n&&|\\n\\.[A-Z][A-Z /]+\\.\\.\\.|$)`));return m?m[1].replace(/^\s*Issued at[^\n]*\n/i,'').trim():null};
+    const clean=s=>toSentenceCase(s.replace(/\s+/g,' ').trim());
+    const key=section('KEY MESSAGES');
+    if(key){
+      const items=key.split(/\n\s*[-*•]\s+/).map(s=>clean(s.replace(/^[-*•]\s*/,''))).filter(s=>s.length>10);
+      if(items.length)return {kind:'key',items:items.slice(0,4)};
+    }
+    const body=section('SYNOPSIS')||section('SHORT TERM')||section('DISCUSSION')||section('UPDATE');
+    if(!body)return null;
+    const sentences=clean(body.split(/\n\s*\n/)[0]).split(/(?<=[.!?])\s+/);
+    return {kind:'summary',items:[sentences.slice(0,3).join(' ')]};
+  }
+  function mountForecasterNotes(container,getOffice){
+    if(!container)return;
+    container.innerHTML='<details class="brief forecaster-notes"><summary>From the NWS forecaster</summary><div class="forecaster-notes-body"><p class="note">Loading…</p></div></details>';
+    const details=container.querySelector('details'),body=container.querySelector('.forecaster-notes-body');
+    let loadedFor=null;
+    // Fetched only when opened, so it costs nothing for people who don't.
+    details.addEventListener('toggle',async()=>{
+      const officeId=getOffice();
+      if(!details.open||!officeId||loadedFor===officeId)return;
+      loadedFor=officeId;body.innerHTML='<p class="note">Loading…</p>';
+      const afd=await product('AFD',officeId);
+      const notes=forecasterNotes(afd?.productText);
+      if(!notes){loadedFor=null;body.innerHTML='<p class="note">The forecaster\'s discussion isn\'t available right now.</p>';return}
+      const tz=getTimeZone(),full=`https://forecast.weather.gov/product.php?site=NWS&issuedby=${encodeURIComponent(officeId)}&product=AFD&format=txt&version=1&glossary=1`;
+      body.innerHTML=`${notes.kind==='key'?`<ul>${notes.items.map(i=>`<li>${esc(i)}</li>`).join('')}</ul>`:`<p>${esc(notes.items[0])}</p>`}<p class="note">${esc(officeLabel(afd.productText,officeId))} · issued ${esc(local(afd.issuanceTime,tz))} · <a href="${esc(full)}" target="_blank" rel="noreferrer">Full discussion</a></p>`;
+    });
+    // A new location invalidates what's shown; reload on next open.
+    return {reset(){loadedFor=null;if(details.open){details.open=false}}};
   }
 
   const LOCATE_ICON='<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M12 2.3 4.4 20.2c-.18.42.27.85.68.66L12 17.8l6.92 3.06c.41.19.86-.24.68-.66L12 2.3z" fill="currentColor" transform="rotate(45 12 12)"/></svg>';
@@ -1359,7 +1574,7 @@ window.WX = (function(){
     });
   }
 
-  return {API,DEFAULT_LOC,CACHE_TTL,bypassCache,friendlyError,mountStatus,showLocationNote,activeAlerts,renderAlertBanner,DEFAULT_TIME_ZONE,el,esc,getSavedLocation,saveLocation,getCurrentLocation,getTimeZone,setTimeZone,timeZoneLabel,timeZoneOptionsHTML,geolocate,geocodeSearch,resolveLocation,resolvePoint,json,
+  return {API,DEFAULT_LOC,CACHE_TTL,renderGlance,mountForecasterNotes,forecasterNotes,naturalForecast,nextPrecip,bestOutdoorWindow,forecastChanges,bypassCache,friendlyError,mountStatus,showLocationNote,activeAlerts,renderAlertBanner,DEFAULT_TIME_ZONE,el,esc,getSavedLocation,saveLocation,getCurrentLocation,getTimeZone,setTimeZone,timeZoneLabel,timeZoneOptionsHTML,geolocate,geocodeSearch,resolveLocation,resolvePoint,json,
     getSavedLocations,isLocationSaved,addSavedLocation,removeSavedLocation,toggleSavedLocation,setFavoriteLocation,clearFavoriteLocation,toggleFavoriteLocation,getFavoriteLocation,mountLocationSwitcher,
     getStartupMode,setStartupMode,
     getTempUnit,setTempUnit,getWindUnit,setWindUnit,getHourFormat,setHourFormat,hour12,tempValue,tempUnitLabel,fmtTemp,fmtTempRange,windValue,windUnitLabel,fmtWind,
