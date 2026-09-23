@@ -434,8 +434,29 @@ window.WX = (function(){
     if(sourceStore.size>200)sourceStore.delete(sourceStore.keys().next().value);
     return `<button class="text-link" type="button" data-source="${id}" aria-haspopup="dialog">${esc(label)}</button>`;
   }
-  function productTextHTML(text,{startAt=null,stopAt=null}={}){
+  // SPC writes times in UTC ("20Z Update", "Valid 222000Z - 231200Z",
+  // "after 00Z"). Rewrites them in the reader's time zone ("3 PM CDT"),
+  // anchored to the product's issue time to resolve which day is meant.
+  function zuluToLocal(text,issued,tz){
+    const base=new Date(issued);
+    if(!Number.isFinite(base.getTime()))return text;
+    const at=(day,hour,minute)=>{
+      const d=new Date(Date.UTC(base.getUTCFullYear(),base.getUTCMonth(),day??base.getUTCDate(),hour%24,minute||0));
+      if(hour===24)d.setUTCDate(d.getUTCDate()+1);
+      if(day!=null&&day<base.getUTCDate()-15)d.setUTCMonth(d.getUTCMonth()+1);
+      // A bare hour means the next occurrence around the issue time.
+      if(day==null&&d-base< -6*3600000)d.setUTCDate(d.getUTCDate()+1);
+      return d;
+    };
+    const fmt=(d,{date=false,zone=true}={})=>new Intl.DateTimeFormat('en-US',{timeZone:tz,...(date?{month:'short',day:'numeric'}:{}),hour:'numeric',...(d.getUTCMinutes()?{minute:'2-digit'}:{}),hour12:hour12(),...(zone?{timeZoneName:'short'}:{})}).format(d);
+    return String(text)
+      .replace(/\b(\d{2})(\d{2})(\d{2})Z\b/g,(m,dd,hh,mm)=>fmt(at(+dd,+hh,+mm),{date:true}))
+      .replace(/\b(\d{2})(\d{2})?\s*-\s*(\d{2})(\d{2})?Z\b/g,(m,h1,m1,h2,m2)=>+h1>24||+h2>24?m:`${fmt(at(null,+h1,+m1||0),{zone:false})}–${fmt(at(null,+h2,+m2||0))}`)
+      .replace(/\b(\d{2})(\d{2})?Z\b/g,(m,hh,mm)=>+hh>24||+(mm||0)>59?m:fmt(at(null,+hh,+mm||0)));
+  }
+  function productTextHTML(text,{startAt=null,stopAt=null,zulu=null}={}){
     let t=String(text||'').replace(/\r/g,'');
+    if(zulu)t=zuluToLocal(t,zulu.issued,zulu.tz);
     if(startAt){const i=t.search(startAt);if(i>=0)t=t.slice(i)}
     if(stopAt){const i=t.search(stopAt);if(i>0)t=t.slice(0,i)}
     const out=[];
@@ -469,7 +490,7 @@ window.WX = (function(){
       return {
         title:`Day ${day} Convective Outlook`,
         meta:`NOAA Storm Prediction Center · issued ${local(product.issuanceTime)}`,
-        html:productTextHTML(product.productText,{startAt:/\nValid /,stopAt:/\n\s*\.PREV DISCUSSION|\n\s*\$\$/})
+        html:productTextHTML(product.productText,{startAt:/\nValid /,stopAt:/\n\s*\.PREV DISCUSSION|\n\s*\$\$/,zulu:{issued:product.issuanceTime,tz:getTimeZone()}})
       };
     }
     throw new Error('Outlook not found');
