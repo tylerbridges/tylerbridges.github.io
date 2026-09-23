@@ -668,7 +668,9 @@ window.WX = (function(){
       humidity==null?null:['Humidity',`${humidity}%`],
       ['Wind',wind==null?b.windSpeed:fmtWind(wind)],
       gust==null?null:['Gusts',fmtWind(gust)],
-      uv==null?null:['Max UV',uv]
+      // uvForDate is a sun-angle estimate that ignores cloud cover, so it is
+      // labelled as the clear-sky ceiling rather than a UV forecast.
+      uv==null?null:['Clear-sky UV',uv]
     ].filter(Boolean);
   }
   let metricsGroupId=0;
@@ -732,7 +734,7 @@ window.WX = (function(){
     return[sunrise?['Sunrise',fmt(sunrise)]:null,sunset?['Sunset',fmt(sunset)]:null].filter(Boolean);
   }
   // Per-hour version of the same clear-sky estimate uvForDate already uses
-  // for the daily "Max UV" metric: scale that day's peak across daylight
+  // for the daily "Clear-sky UV" metric: scale that day's peak across daylight
   // hours with a sine curve (0 at sunrise/sunset, peak near solar noon).
   // Replaces a live hourly UV feed with no bundled library and no API call.
   function hourlyUVEstimate(date,lat,lon,tz){
