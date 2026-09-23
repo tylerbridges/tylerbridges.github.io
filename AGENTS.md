@@ -26,9 +26,16 @@ iteration loop: request, implement, review, publish, verify.
 - After pushing, confirm that `origin/main` contains the new commit and check
   the GitHub Pages deployment. Report the commit, verification results, and
   deployment status.
-- End every reply to Tyler with a short high-level bulleted summary of what
-  was done, followed by anything that couldn't be done and any action items
-  for Tyler, so the reply can be skimmed without reading the details.
+- End every reply to Tyler that involves a change or review — including
+  short follow-ups and small fixes — with this summary block, so the reply
+  can be skimmed without reading the details:
+
+  ```
+  ---
+  - **Done:** high-level bullets of what changed (and the commit/deploy status)
+  - **Couldn't do:** anything skipped, unverified, or blocked (or "Nothing")
+  - **Your action items:** what Tyler needs to check or decide (or "None")
+  ```
 
 ## Site-specific checks
 
