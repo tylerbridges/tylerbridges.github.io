@@ -731,7 +731,19 @@ window.WX = (function(){
     if(lat==null||lon==null||!date)return[];
     const{sunrise,sunset}=sunTimes(dayKey(tz,date),lat,lon);
     const fmt=d=>new Intl.DateTimeFormat('en-US',{timeZone:tz,hour:'numeric',minute:'2-digit',hour12:hour12()}).format(d);
-    return[sunrise?['Sunrise',fmt(sunrise)]:null,sunset?['Sunset',fmt(sunset)]:null].filter(Boolean);
+    return[sunrise?['Sunrise',fmt(sunrise)]:null,sunset?['Sunset',fmt(sunset)]:null,daylightMetric(date,lat,lon,tz,sunrise,sunset)].filter(Boolean);
+  }
+  // Day length plus its change from the day before ("12h 4m, +2m 10s"),
+  // from the same sunrise equation — no API.
+  function daylightMetric(date,lat,lon,tz,sunrise,sunset){
+    if(!sunrise||!sunset)return null;
+    const prior=sunTimes(dayKey(tz,new Date(new Date(date).getTime()-864e5)),lat,lon);
+    const length=sunset-sunrise,hours=Math.floor(length/36e5),minutes=Math.floor(length%36e5/6e4);
+    const text=`${hours}h ${minutes}m`;
+    if(!prior.sunrise||!prior.sunset)return['Daylight',text];
+    const delta=Math.round((length-(prior.sunset-prior.sunrise))/1000),size=Math.abs(delta);
+    const change=size<60?`${size}s`:`${Math.floor(size/60)}m ${size%60}s`;
+    return['Daylight',`${text} (${delta<0?'−':'+'}${change})`];
   }
   // Per-hour version of the same clear-sky estimate uvForDate already uses
   // for the daily "Clear-sky UV" metric: scale that day's peak across daylight
