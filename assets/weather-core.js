@@ -146,7 +146,9 @@ window.WX = (function(){
     const url=`${GEOCODE_ROOT}?limit=${limit}&lang=en&q=${encodeURIComponent(normalizedSearchQuery(query))}`;
     if(geocodeCache.has(url))return geocodeCache.get(url);
     const data=await json(url,{signal});
-    const features=(data.features||[]).filter(f=>f.properties?.countrycode==='US');
+    let features=(data.features||[]).filter(f=>f.properties?.countrycode==='US').map((f,i)=>({f,i})).sort((a,b)=>featureRank(a.f)-featureRank(b.f)||a.i-b.i).map(x=>x.f);
+    // A street or building only helps when no town or ZIP matched at all.
+    if(features.some(f=>featureRank(f)<2))features=features.filter(f=>featureRank(f)<2);
     geocodeCache.set(url,features);
     if(geocodeCache.size>50)geocodeCache.delete(geocodeCache.keys().next().value);
     return features;
@@ -154,12 +156,22 @@ window.WX = (function(){
   function photonPosition(feature){const[lon,lat]=feature.geometry.coordinates;return {lat:+(+lat).toFixed(4),lon:+(+lon).toFixed(4)}}
   async function geocodeSearch(query){const features=await geocodePhoton(query,10);if(!features.length)throw new Error('Location not found.');return photonPosition(features[0])}
   const US_STATE_ABBR={Alabama:'AL',Alaska:'AK',Arizona:'AZ',Arkansas:'AR',California:'CA',Colorado:'CO',Connecticut:'CT',Delaware:'DE',Florida:'FL',Georgia:'GA',Hawaii:'HI',Idaho:'ID',Illinois:'IL',Indiana:'IN',Iowa:'IA',Kansas:'KS',Kentucky:'KY',Louisiana:'LA',Maine:'ME',Maryland:'MD',Massachusetts:'MA',Michigan:'MI',Minnesota:'MN',Mississippi:'MS',Missouri:'MO',Montana:'MT',Nebraska:'NE',Nevada:'NV','New Hampshire':'NH','New Jersey':'NJ','New Mexico':'NM','New York':'NY','North Carolina':'NC','North Dakota':'ND',Ohio:'OH',Oklahoma:'OK',Oregon:'OR',Pennsylvania:'PA','Rhode Island':'RI','South Carolina':'SC','South Dakota':'SD',Tennessee:'TN',Texas:'TX',Utah:'UT',Vermont:'VT',Virginia:'VA',Washington:'WA','West Virginia':'WV',Wisconsin:'WI',Wyoming:'WY','District of Columbia':'DC','Puerto Rico':'PR',Guam:'GU','American Samoa':'AS','U.S. Virgin Islands':'VI','Northern Mariana Islands':'MP'};
+  // Photon returns a town or village as the place itself (osm_key "place",
+  // or type "city"/"district"/"locality"): its own name is the answer, and
+  // it has no separate `city` field. Only things *inside* a place (streets,
+  // buildings, ZIP areas) carry `city`. Falling back to `county` for the
+  // former is what labelled Ellenboro, NC as "Rutherford, NC".
+  const isPostcode=p=>p.osm_value==='postcode'||p.type==='postcode';
+  const isSettlement=p=>!isPostcode(p)&&(p.osm_key==='place'||['city','district','locality'].includes(p.type));
   function normalizedLabel(feature){
     const p=feature.properties||{};
-    const city=p.city||p.town||p.village||p.county||p.name;
+    const place=isSettlement(p)?p.name:p.city||p.name||p.county;
     const state=US_STATE_ABBR[p.state]||p.state;
-    return city&&state?`${city}, ${state}`:[p.name,p.state].filter(Boolean).join(', ');
+    return place&&state?`${place}, ${state}`:[place,p.state].filter(Boolean).join(', ');
   }
+  // Towns first, then ZIP areas, then everything else (streets, buildings,
+  // counties), keeping Photon's own relevance order within each group.
+  const featureRank=f=>{const p=f.properties||{};return isSettlement(p)?0:isPostcode(p)?1:2};
   // Only ever re-reads the position when the person has already granted
   // permission, so a background refresh can never surface a prompt.
   async function geoPermissionGranted(){try{return (await navigator.permissions?.query({name:'geolocation'}))?.state==='granted'}catch{return false}}
@@ -1202,7 +1214,7 @@ window.WX = (function(){
           const features=await geocodePhoton(q,10,suggestAbort.signal);
           if(request!==suggestRequest||q!==locationInput.value.trim())return;
           suggestionMap=new Map();
-          features.slice(0,4).forEach(f=>{const label=normalizedLabel(f);if(!suggestionMap.has(label))suggestionMap.set(label,photonPosition(f))});
+          features.forEach(f=>{const label=normalizedLabel(f);if(suggestionMap.size<4&&!suggestionMap.has(label))suggestionMap.set(label,photonPosition(f))});
           renderSuggestions();
         }catch{}
       },350);
@@ -1586,7 +1598,7 @@ window.WX = (function(){
     });
   }
 
-  return {API,DEFAULT_LOC,CACHE_TTL,renderDayNotes,outlookClauses,naturalForecast,nextPrecip,bestOutdoorWindow,forecastChanges,bypassCache,friendlyError,mountStatus,showLocationNote,activeAlerts,renderAlertBanner,DEFAULT_TIME_ZONE,el,esc,getSavedLocation,saveLocation,getCurrentLocation,getTimeZone,setTimeZone,timeZoneLabel,timeZoneOptionsHTML,geolocate,geocodeSearch,resolveLocation,resolvePoint,json,
+  return {API,DEFAULT_LOC,CACHE_TTL,normalizedLabel,renderDayNotes,outlookClauses,naturalForecast,nextPrecip,bestOutdoorWindow,forecastChanges,bypassCache,friendlyError,mountStatus,showLocationNote,activeAlerts,renderAlertBanner,DEFAULT_TIME_ZONE,el,esc,getSavedLocation,saveLocation,getCurrentLocation,getTimeZone,setTimeZone,timeZoneLabel,timeZoneOptionsHTML,geolocate,geocodeSearch,resolveLocation,resolvePoint,json,
     getSavedLocations,isLocationSaved,addSavedLocation,removeSavedLocation,toggleSavedLocation,setFavoriteLocation,clearFavoriteLocation,toggleFavoriteLocation,getFavoriteLocation,mountLocationSwitcher,
     getStartupMode,setStartupMode,
     getTempUnit,setTempUnit,getWindUnit,setWindUnit,getHourFormat,setHourFormat,hour12,tempValue,tempUnitLabel,fmtTemp,fmtTempRange,windValue,windUnitLabel,fmtWind,
