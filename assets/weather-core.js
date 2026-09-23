@@ -1578,7 +1578,7 @@ window.WX = (function(){
   // Shared load-state UI for the forecast pages: a first-load error with a
   // Try again button, a banner when a later refresh fails or the device goes
   // offline while older data stays on screen (instead of silently showing it
-  // as current), the "NWS forecast updated … · Checked …" line, and a Refresh
+  // as current), the "Updated …" line, and a Refresh
   // button for desktop, where pull-to-refresh doesn't exist.
   function mountStatus(reload){
     const updated=el('updated'),error=el('error');
@@ -1600,10 +1600,7 @@ window.WX = (function(){
     return {
       loaded({loc,issued,tz}){
         loadedAt=new Date();loadedTz=tz;
-        // Time only when NWS issued it today; the date is added otherwise.
-        const issuedAt=issued?new Date(issued):null,issuedValid=issuedAt&&Number.isFinite(issuedAt.getTime());
-        const issuedText=issuedValid?`Forecast issued ${dayKey(tz,issuedAt)===dayKey(tz,loadedAt)?time(issuedAt,tz):local(issuedAt,tz)} · `:'';
-        updated.textContent=`${issuedText}Checked ${time(loadedAt,tz)}`;
+        updated.textContent=`Updated ${time(loadedAt,tz)}`;
         updated.classList.remove('hidden');refreshBtn.classList.remove('hidden');
         banner.classList.add('hidden');error.classList.add('hidden');
         showLocationNote(loc);
