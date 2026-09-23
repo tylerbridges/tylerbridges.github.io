@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'sha256-iaGyl+MesImCrVNj4kQ20S4RvzBpRSK0LS5TGRYQTug=' 'sha256-XTfZlnH4fyI0AFpUSnosEBC3/W2E9KMpAK2sd23qfVU='; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob: https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org; connect-src 'self' https://api.weather.gov https://photon.komoot.io https://api.open-meteo.com https://air-quality-api.open-meteo.com https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org; worker-src 'self' blob:; child-src 'self' blob:; font-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'sha256-iaGyl+MesImCrVNj4kQ20S4RvzBpRSK0LS5TGRYQTug=' 'sha256-3Kvrkg6Se2nA50wnttxbsulDItA5b023ccaS2DBct6Y='; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob: https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org; connect-src 'self' https://api.weather.gov https://photon.komoot.io https://api.open-meteo.com https://air-quality-api.open-meteo.com https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org; worker-src 'self' blob:; child-src 'self' blob:; font-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
   <script>try{var t=localStorage.getItem('weather-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);else if(t!=='system')document.documentElement.setAttribute('data-theme','dark')}catch{}</script>
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -44,7 +44,11 @@
     .radar-console.hidden{display:none}
     .radar-console{border-top:1px solid var(--line);background:var(--surface);color:var(--text)}
     .radar-frame-row{display:flex;align-items:baseline;justify-content:space-between;gap:.75rem;padding:.34rem .65rem .3rem}
+    .radar-product{display:flex;align-items:baseline;gap:.45rem;min-width:0}
     .radar-product-label{color:var(--cyan);font-size:.78rem;line-height:1.1;font-weight:650}
+    .radar-mode-btn{flex:0 0 auto;height:22px;padding:0 .45rem;border:1px solid var(--line);border-radius:7px;background:var(--surface-2);color:var(--text);font-size:.69rem;font-weight:650;line-height:1;cursor:pointer}
+    .radar-mode-btn:hover,.radar-mode-btn:focus-visible{border-color:var(--cyan);outline:0}
+    .radar-mode-btn:focus-visible{box-shadow:0 0 0 2px color-mix(in srgb,var(--cyan) 45%,transparent)}
     .radar-frame-kind{color:var(--muted);font-size:.69rem;line-height:1.2;font-weight:400}
     .radar-frame-readout{display:flex;align-items:baseline;justify-content:flex-end;gap:.35rem;flex:0 0 auto;font-variant-numeric:tabular-nums}
     .radar-frame-divider{color:var(--muted);font-size:.72rem;font-weight:400}
@@ -160,7 +164,7 @@
         </div>
         <div class="radar-console hidden">
           <div class="radar-frame-row">
-            <span class="radar-product-label">Reflectivity</span>
+            <div class="radar-product"><span class="radar-product-label">Reflectivity</span><button id="radar-mode-btn" class="radar-mode-btn" type="button"></button></div>
             <div class="radar-frame-readout"><time id="radar-time" class="radar-time"></time><span class="radar-frame-divider" aria-hidden="true">|</span><span id="radar-frame-kind" class="radar-frame-kind"></span></div>
           </div>
           <div class="radar-overlay">
@@ -223,7 +227,7 @@
   <script src="/assets/weather-core.js"></script>
   <script>
   (()=>{
-    const {el,geolocate,resolveLocation,resolvePoint,getTimeZone,getTheme,mountHeader,mountFooter,mountPullToRefresh,mountLocationSwitcher,minimalRadarStyle,hour12,showLocationNote,renderAlertBanner}=WX;
+    const {el,json,geolocate,resolveLocation,resolvePoint,getTimeZone,getTheme,mountHeader,mountFooter,mountPullToRefresh,mountLocationSwitcher,minimalRadarStyle,hour12,showLocationNote,renderAlertBanner}=WX;
     const header=mountHeader('radar',()=>centerOnLocation());
     mountFooter();
     mountLocationSwitcher(()=>centerOnLocation(),'kicker');
@@ -235,6 +239,29 @@
     // the blue-only palette imposed by RainViewer's current public API.
     const IEM_TILE_ROOT='https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0';
     const TILE_SIZE=256,SCAN_INTERVAL=5*60000;
+    // Default view: the nearest single NEXRAD at super-resolution (Level III
+    // N0B, 0.5° × ~0.25 km — the base product RadarScope shows), not the
+    // blended national mosaic. IEM's scan list gives each volume scan's real
+    // time, and every frame's tile URL carries that timestamp, so a label can
+    // never sit on top of an older cached image. Any failure (list, CORS,
+    // tiles, a radar that has stopped reporting) falls back to the mosaic.
+    const IEM_RADAR_LIST='https://mesonet.agron.iastate.edu/json/radar.py';
+    const MODE_KEY='radar-mode',FRAME_COUNT=12,SITE_STALE_MS=30*60000;
+    let radarMode=(()=>{try{return localStorage.getItem(MODE_KEY)==='mosaic'?'mosaic':'site'}catch{return'site'}})();
+    let sitePromise=Promise.resolve(null),radarSite=null,siteProblem=null,frameSource='mosaic';
+    // NWS radarStation ids are 4 letters (KARX, PAHG, TJUA); IEM files each
+    // under the last three.
+    const siteFromPoint=point=>{const id=String(point?.properties?.radarStation||'').toUpperCase();return /^[A-Z]{4}$/.test(id)?id:null};
+    const isoMinute=ms=>new Date(ms).toISOString().slice(0,16)+'Z';
+    const stamp=ms=>new Date(ms).toISOString().replace(/\D/g,'').slice(0,12);
+    async function listedScans(radar,product){
+      const now=Date.now(),params=new URLSearchParams({operation:'list',radar,product,start:isoMinute(now-75*60000),end:isoMinute(now+5*60000)});
+      const res=await json(`${IEM_RADAR_LIST}?${params}`);
+      const times=[...new Set((res?.scans||[]).map(s=>Date.parse(s.ts)).filter(Number.isFinite))].sort((a,b)=>a-b).slice(-FRAME_COUNT);
+      if(times.length<2)throw new Error('No recent scans listed.');
+      if(now-times[times.length-1]>SITE_STALE_MS)throw new Error('Radar has not reported recently.');
+      return times.map(t=>({time:t/1000,layer:`ridge::${radar}-${product}-${stamp(t)}`}));
+    }
     // NOAA's own nowCOAST portal (not a third party) publishes a time-enabled
     // NEXRAD mosaic map service. It's a dynamic ArcGIS image service rather
     // than a pre-cached tile pyramid, so it's requested the same way as a WMS
@@ -327,9 +354,11 @@
 
     const fmtTime=ms=>new Date(ms).toLocaleTimeString([],{timeZone:getTimeZone(),hour:'numeric',minute:'2-digit',hour12:hour12()});
     const fmtFull=ms=>new Date(ms).toLocaleString([],{timeZone:getTimeZone(),month:'short',day:'numeric',hour:'numeric',minute:'2-digit',hour12:hour12(),timeZoneName:'short'});
-    const tileUrl=frame=>usingNowcoast
+    const tileUrl=frame=>frame.layer.startsWith('ridge::')
+      ?`${IEM_TILE_ROOT}/${frame.layer}/{z}/{x}/{y}.png`
+      :usingNowcoast
       ?`${NOWCOAST_RADAR}/export?bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&size=${TILE_SIZE},${TILE_SIZE}&format=png32&transparent=true&f=image&layers=show:${nowcoastLayerId}&time=${Math.round(frame.time*1000)}`
-      :`${IEM_TILE_ROOT}/${frame.layer}/{z}/{x}/{y}.png`;
+      :`${IEM_TILE_ROOT}/${frame.layer}/{z}/{x}/{y}.png?v=${frame.bust}`;
 
     // Frame times are computed from the clock, so they say nothing about
     // whether any imagery actually arrived. Tile load/error events decide
@@ -342,8 +371,13 @@
       if(radarTileState==='pending'){el('radar-status').textContent='Loading radar images…';return}
       // Which source actually loaded is otherwise invisible — probeNowcoast()
       // decides silently, and both sources can look plausible at a glance.
-      const source=usingNowcoast?'NOAA nowCOAST':'IEM';
-      el('radar-status').textContent=`Latest radar scan: ${fmtFull(frames[pastCount-1].time*1000)} · via ${source}${checkedNow?' · just refreshed':''}`;
+      const latest=frames[pastCount-1].time*1000,age=Math.max(0,Math.round((Date.now()-latest)/60000));
+      const source=frameSource==='site'?`${radarSite} super-resolution via IEM`:frameSource==='nowcoast'?'national mosaic via NOAA nowCOAST':'national mosaic via IEM';
+      // Scan times are exact for the single-radar view and IEM's listed
+      // mosaic; the older fallbacks only know the five-minute slot.
+      const approx=frameSource==='site'||frameSource==='uscomp'?'':' (approximate)';
+      const note=radarMode==='site'&&frameSource!=='site'?` Nearest radar${radarSite?` (${radarSite})`:''} isn't available right now, so the national mosaic is shown.`:'';
+      el('radar-status').textContent=`Latest scan: ${fmtFull(latest)}${approx} · ${age<1?'under a minute':`${age} min`} old · ${source}${checkedNow?' · just refreshed':''}.${note}`;
     }
     function onRadarTileLoaded(){radarTileErrors=0;if(radarTileState!=='ok'){radarTileState='ok';updateStatus(false)}}
     function onRadarTileError(){
@@ -351,15 +385,20 @@
       radarTileErrors=0;
       // nowCOAST passed its probe but is failing now: fall back to IEM for
       // the rest of the visit instead of leaving blank tiles.
+      if(frameSource==='site'){siteProblem={site:radarSite,at:Date.now()};loadFrames(true);return}
       if(usingNowcoast){usingNowcoast=false;paintFrame();return}
       radarTileState='failed';updateStatus(false);
     }
     function paintFrame(){
       if(!map||!styleReady||!frames.length)return;
       const url=tileUrl(frames[idx]);
+      // Past the data's own resolution MapLibre enlarges the last real tile
+      // (kept blocky by 'nearest' resampling) instead of requesting more.
+      const maxzoom=frameSource==='site'?11:9;
       const src=map.getSource('radar');
-      if(src){src.setTiles([url]);return}
-      map.addSource('radar',{type:'raster',tiles:[url],tileSize:TILE_SIZE,minzoom:3,maxzoom:MAP_MAX_ZOOM});
+      if(src&&src.maxzoom===maxzoom){src.setTiles([url]);return}
+      if(src){map.removeLayer('radar');map.removeSource('radar')}
+      map.addSource('radar',{type:'raster',tiles:[url],tileSize:TILE_SIZE,minzoom:3,maxzoom});
       // A non-zero fade duration dissolves each new frame's tiles in rather
       // than swapping instantly, which is what turns the loop into a smooth
       // animated "sweep" instead of a hard cut — kept under the shortest
@@ -383,21 +422,48 @@
     function play(){if(document.visibilityState==='hidden'){playing=true;return}playing=true;el('play-btn').innerHTML=PAUSE_ICON;el('play-btn').setAttribute('aria-label','Pause');clearInterval(timer);timer=setInterval(()=>showFrame(idx+1),BASE_INTERVAL/speed)}
     function pause(){playing=false;el('play-btn').innerHTML=PLAY_ICON;el('play-btn').setAttribute('aria-label','Play');clearInterval(timer)}
 
+    // A new location can pick a different nearest radar; reload only then.
+    function followSite(){sitePromise.then(site=>{if(site!==radarSite)loadFrames(true)})}
+    // The mode button names what is on screen; pressing it switches to the
+    // other source, or retries the nearest radar after a fallback.
+    function paintModeBtn(){
+      const btn=el('radar-mode-btn'),showingSite=frameSource==='site';
+      btn.textContent=showingSite?radarSite:'Mosaic';
+      btn.setAttribute('aria-label',showingSite?`Radar source: ${radarSite} super-resolution. Switch to the national mosaic`:radarMode==='site'?'Radar source: national mosaic, because the nearest radar is unavailable. Try the nearest radar again':'Radar source: national mosaic. Switch to the nearest radar');
+    }
+    let reloadQueued=false;
     async function loadFrames(isRefresh){
-      if(loading)return;
+      if(loading){reloadQueued=true;return}
       loading=true;
       try{
         // Checked once (probeNowcoast memoizes); every subsequent call is
         // free. If nowCOAST fails this check for any reason, every frame
         // below is built from IEM instead, via tileUrl()'s own branch.
-        await probeNowcoast();
-        // Allow a short publication delay, then align the displayed scan times
-        // with IEM's five-minute current/past mosaic layers.
-        const latest=Math.floor((Date.now()-2*60000)/SCAN_INTERVAL)*SCAN_INTERVAL;
-        frames=Array.from({length:12},(_,i)=>{
-          const minutes=(11-i)*5;
-          return {time:(latest-minutes*60000)/1000,layer:minutes?`nexrad-n0q-m${String(minutes).padStart(2,'0')}m`:'nexrad-n0q'};
-        });
+        frames=null;
+        radarSite=await sitePromise;
+        // A failed radar is retried after ten minutes rather than for the rest
+        // of the visit, since most outages are brief.
+        const siteResting=siteProblem?.site===radarSite&&Date.now()-siteProblem.at<10*60000;
+        if(radarMode==='site'&&radarSite&&!siteResting){
+          try{frames=await listedScans(radarSite.slice(1),'N0B');frameSource='site'}
+          catch{siteProblem={site:radarSite,at:Date.now()}}
+        }
+        if(!frames){
+          try{frames=await listedScans('USCOMP','N0Q');frameSource='uscomp'}catch{}
+        }
+        if(!frames){
+          await probeNowcoast();
+          frameSource=usingNowcoast?'nowcoast':'mosaic';
+          // Last resort: IEM's rolling "current / N minutes ago" layers, with
+          // times inferred from the clock and the URL varied per slot so the
+          // browser can't reuse an older image for them.
+          const latest=Math.floor((Date.now()-2*60000)/SCAN_INTERVAL)*SCAN_INTERVAL;
+          frames=Array.from({length:FRAME_COUNT},(_,i)=>{
+            const minutes=(FRAME_COUNT-1-i)*5;
+            return {time:(latest-minutes*60000)/1000,bust:latest,layer:minutes?`nexrad-n0q-m${String(minutes).padStart(2,'0')}m`:'nexrad-n0q'};
+          });
+        }
+        paintModeBtn();
         pastCount=frames.length;
         if(radarTileState==='failed')radarTileState='pending';
         el('frame-slider').max=frames.length-1;
@@ -415,7 +481,7 @@
         el('radar-status').textContent='';
         el('error').classList.remove('hidden');
         el('error').textContent=`Radar imagery is unavailable right now. The map still works — ${RETRY_HINT}.`;
-      }finally{loading=false}
+      }finally{loading=false;if(reloadQueued){reloadQueued=false;loadFrames(true)}}
     }
 
     function onStyleReady(){
@@ -531,7 +597,9 @@
         forecastLocation={lat:loc.lat,lon:loc.lon,label:loc.label||'Selected location'};
         paintForecastAreaControl();
         if(locationChanged&&forecastAreaKey==='nearby')renderForecastMaps();
-        resolvePoint(loc).then(({label})=>{
+        const pointRequest=resolvePoint(loc);
+        sitePromise=pointRequest.then(({point})=>siteFromPoint(point)).catch(()=>null);
+        pointRequest.then(({label})=>{
           header.setKicker(label);
           renderAlertBanner(el('radar-alerts'),loc,getTimeZone());
           if(forecastLocation.label!==label){forecastLocation={...forecastLocation,label};paintForecastAreaControl();if(forecastAreaKey==='nearby')renderForecastMaps()}
@@ -545,6 +613,7 @@
         }else{
           map.easeTo({center:[latlng[1],latlng[0]]});
           marker.setLngLat([latlng[1],latlng[0]]);
+          followSite();
         }
       }).catch(()=>{
         el('loading').classList.add('hidden');el('error').classList.remove('hidden');el('error').textContent='Could not resolve a location.';
@@ -757,12 +826,21 @@
         map.jumpTo({center:latlng,zoom:DEFAULT_ZOOM});
         marker.setLngLat(latlng);
         status.textContent='Radar centered on your current location.';
-        resolvePoint(pos).then(({label})=>header.setKicker(label)).catch(()=>header.setKicker('Current location'));
+        const pointRequest=resolvePoint(pos);
+        sitePromise=pointRequest.then(({point})=>siteFromPoint(point)).catch(()=>null);
+        pointRequest.then(({label})=>header.setKicker(label)).catch(()=>header.setKicker('Current location'));
+        followSite();
       }catch{status.textContent='Current location is unavailable.'}
       finally{button.disabled=false;button.removeAttribute('aria-busy')}
     }
 
     el('play-btn').addEventListener('click',()=>playing?pause():play());
+    el('radar-mode-btn').addEventListener('click',()=>{
+      if(frameSource==='site')radarMode='mosaic';
+      else{radarMode='site';siteProblem=null}
+      try{localStorage.setItem(MODE_KEY,radarMode)}catch{}
+      loadFrames(true);
+    });
     el('radar-locate-btn').addEventListener('click',centerOnDevice);
     el('frame-slider').addEventListener('input',e=>{pause();showFrame(+e.target.value)});
     paintSpeedBtn();
