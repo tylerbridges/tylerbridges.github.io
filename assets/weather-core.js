@@ -870,10 +870,9 @@ window.WX = (function(){
   async function loadTodayCard(container,title,loc,point,officeId,todayPeriods,grid,tz){
     const todayKey=dayKey(tz,new Date());
     const metrics=metricsHTML([...dayMetrics(todayPeriods.day,todayPeriods.night,uvForDate(todayKey,loc.lat),humidityForDate(grid,todayKey,tz),gustForDate(grid,todayKey,tz),maxTempForDate(grid,todayKey,tz),minTempForDate(grid,todayKey,tz),popForDate(grid,todayKey,tz)),...sunMetrics(new Date(),loc.lat,loc.lon,tz),...extraDayMetrics(grid,todayKey,tz)]);
-    const current=await currentObservation(point).catch(()=>null);
+    const [current,active]=await Promise.all([currentObservation(point).catch(()=>null),activeAlerts(loc).catch(()=>[])]);
     const currentText=current?currentHeadline(current.observation):null;
     const brief=todayBrief(currentText,todayPeriods.day,todayPeriods.night,new Date(),tz);
-    const active=await activeAlerts(loc).catch(()=>[]);
     const laterHTML=brief.later?`<p class="condition">${esc(brief.later)}</p>`:'';
     // Only show the NWS Alerts block when there's a genuine active alert —
     // otherwise this card keeps the exact same shape (brief + metrics, no
@@ -881,24 +880,29 @@ window.WX = (function(){
     // reserving space for a "No active NWS alerts." line.
     const alertsSectionHTML=active.length?`<hr><h3>NWS Alerts</h3><div id="alerts">${active.map(a=>alertLine(a,tz)).join('')}</div>`:'';
     container.innerHTML=`<article class="brief" data-day="${esc(todayKey)}"><h3>${esc(title)}</h3><hr><p class="now-line">${esc(brief.now)}</p>${laterHTML}<div class="metrics">${metrics}</div>${alertsSectionHTML}</article>`;
-    // The Hazardous Weather Outlook is most useful *before* anything has
-    // been issued, so it's checked whenever today's forecast text mentions a
-    // hazard, not only when an alert is already active.
-    if(!officeId)return;
+    // Not awaited: the HWO/AFD lookup is two more round trips the card
+    // shouldn't wait on.
+    appendHazardOutlook(container.querySelector('article'),{loc,officeId,todayPeriods,tz,hasAlerts:active.length>0}).catch(()=>{});
+  }
+  // The Hazardous Weather Outlook is most useful *before* anything has been
+  // issued, so it's checked whenever today's forecast text mentions a
+  // hazard, not only when an alert is already active.
+  async function appendHazardOutlook(article,{loc,officeId,todayPeriods,tz,hasAlerts}){
+    if(!article||!officeId)return;
     const hazardText=[todayPeriods.day?.detailedForecast,todayPeriods.night?.detailedForecast].filter(Boolean).join(' ');
     const needsHazard=/thunder|snow|ice|freezing|fog|heavy rain|blizzard/i.test(hazardText)||(gustFrom(hazardText)||0)>20;
-    if(needsHazard){
-      const [hwo,afd]=await Promise.all([product('HWO',officeId),product('AFD',officeId)]);
-      const guidance=[hwo?.productText,afd?.productText].filter(Boolean).join(' ');
-      let extra='';
-      if(hwo&&/severe|tornado|hail|damaging|blizzard|flood/i.test(guidance))extra+=hwoCardHTML(hwo,officeId,loc,tz);
-      if(active.length&&(!hwo||!afd))extra+='<p class="note">Some regional hazard guidance could not be refreshed.</p>';
-      if(extra){
-        let slot=container.querySelector('#alerts');
-        if(!slot){container.querySelector('article')?.insertAdjacentHTML('beforeend','<hr><h3>Hazard Outlook</h3><div id="alerts"></div>');slot=container.querySelector('#alerts')}
-        if(slot)slot.innerHTML+=extra;
-      }
-    }
+    if(!needsHazard)return;
+    const [hwo,afd]=await Promise.all([product('HWO',officeId),product('AFD',officeId)]);
+    // A refresh may have replaced the card while this was in flight.
+    if(!article.isConnected)return;
+    const guidance=[hwo?.productText,afd?.productText].filter(Boolean).join(' ');
+    let extra='';
+    if(hwo&&/severe|tornado|hail|damaging|blizzard|flood/i.test(guidance))extra+=hwoCardHTML(hwo,officeId,loc,tz);
+    if(hasAlerts&&(!hwo||!afd))extra+='<p class="note">Some regional hazard guidance could not be refreshed.</p>';
+    if(!extra)return;
+    let slot=article.querySelector('#alerts');
+    if(!slot){article.insertAdjacentHTML('beforeend','<hr><h3>Hazard Outlook</h3><div id="alerts"></div>');slot=article.querySelector('#alerts')}
+    slot.insertAdjacentHTML('beforeend',extra);
   }
 
   // ---- Day notes ----------------------------------------------------------
