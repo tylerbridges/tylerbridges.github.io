@@ -881,7 +881,10 @@ window.WX = (function(){
     // reserving space for a "No active NWS alerts." line.
     const alertsSectionHTML=active.length?`<hr><h3>NWS Alerts</h3><div id="alerts">${active.map(a=>alertLine(a,tz)).join('')}</div>`:'';
     container.innerHTML=`<article class="brief" data-day="${esc(todayKey)}"><h3>${esc(title)}</h3><hr><p class="now-line">${esc(brief.now)}</p>${laterHTML}<div class="metrics">${metrics}</div>${alertsSectionHTML}</article>`;
-    if(!active.length||!officeId)return;
+    // The Hazardous Weather Outlook is most useful *before* anything has
+    // been issued, so it's checked whenever today's forecast text mentions a
+    // hazard, not only when an alert is already active.
+    if(!officeId)return;
     const hazardText=[todayPeriods.day?.detailedForecast,todayPeriods.night?.detailedForecast].filter(Boolean).join(' ');
     const needsHazard=/thunder|snow|ice|freezing|fog|heavy rain|blizzard/i.test(hazardText)||(gustFrom(hazardText)||0)>20;
     if(needsHazard){
@@ -889,8 +892,12 @@ window.WX = (function(){
       const guidance=[hwo?.productText,afd?.productText].filter(Boolean).join(' ');
       let extra='';
       if(hwo&&/severe|tornado|hail|damaging|blizzard|flood/i.test(guidance))extra+=hwoCardHTML(hwo,officeId,loc,tz);
-      if(!hwo||!afd)extra+='<p class="note">Some regional hazard guidance could not be refreshed.</p>';
-      if(extra){const slot=container.querySelector('#alerts');if(slot)slot.innerHTML+=extra}
+      if(active.length&&(!hwo||!afd))extra+='<p class="note">Some regional hazard guidance could not be refreshed.</p>';
+      if(extra){
+        let slot=container.querySelector('#alerts');
+        if(!slot){container.querySelector('article')?.insertAdjacentHTML('beforeend','<hr><h3>Hazard Outlook</h3><div id="alerts"></div>');slot=container.querySelector('#alerts')}
+        if(slot)slot.innerHTML+=extra;
+      }
     }
   }
 
