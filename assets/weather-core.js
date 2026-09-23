@@ -751,7 +751,19 @@ window.WX = (function(){
     if(lat==null||lon==null||!date)return[];
     const{sunrise,sunset}=sunTimes(dayKey(tz,date),lat,lon);
     const fmt=d=>new Intl.DateTimeFormat('en-US',{timeZone:tz,hour:'numeric',minute:'2-digit',hour12:hour12()}).format(d);
-    return[sunrise?['Sunrise',fmt(sunrise)]:null,sunset?['Sunset',fmt(sunset)]:null].filter(Boolean);
+    return[sunrise?['Sunrise',fmt(sunrise)]:null,sunset?['Sunset',fmt(sunset)]:null,daylightTrend(dayKey(tz,date),lat,lon,tz)].filter(Boolean);
+  }
+  // "Daylight: +2m 10s vs yesterday" — the change in day length from the
+  // previous calendar day, from the same sunrise equation.
+  function daylightTrend(key,lat,lon,tz){
+    const[y,m,d]=key.split('-').map(Number),prevKey=new Date(Date.UTC(y,m-1,d-1)).toISOString().slice(0,10);
+    const length=k=>{const{sunrise,sunset}=sunTimes(k,lat,lon);return sunrise&&sunset?sunset-sunrise:null};
+    const today=length(key),before=length(prevKey);
+    if(today==null||before==null)return null;
+    const diff=Math.round((today-before)/1000),abs=Math.abs(diff),mins=Math.floor(abs/60),secs=abs%60;
+    const amount=`${diff<0?'−':'+'}${mins?`${mins}m `:''}${secs}s`;
+    const todayKey=dayKey(tz,new Date()),relative=key===todayKey?'yesterday':prevKey===todayKey?'today':'the day before';
+    return['Daylight',`${amount} vs ${relative}`];
   }
   // Per-hour version of the same clear-sky estimate uvForDate already uses
   // for the daily "Clear-sky UV" metric: scale that day's peak across daylight
