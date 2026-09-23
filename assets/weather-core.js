@@ -346,8 +346,19 @@ window.WX = (function(){
     let last=new Error('Observation history unavailable.');
     for(const station of ids){
       try{
-        const result=await json(`${station}/observations?start=${encodeURIComponent(start)}&limit=200`,{ttl:CACHE_TTL.forecast});
-        const readings=(result.features||[]).map(f=>f.properties).filter(p=>p&&p.timestamp);
+        // Readings come newest first, and many stations report every five
+        // minutes, so one short page can stop hours after `since` and leave
+        // the start of the chart blank. Take the API's largest page and
+        // follow its next link until the window is covered.
+        let url=`${station}/observations?start=${encodeURIComponent(start)}&limit=500`;
+        const readings=[];
+        for(let page=0;url&&page<4;page++){
+          const result=await json(url,{ttl:CACHE_TTL.forecast});
+          const batch=(result.features||[]).map(f=>f.properties).filter(p=>p&&p.timestamp);
+          readings.push(...batch);
+          const oldest=batch.length?Date.parse(batch[batch.length-1].timestamp):NaN;
+          url=batch.length&&oldest>Date.parse(start)?result.pagination?.next:null;
+        }
         if(!readings.length)throw new Error('Observation history unavailable.');
         return readings;
       }catch(e){last=e}
