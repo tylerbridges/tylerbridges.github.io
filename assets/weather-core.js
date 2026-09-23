@@ -104,7 +104,16 @@ window.WX = (function(){
   function ensureTimeZone(){
     const saved=storedTimeZone();if(saved)return Promise.resolve(saved);
     if(timeZoneSetupPromise)return timeZoneSetupPromise;
-    const detected=deviceTimeZone(),zones=TIME_ZONES.includes(detected)?TIME_ZONES:[detected,...TIME_ZONES];
+    const detected=deviceTimeZone();
+    // A supported device zone is simply adopted, so a first visit shows the
+    // forecast straight away; Settings can still change it. Stored directly
+    // (no timezonechange event) because nothing has rendered in any zone yet.
+    if(TIME_ZONES.includes(detected)){
+      sessionTimeZone=detected;
+      try{localStorage.setItem(TIME_ZONE_KEY,detected)}catch{}
+      return Promise.resolve(detected);
+    }
+    const zones=[detected,...TIME_ZONES];
     timeZoneSetupPromise=new Promise(resolve=>{
       const id='time-zone-prompt';el(id)?.remove();
       const options=zones.map(zone=>`<option value="${esc(zone)}"${zone===detected?' selected':''}>${esc(timeZoneLabel(zone))}</option>`).join('');
