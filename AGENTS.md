@@ -22,6 +22,9 @@ iteration loop: request, implement, review, publish, verify.
 - Push the completed commit directly with `git push origin main`. Do not stop
   merely to ask whether to push, and do not open a pull request unless Tyler
   explicitly requests one.
+- When a task runs on a branch instead of `main`, push each commit to that
+  branch as soon as verification passes, without being asked. Never end a
+  reply with local commits that aren't on the remote.
 - Never force-push or rewrite published history.
 - After pushing, confirm that `origin/main` contains the new commit and check
   the GitHub Pages deployment. Report the commit, verification results, and
