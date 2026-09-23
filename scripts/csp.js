@@ -24,7 +24,7 @@ function policy(hashes) {
     `script-src 'self' https://cdn.jsdelivr.net ${hashes.map(h => `'sha256-${h}'`).join(' ')}`.trim(),
     "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
     `img-src 'self' data: blob: ${DATA_HOSTS.join(' ')}`,
-    `connect-src 'self' https://api.weather.gov https://photon.komoot.io ${DATA_HOSTS.join(' ')}`,
+    `connect-src 'self' https://api.weather.gov https://photon.komoot.io https://api.open-meteo.com ${DATA_HOSTS.join(' ')}`,
     "worker-src 'self' blob:",
     "child-src 'self' blob:",
     "font-src 'self'",

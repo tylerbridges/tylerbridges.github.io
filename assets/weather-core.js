@@ -953,7 +953,7 @@ window.WX = (function(){
     if(likely>=0)return starting(hours[likely],`${capitalize(kind(hours[likely]))} likely`);
     const chance=hours.findIndex(p=>popOf(p)>=30);
     if(chance>=0)return starting(hours[chance],`Chance of ${kind(hours[chance])}`);
-    return {icon:'🌂',text:'Dry for the next 24 hours'};
+    return {icon:'🌂',text:'Dry for the next 24 hours',dry:true};
   }
   // Hourly timing is only reasonably reliable a few days out, so the
   // hourly-based notes (rain timing, best time outside) stop after this.
@@ -1057,6 +1057,27 @@ window.WX = (function(){
   // NOAA's own map service for the Storm Prediction Center's convective
   // outlooks. Layer ids are looked up by name from the service metadata
   // rather than hardcoded, and any mismatch just means no line is shown.
+  // Next-two-hours rain/snow timing from Open-Meteo's 15-minute data
+  // (NOAA HRRR for North America; free, no key). This is model guidance,
+  // not radar extrapolation, and says so. Each value is the total for the
+  // 15 minutes ending at its timestamp.
+  const NOWCAST_API='https://api.open-meteo.com/v1/forecast',NOWCAST_MM=0.1;
+  async function rainNowcast(loc,tz){
+    const params=new URLSearchParams({latitude:loc.lat.toFixed(4),longitude:loc.lon.toFixed(4),minutely_15:'precipitation,snowfall',forecast_minutely_15:'12',past_minutely_15:'1',timeformat:'unixtime',timezone:'GMT'});
+    const data=await json(`${NOWCAST_API}?${params}`,{ttl:CACHE_TTL.forecast});
+    const m=data?.minutely_15,times=m?.time||[],rain=m?.precipitation||[],snow=m?.snowfall||[],now=Date.now();
+    const slots=times.map((t,i)=>({end:t*1000,mm:+rain[i]||0,snow:+snow[i]||0})).filter(x=>x.end>now).slice(0,8);
+    if(slots.length<4)return null;
+    const wet=x=>x.mm>=NOWCAST_MM,label=x=>x.snow>0?'Snow':'Rain',icon=x=>x.snow>0?'❄️':'🌧️';
+    const at=ms=>new Intl.DateTimeFormat('en-US',{timeZone:tz,hour:'numeric',minute:'2-digit',hour12:hour12()}).format(new Date(ms));
+    const note=(x,text,ms)=>({icon:icon(x),text:`${text} (15-minute model guidance)`,nowcast:true,day:ms==null?null:dayKey(tz,new Date(ms))});
+    if(wet(slots[0])){
+      const stop=slots.findIndex(x=>!wet(x));
+      return stop<0?note(slots[0],`${label(slots[0])} continuing for the next 2 hours`,null):note(slots[0],`${label(slots[0])} ending around ${at(slots[stop].end-15*6e4)}`,slots[stop].end-15*6e4);
+    }
+    const start=slots.find(wet);
+    return start?note(start,`${label(start)} starting around ${at(start.end-15*6e4)}`,start.end-15*6e4):null;
+  }
   const SPC_SERVICE='https://mapservices.weather.noaa.gov/vector/rest/services/outlooks/SPC_wx_outlks/MapServer';
   const SPC_LEVELS={MRGL:[1,'Marginal'],SLGT:[2,'Slight'],ENH:[3,'Enhanced'],MDT:[4,'Moderate'],HIGH:[5,'High']};
   const SPC_DN={3:'MRGL',4:'SLGT',5:'ENH',6:'MDT',8:'HIGH'};
@@ -1148,8 +1169,16 @@ window.WX = (function(){
         anchor?.insertAdjacentHTML('afterend',notesHTML(list));
       }
     };
+    // Severe risk and the rain nowcast come from separate services and are
+    // added as each answers. A nowcast that sees rain within two hours
+    // outranks an hourly "dry for 24 hours" note, so that one is dropped.
+    let risks=[],nowcast=null;
+    const repaint=()=>paint([...risks,nowcast,...base.filter(i=>!(nowcast&&i?.dry))]);
     paint(base);
-    if(hourly)severeRisk(loc,tz).then(risks=>{if(risks.length)paint([...risks,...base])}).catch(()=>{});
+    if(hourly){
+      severeRisk(loc,tz).then(found=>{if(found.length){risks=found;repaint()}}).catch(()=>{});
+      rainNowcast(loc,tz).then(found=>{if(found){nowcast=found;repaint()}}).catch(()=>{});
+    }
   }
   const LOCATE_ICON='<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M12 2.3 4.4 20.2c-.18.42.27.85.68.66L12 17.8l6.92 3.06c.41.19.86-.24.68-.66L12 2.3z" fill="currentColor" transform="rotate(45 12 12)"/></svg>';
   const SEARCH_ICON='<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.2"/><line x1="15.3" y1="15.3" x2="20.5" y2="20.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>';
