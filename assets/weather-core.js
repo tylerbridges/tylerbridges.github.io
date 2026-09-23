@@ -603,7 +603,8 @@ window.WX = (function(){
   // solar noon zenith angle for the date/latitude — the same clear-sky
   // geometry real UV forecasts start from before applying ozone/cloud
   // corrections we have no data source for — rather than a metric that can
-  // never populate.
+  // never populate. It ignores clouds, so it's labelled "Clear-sky UV"
+  // rather than presented as a forecast.
   function uvForDate(dateKey,lat){
     if(lat==null)return null;
     const[y,m,d]=dateKey.split('-').map(Number);
@@ -689,7 +690,7 @@ window.WX = (function(){
       humidity==null?null:['Humidity',`${humidity}%`],
       ['Wind',wind==null?b.windSpeed:fmtWind(wind)],
       gust==null?null:['Gusts',fmtWind(gust)],
-      uv==null?null:['Max UV',uv]
+      uv==null?null:['Clear-sky UV',uv]
     ].filter(Boolean);
   }
   let metricsGroupId=0;
@@ -753,7 +754,7 @@ window.WX = (function(){
     return[sunrise?['Sunrise',fmt(sunrise)]:null,sunset?['Sunset',fmt(sunset)]:null].filter(Boolean);
   }
   // Per-hour version of the same clear-sky estimate uvForDate already uses
-  // for the daily "Max UV" metric: scale that day's peak across daylight
+  // for the daily "Clear-sky UV" metric: scale that day's peak across daylight
   // hours with a sine curve (0 at sunrise/sunset, peak near solar noon).
   // Replaces a live hourly UV feed with no bundled library and no API call.
   function hourlyUVEstimate(date,lat,lon,tz){
