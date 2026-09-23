@@ -869,8 +869,14 @@ window.WX = (function(){
     const range=fmtTempRange(lo,hi);
     return `${condition}${range?` · ${range}`:''}`;
   }
+  // Card titles open with a weather emoji ("🌧️ Tomorrow · Sep 24"); it's
+  // decoration, so screen readers skip it and read just the day.
+  function cardTitleHTML(title){
+    const m=String(title??'').match(/^([^\p{L}\p{N}\s]+)\s+(.*)$/su);
+    return m?`<span aria-hidden="true">${esc(m[1])}</span> ${esc(m[2])}`:esc(title);
+  }
   function renderFutureCardHTML(title,d,n,metrics,gridHi=null,gridLo=null,day=''){
-    return `<article class="brief"${day?` data-day="${esc(day)}"`:''}><h3>${esc(title)}</h3><hr><p class="now-line">${esc(futureHeadline(d,n,gridHi,gridLo))}</p>${futureBrief(d,n)?`<p class="condition">${esc(futureBrief(d,n))}</p>`:''}<div class="metrics">${metrics}</div></article>`;
+    return `<article class="brief"${day?` data-day="${esc(day)}"`:''}><h3>${cardTitleHTML(title)}</h3><hr><p class="now-line">${esc(futureHeadline(d,n,gridHi,gridLo))}</p>${futureBrief(d,n)?`<p class="condition">${esc(futureBrief(d,n))}</p>`:''}<div class="metrics">${metrics}</div></article>`;
   }
   function renderDaysHTML(rows,tz,loc){
     return rows.map((r,index)=>{
@@ -897,7 +903,7 @@ window.WX = (function(){
     // trailing section) as every other day's card instead of always
     // reserving space for a "No active NWS alerts." line.
     const alertsSectionHTML=active.length?`<hr><h3>NWS Alerts</h3><div id="alerts">${active.map(a=>alertLine(a,tz)).join('')}</div>`:'';
-    container.innerHTML=`<article class="brief" data-day="${esc(todayKey)}"><h3>${esc(title)}</h3><hr><p class="now-line">${esc(brief.now)}</p>${laterHTML}<div class="metrics">${metrics}</div>${alertsSectionHTML}</article>`;
+    container.innerHTML=`<article class="brief" data-day="${esc(todayKey)}"><h3>${cardTitleHTML(title)}</h3><hr><p class="now-line">${esc(brief.now)}</p>${laterHTML}<div class="metrics">${metrics}</div>${alertsSectionHTML}</article>`;
     // Not awaited: the HWO/AFD lookup is two more round trips the card
     // shouldn't wait on.
     appendHazardOutlook(container.querySelector('article'),{loc,officeId,todayPeriods,tz,hasAlerts:active.length>0}).catch(()=>{});

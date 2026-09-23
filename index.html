@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'sha256-iaGyl+MesImCrVNj4kQ20S4RvzBpRSK0LS5TGRYQTug=' 'sha256-XgGGYV7eLhC/Qutsu7ZKT5knA6ddB3gYYt4tIuadvKU='; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob: https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org; connect-src 'self' https://api.weather.gov https://photon.komoot.io https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org; worker-src 'self' blob:; child-src 'self' blob:; font-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'sha256-iaGyl+MesImCrVNj4kQ20S4RvzBpRSK0LS5TGRYQTug=' 'sha256-ENql/pu3z5wFn4sjR4/RXxyEglKgeftsBUtbry/9cgM='; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob: https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org; connect-src 'self' https://api.weather.gov https://photon.komoot.io https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org; worker-src 'self' blob:; child-src 'self' blob:; font-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
   <script>try{var t=localStorage.getItem('weather-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);else if(t!=='system')document.documentElement.setAttribute('data-theme','dark')}catch{}</script>
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -48,14 +48,14 @@
         <div id="tomorrow-card"></div>
       </section>
       <p class="see-more"><a href="/forecast.html">See the full 7-day forecast →</a></p>
-      <section aria-labelledby="charts-title"><h2 id="charts-title">Next 48 hours</h2><div class="charts"><figure class="chart"><h3>Temperature</h3><svg id="temp-chart" role="img" aria-label="Hourly temperature in degrees Fahrenheit"></svg></figure><figure class="chart"><h3>Precipitation probability</h3><svg id="pop-chart" role="img" aria-label="Hourly precipitation probability in percent"></svg></figure><figure class="chart"><h3>Wind and gusts</h3><svg id="wind-chart" role="img" aria-label="Hourly sustained wind and gusts in miles per hour"></svg><div class="legend"><span><i class="swatch" style="background:var(--green)"></i>Sustained</span><span><i class="swatch" style="background:var(--orange)"></i>Gust</span></div></figure></div></section>
+      <section aria-labelledby="charts-title"><h2 id="charts-title">Next 48 hours</h2><div class="charts"><figure class="chart"><h3>Temperature</h3><svg id="temp-chart" role="img" aria-label="Hourly temperature in degrees Fahrenheit"></svg></figure><figure class="chart"><h3>Precipitation probability</h3><svg id="pop-chart" role="img" aria-label="Hourly precipitation probability in percent"></svg></figure><figure class="chart"><h3>Wind and gusts</h3><svg id="wind-chart" role="img" aria-label="Hourly sustained wind and gusts in miles per hour"></svg><div class="legend"><span><i class="swatch" style="background:var(--green)"></i>Sustained</span><span><i class="swatch" style="background:var(--orange)"></i>Gust</span></div></figure></div><div class="sr-only"><table id="chart-table"></table></div><p class="sr-only" id="chart-readout" aria-live="polite"></p></section>
     </div>
     <footer class="site-footer" id="site-footer"></footer>
   </main>
   <script src="/assets/weather-core.js"></script>
   <script>
   (()=>{
-    const {el,resolveLocation,resolvePoint,json,observationHistory,emoji,local,maxWind,gridValues,kphToMph,cToF,
+    const {el,esc,resolveLocation,resolvePoint,json,observationHistory,emoji,local,maxWind,gridValues,kphToMph,cToF,
       dayKey,startOfDay,hourLabel,dayRows,uvForDate,humidityForDate,gustForDate,popForDate,extraDayMetrics,dayMetrics,metricsHTML,sunMetrics,
       findTodayPeriods,renderFutureCardHTML,loadTodayCard,mountHeader,mountFooter,mountPullToRefresh,mountLocationSwitcher,DEFAULT_LOC,
       tempValue,windValue,tempUnitLabel,windUnitLabel,hour12,scheduleAutoRefresh,mountStatus,CACHE_TTL,renderDayNotes}=WX;
@@ -86,7 +86,7 @@
     // sustained wind, so that hour's peak is the sustained reading.
     const obsGust=o=>{const v=o.windGust?.value;return v==null?obsWind(o):o.windGust.unitCode?.includes('km_h')?kphToMph(v):Math.round(v)};
     function mergeChartSeries(history,nws,times,now){return times.map((time,index)=>time<now?(history[index]??nws[index]):(nws[index]??history[index]))}
-    function draw(svg,series,domain,yTitle){
+    function draw(svg,series,domain,yTitle,describe){
       const w=Math.max(320,svg.clientWidth||320),h=215,m={l:64,r:32,t:12,b:28},span=chartData.spanHours||48,
         x=i=>m.l+i*(w-m.l-m.r)/span,
         y=v=>m.t+(domain[1]-v)*(h-m.t-m.b)/(domain[1]-domain[0]),
@@ -110,7 +110,8 @@
       if(nowOffset>=0&&nowOffset<=span){const nowX=x(nowOffset);currentMarker=add('g',{'aria-hidden':'true','pointer-events':'none'});make(currentMarker,'line',{x1:nowX,x2:nowX,y1:m.t,y2:h-m.b,stroke:css('--orange'),'stroke-dasharray':'2,3'});make(currentMarker,'text',{x:nowX+4,y:m.t+12,'text-anchor':'start',fill:css('--orange'),'font-size':10,'font-weight':700},timeLabel(current))}
       const scrubMarker=add('g',{'aria-hidden':'true','pointer-events':'none',display:'none'}),scrubLine=make(scrubMarker,'line',{y1:m.t,y2:h-m.b,stroke:css('--muted'),'stroke-dasharray':'2,3'}),scrubText=make(scrubMarker,'text',{y:m.t+12,fill:css('--muted'),'font-size':10,'font-weight':700});
       const hit=add('rect',{x:m.l,y:m.t,width:w-m.l-m.r,height:h-m.t-m.b,fill:'transparent','pointer-events':'all',cursor:'crosshair','aria-hidden':'true'});
-      function showScrub(clientX){const bounds=svg.getBoundingClientRect(),px=(clientX-bounds.left)*w/bounds.width,offset=Math.max(0,Math.min(span,(px-m.l)*span/(w-m.l-m.r))),xx=x(offset),anchor=offset>span-8?'end':'start',date=new Date(chartData.windowStart.getTime()+offset*3600000);scrubLine.setAttribute('x1',xx);scrubLine.setAttribute('x2',xx);scrubText.setAttribute('x',xx+(anchor==='end'?-4:4));scrubText.setAttribute('text-anchor',anchor);scrubText.textContent=scrubLabel(date,offset);scrubMarker.removeAttribute('display');currentMarker?.setAttribute('display','none')}
+      function showScrub(clientX){const bounds=svg.getBoundingClientRect(),px=(clientX-bounds.left)*w/bounds.width;showScrubAt(Math.max(0,Math.min(span,(px-m.l)*span/(w-m.l-m.r))))}
+      function showScrubAt(offset){const xx=x(offset),anchor=offset>span-8?'end':'start',date=new Date(chartData.windowStart.getTime()+offset*3600000);scrubLine.setAttribute('x1',xx);scrubLine.setAttribute('x2',xx);scrubText.setAttribute('x',xx+(anchor==='end'?-4:4));scrubText.setAttribute('text-anchor',anchor);scrubText.textContent=scrubLabel(date,offset);scrubMarker.removeAttribute('display');currentMarker?.setAttribute('display','none')}
       function restoreNow(){scrubMarker.setAttribute('display','none');currentMarker?.removeAttribute('display')}
       hit.addEventListener('pointermove',e=>{if(e.pointerType!=='touch')showScrub(e.clientX)});
       hit.addEventListener('pointerleave',e=>{if(e.pointerType!=='touch')restoreNow()});
@@ -119,18 +120,60 @@
       hit.addEventListener('touchmove',e=>{if(!touchStart||e.touches.length!==1)return;const touch=e.touches[0];if(!touchScrubbing&&Math.hypot(touch.clientX-touchStart.x,touch.clientY-touchStart.y)>10){clearTimeout(holdTimer);touchStart=null;return}if(touchScrubbing){e.preventDefault();showScrub(touch.clientX)}},{passive:false});
       const endTouchScrub=e=>{clearTimeout(holdTimer);if(touchScrubbing)e.preventDefault();touchScrubbing=false;touchStart=null;restoreNow()};
       hit.addEventListener('contextmenu',e=>{if(touchScrubbing)e.preventDefault()});
-      hit.addEventListener('touchend',endTouchScrub,{passive:false});hit.addEventListener('touchcancel',endTouchScrub,{passive:false})
+      hit.addEventListener('touchend',endTouchScrub,{passive:false});hit.addEventListener('touchcancel',endTouchScrub,{passive:false});
+      // Keyboard scrubbing (see the keydown handler below) reuses the same marker.
+      svg._scrub={showAt:showScrubAt,restore:restoreNow,readout:offset=>`${whenLabel(offset)}: ${describe(offset)}`};
+      if(keyOffsets.has(svg)&&document.activeElement===svg)showScrubAt(keyOffsets.get(svg))
     }
+    // "today at 3 PM" / "tomorrow at 6 AM" for an hour offset into the chart
+    // window; used by the chart summaries, the data table and the readout.
+    function whenLabel(offset){
+      const date=new Date(chartData.windowStart.getTime()+offset*3600000);
+      const time=new Intl.DateTimeFormat('en-US',{timeZone:chartData.tz,hour:'numeric',minute:'2-digit',hour12:hour12()}).format(date);
+      const day=offset<24?'Today':offset<48?'Tomorrow':new Intl.DateTimeFormat('en-US',{timeZone:chartData.tz,weekday:'long'}).format(date);
+      return `${day} at ${time}`;
+    }
+    // Index of the largest (or smallest) non-null value, or -1.
+    function extremeIndex(values,pickMax=true){let best=-1;values.forEach((v,i)=>{if(v!=null&&(best<0||(pickMax?v>values[best]:v<values[best])))best=i});return best}
+    const at=i=>whenLabel(i).replace(/^(\w+) at /,(m,day)=>`${day.toLowerCase()} at `);
+    const KEY_HINT='Focus the chart and use the left and right arrow keys to step through the hours.';
     function redraw(){
-      if(!chartData||!chartData.temp.length){['temp-chart','pop-chart','wind-chart'].forEach(id=>el(id).innerHTML='');return;}
-      el('temp-chart').setAttribute('aria-label',`Hourly temperature in degrees ${tempUnitLabel()==='C'?'Celsius':'Fahrenheit'}`);
-      el('wind-chart').setAttribute('aria-label',`Hourly sustained wind and gusts in ${windUnitLabel()==='mph'?'miles per hour':'kilometers per hour'}`);
+      if(!chartData||!chartData.temp.length){['temp-chart','pop-chart','wind-chart'].forEach(id=>el(id).innerHTML='');el('chart-table').innerHTML='';return;}
+      const tU=`°${tempUnitLabel()}`,wU=windUnitLabel(),tempName=tempUnitLabel()==='C'?'Celsius':'Fahrenheit',windName=wU==='mph'?'miles per hour':'kilometers per hour';
       const tempSeries=chartData.temp.map(v=>v==null?null:tempValue(v)),temps=tempSeries.filter(v=>v!=null),maxT=Math.max(...temps,tempValue(80)),minT=Math.min(...temps,tempValue(30));
-      draw(el('temp-chart'),[{values:tempSeries,color:'--blue'}],[Math.floor((minT-5)/5)*5,Math.ceil((maxT+5)/5)*5],`°${tempUnitLabel()}`);
-      draw(el('pop-chart'),[{values:chartData.pop,color:'--cyan'}],[0,100],'%');
+      const hiI=extremeIndex(tempSeries),loI=extremeIndex(tempSeries,false),popI=extremeIndex(chartData.pop);
+      el('temp-chart').setAttribute('aria-label',`Hourly temperature in degrees ${tempName}, today and tomorrow.${hiI<0?'':` High ${tempSeries[hiI]}${tU} ${at(hiI)}; low ${tempSeries[loI]}${tU} ${at(loI)}.`} ${KEY_HINT}`);
+      draw(el('temp-chart'),[{values:tempSeries,color:'--blue'}],[Math.floor((minT-5)/5)*5,Math.ceil((maxT+5)/5)*5],tU,i=>tempSeries[i]==null?'no data':`${tempSeries[i]}${tU}`);
+      el('pop-chart').setAttribute('aria-label',`Hourly precipitation probability in percent, today and tomorrow.${popI<0?'':chartData.pop[popI]>0?` Peak ${chartData.pop[popI]}% ${at(popI)}.`:' 0% throughout.'} ${KEY_HINT}`);
+      draw(el('pop-chart'),[{values:chartData.pop,color:'--cyan'}],[0,100],'%',i=>chartData.pop[i]==null?'no data':`${chartData.pop[i]}% chance of rain`);
       const windSeries=chartData.wind.map(v=>v==null?null:windValue(v)),gustSeries=chartData.gust.map(v=>v==null?null:windValue(v)),vals=[...windSeries,...gustSeries].filter(v=>v!=null),maxW=Math.max(windValue(20),...vals);
-      draw(el('wind-chart'),[{values:windSeries,color:'--green'},{values:gustSeries,color:'--orange'}],[0,Math.ceil((maxW+3)/5)*5],windUnitLabel());
+      const gustI=extremeIndex(gustSeries),windI=extremeIndex(windSeries);
+      el('wind-chart').setAttribute('aria-label',`Hourly sustained wind and gusts in ${windName}, today and tomorrow.${gustI<0?'':` Peak gust ${gustSeries[gustI]} ${wU} ${at(gustI)}.`}${windI<0?'':` Strongest sustained wind ${windSeries[windI]} ${wU} ${at(windI)}.`} ${KEY_HINT}`);
+      draw(el('wind-chart'),[{values:windSeries,color:'--green'},{values:gustSeries,color:'--orange'}],[0,Math.ceil((maxW+3)/5)*5],wU,i=>`wind ${windSeries[i]??'no data'}${windSeries[i]==null?'':` ${wU}`}, gusts ${gustSeries[i]??'no data'}${gustSeries[i]==null?'':` ${wU}`}`);
+      const cell=v=>v==null?'—':v;
+      el('chart-table').innerHTML=`<caption>Hourly data for today and tomorrow</caption><thead><tr><th scope="col">Time</th><th scope="col">Temperature (${tU})</th><th scope="col">Rain chance (%)</th><th scope="col">Wind (${esc(wU)})</th><th scope="col">Gusts (${esc(wU)})</th></tr></thead><tbody>${tempSeries.map((t,i)=>`<tr><th scope="row">${esc(whenLabel(i))}</th><td>${cell(t)}</td><td>${cell(chartData.pop[i])}</td><td>${cell(windSeries[i])}</td><td>${cell(gustSeries[i])}</td></tr>`).join('')}</tbody>`;
     }
+    // Arrow keys step the scrub marker an hour at a time (Home/End jump to
+    // the ends, Escape returns to "now"), announced through #chart-readout.
+    const keyOffsets=new Map();
+    ['temp-chart','pop-chart','wind-chart'].forEach(id=>{
+      const svg=el(id);
+      svg.setAttribute('tabindex','0');
+      svg.addEventListener('keydown',e=>{
+        const scrub=svg._scrub;
+        if(!scrub||!chartData)return;
+        const span=chartData.spanHours||48,nowOffset=Math.round(Math.max(0,Math.min(span,(Date.now()-chartData.windowStart)/3600000)));
+        let offset=keyOffsets.get(svg);
+        if(e.key==='ArrowRight'||e.key==='ArrowLeft')offset=offset==null?nowOffset:Math.max(0,Math.min(span,offset+(e.key==='ArrowRight'?1:-1)));
+        else if(e.key==='Home')offset=0;
+        else if(e.key==='End')offset=span;
+        else if(e.key==='Escape'&&offset!=null){e.preventDefault();keyOffsets.delete(svg);scrub.restore();el('chart-readout').textContent='';return}
+        else return;
+        e.preventDefault();
+        keyOffsets.set(svg,offset);scrub.showAt(offset);el('chart-readout').textContent=scrub.readout(offset);
+      });
+      svg.addEventListener('blur',()=>{if(keyOffsets.delete(svg))svg._scrub?.restore()});
+    });
     let busy=false,lastLoad=0,hasLoaded=false;
     async function load(){if(busy)return;busy=true;lastLoad=Date.now();let loc=null;if(!hasLoaded){el('loading').classList.remove('hidden');el('error').classList.add('hidden');el('content').classList.add('hidden')}else{el('content').classList.add('refreshing')}try{
       loc=await resolveLocation();currentLoc=loc;
