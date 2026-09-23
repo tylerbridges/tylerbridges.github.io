@@ -887,6 +887,33 @@ window.WX = (function(){
     }
     return notes;
   }
+  // One short, forecaster-style clause added to a card's summary sentence
+  // when the numbers say something worth pointing out: strong gusts, a big
+  // day-to-day temperature swing, or the start of a multi-day warming or
+  // cooling trend. At most one per card, strongest first.
+  function outlookClauses(rows,tz){
+    const out=new Map(),todayKey=dayKey(tz,new Date());
+    const hi=r=>r?.day?.temperature??r?.hi??null;
+    const weekday=date=>new Intl.DateTimeFormat('en-US',{timeZone:tz,weekday:'long'}).format(date);
+    const step=i=>i>0&&hi(rows[i])!=null&&hi(rows[i-1])!=null?hi(rows[i])-hi(rows[i-1]):0;
+    rows.forEach((r,i)=>{
+      const key=dayKey(tz,r.date),options=[];
+      if(r.gust!=null&&r.gust>=30)options.push({rank:r.gust>=40?0:3,text:`Gusts to ${fmtWind(r.gust)}.`});
+      if(i>0&&key!==todayKey&&step(i)!==0){
+        const diff=step(i),prev=rows[i-1],prevName=dayKey(tz,prev.date)===todayKey?'today':weekday(prev.date);
+        if(Math.abs(diff)>=10)options.push({rank:1,text:`About ${Math.abs(tempValue(hi(r))-tempValue(hi(prev)))}° ${diff>0?'warmer':'cooler'} than ${prevName}.`});
+        // A trend is named once, on the day it starts: three or more days
+        // moving the same way, adding up to at least 8°F.
+        const dir=Math.sign(diff),startsHere=Math.sign(step(i-1))!==dir||i-1===0&&dayKey(tz,rows[0].date)===todayKey;
+        let end=i;
+        while(end+1<rows.length&&Math.sign(step(end+1))===dir)end++;
+        const total=Math.abs(hi(rows[end])-hi(rows[i-1]));
+        if(startsHere&&end-i>=2&&total>=8)options.push({rank:2,text:`${dir>0?'Warming':'Cooling'} trend through ${weekday(rows[end].date)}.`});
+      }
+      if(options.length)out.set(key,options.sort((a,b)=>a.rank-b.rank)[0].text);
+    });
+    return out;
+  }
   function notesHTML(items){
     return `<ul class="card-notes">${items.map(i=>`<li class="card-note${i.tone?` card-note-${i.tone}`:''}"><span class="card-note-icon" aria-hidden="true">${i.icon}</span><span>${esc(i.text)}${i.href?` <a href="${esc(i.href)}" target="_blank" rel="noreferrer">Details</a>`:''}</span></li>`).join('')}</ul>`;
   }
@@ -895,6 +922,10 @@ window.WX = (function(){
   // comes from a separate NOAA service and is added first when it answers.
   function renderDayNotes(root,{hourly=null,rows,loc,tz,gridKey}){
     if(!root)return;
+    for(const [key,text] of outlookClauses(rows,tz)){
+      const sentence=root.querySelector(`article[data-day="${key}"] .condition`);
+      if(sentence)sentence.textContent=`${sentence.textContent} ${text}`;
+    }
     const todayKey=dayKey(tz,new Date());
     const base=[];
     if(hourly){base.push(nextPrecip(hourly,tz),bestOutdoorWindow(hourly,loc,tz))}
@@ -912,45 +943,6 @@ window.WX = (function(){
     paint(base);
     if(hourly)severeRisk(loc,tz).then(risks=>{if(risks.length)paint([...risks,...base])}).catch(()=>{});
   }
-  // ---- Forecaster's notes (7-Day page) -----------------------------------
-  // Pulls the local NWS meteorologist's own "Key Messages" (or, for offices
-  // that don't write them, the opening of the synopsis) out of the Area
-  // Forecast Discussion — the reasoning and confidence behind the numbers.
-  function forecasterNotes(text){
-    if(!text)return null;
-    const t=`\n${String(text).replace(/\r/g,'')}`;
-    const section=name=>{const m=t.match(new RegExp(`\\n\\.${name}[^\\n]*?\\.\\.\\.([\\s\\S]*?)(?=\\n&&|\\n\\.[A-Z][A-Z /]+\\.\\.\\.|$)`));return m?m[1].replace(/^\s*Issued at[^\n]*\n/i,'').trim():null};
-    const clean=s=>toSentenceCase(s.replace(/\s+/g,' ').trim());
-    const key=section('KEY MESSAGES');
-    if(key){
-      const items=key.split(/\n\s*[-*•]\s+/).map(s=>clean(s.replace(/^[-*•]\s*/,''))).filter(s=>s.length>10);
-      if(items.length)return {kind:'key',items:items.slice(0,4)};
-    }
-    const body=section('SYNOPSIS')||section('SHORT TERM')||section('DISCUSSION')||section('UPDATE');
-    if(!body)return null;
-    const sentences=clean(body.split(/\n\s*\n/)[0]).split(/(?<=[.!?])\s+/);
-    return {kind:'summary',items:[sentences.slice(0,3).join(' ')]};
-  }
-  function mountForecasterNotes(container,getOffice){
-    if(!container)return;
-    container.innerHTML='<details class="brief forecaster-notes"><summary>From the NWS forecaster</summary><div class="forecaster-notes-body"><p class="note">Loading…</p></div></details>';
-    const details=container.querySelector('details'),body=container.querySelector('.forecaster-notes-body');
-    let loadedFor=null;
-    // Fetched only when opened, so it costs nothing for people who don't.
-    details.addEventListener('toggle',async()=>{
-      const officeId=getOffice();
-      if(!details.open||!officeId||loadedFor===officeId)return;
-      loadedFor=officeId;body.innerHTML='<p class="note">Loading…</p>';
-      const afd=await product('AFD',officeId);
-      const notes=forecasterNotes(afd?.productText);
-      if(!notes){loadedFor=null;body.innerHTML='<p class="note">The forecaster\'s discussion isn\'t available right now.</p>';return}
-      const tz=getTimeZone(),full=`https://forecast.weather.gov/product.php?site=NWS&issuedby=${encodeURIComponent(officeId)}&product=AFD&format=txt&version=1&glossary=1`;
-      body.innerHTML=`${notes.kind==='key'?`<ul>${notes.items.map(i=>`<li>${esc(i)}</li>`).join('')}</ul>`:`<p>${esc(notes.items[0])}</p>`}<p class="note">${esc(officeLabel(afd.productText,officeId))} · issued ${esc(local(afd.issuanceTime,tz))} · <a href="${esc(full)}" target="_blank" rel="noreferrer">Full discussion</a></p>`;
-    });
-    // A new location invalidates what's shown; reload on next open.
-    return {reset(){loadedFor=null;if(details.open){details.open=false}}};
-  }
-
   const LOCATE_ICON='<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M12 2.3 4.4 20.2c-.18.42.27.85.68.66L12 17.8l6.92 3.06c.41.19.86-.24.68-.66L12 2.3z" fill="currentColor" transform="rotate(45 12 12)"/></svg>';
   const SEARCH_ICON='<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.2"/><line x1="15.3" y1="15.3" x2="20.5" y2="20.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>';
   const HAMBURGER_ICON='<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></g></svg>';
@@ -1594,7 +1586,7 @@ window.WX = (function(){
     });
   }
 
-  return {API,DEFAULT_LOC,CACHE_TTL,renderDayNotes,mountForecasterNotes,forecasterNotes,naturalForecast,nextPrecip,bestOutdoorWindow,forecastChanges,bypassCache,friendlyError,mountStatus,showLocationNote,activeAlerts,renderAlertBanner,DEFAULT_TIME_ZONE,el,esc,getSavedLocation,saveLocation,getCurrentLocation,getTimeZone,setTimeZone,timeZoneLabel,timeZoneOptionsHTML,geolocate,geocodeSearch,resolveLocation,resolvePoint,json,
+  return {API,DEFAULT_LOC,CACHE_TTL,renderDayNotes,outlookClauses,naturalForecast,nextPrecip,bestOutdoorWindow,forecastChanges,bypassCache,friendlyError,mountStatus,showLocationNote,activeAlerts,renderAlertBanner,DEFAULT_TIME_ZONE,el,esc,getSavedLocation,saveLocation,getCurrentLocation,getTimeZone,setTimeZone,timeZoneLabel,timeZoneOptionsHTML,geolocate,geocodeSearch,resolveLocation,resolvePoint,json,
     getSavedLocations,isLocationSaved,addSavedLocation,removeSavedLocation,toggleSavedLocation,setFavoriteLocation,clearFavoriteLocation,toggleFavoriteLocation,getFavoriteLocation,mountLocationSwitcher,
     getStartupMode,setStartupMode,
     getTempUnit,setTempUnit,getWindUnit,setWindUnit,getHourFormat,setHourFormat,hour12,tempValue,tempUnitLabel,fmtTemp,fmtTempRange,windValue,windUnitLabel,fmtWind,
