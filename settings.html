@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'sha256-iaGyl+MesImCrVNj4kQ20S4RvzBpRSK0LS5TGRYQTug=' 'sha256-h6S0N4uZ0HPNymuKAU49CTF3i1Rk4B7P6QDqSELHzT8='; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob: https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org; connect-src 'self' https://api.weather.gov https://photon.komoot.io https://api.open-meteo.com https://air-quality-api.open-meteo.com https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org; worker-src 'self' blob:; child-src 'self' blob:; font-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'sha256-iaGyl+MesImCrVNj4kQ20S4RvzBpRSK0LS5TGRYQTug=' 'sha256-2ko+v2uKw0PBL6lGX0SOe3KVNgMFP6UZ6CyvOE+4fG4='; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob: https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org; connect-src 'self' https://api.weather.gov https://photon.komoot.io https://api.open-meteo.com https://air-quality-api.open-meteo.com https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org; worker-src 'self' blob:; child-src 'self' blob:; font-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
   <script>try{var t=localStorage.getItem('weather-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);else if(t!=='system')document.documentElement.setAttribute('data-theme','dark')}catch{}</script>
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -93,6 +93,18 @@
         </div>
       </article>
       <article class="brief">
+        <h3>Pickleball</h3>
+        <p>Adds a 🏓 note to today and the next three days: when the wind allows outdoor play, or a heads-up to play indoors.</p>
+        <div class="choice-group" role="group" aria-label="Pickleball note" id="pickleball-choice-group">
+          <button class="choice-btn" type="button" data-choice="off">Off</button>
+          <button class="choice-btn" type="button" data-choice="on">On</button>
+        </div>
+        <div class="setting-fields" id="pickleball-limits" hidden>
+          <label class="setting-field" for="pickleball-wind">Max wind (<span data-wind-unit>mph</span>)<input class="setting-select" type="number" id="pickleball-wind" inputmode="numeric" min="1" max="150" step="1"></label>
+          <label class="setting-field" for="pickleball-gust">Max gusts (<span data-wind-unit>mph</span>)<input class="setting-select" type="number" id="pickleball-gust" inputmode="numeric" min="1" max="150" step="1"></label>
+        </div>
+      </article>
+      <article class="brief">
         <h3>Default location</h3>
         <p>What the site opens to: wherever you last left it, or always your favorite saved location.</p>
         <div class="choice-group" role="group" aria-label="Default location" id="startup-mode-choice-group">
@@ -146,6 +158,7 @@
       document.getElementById('refresh-interval-choice').value=String(WX.getRefreshInterval());
     }
     paintRefreshInterval();
+    WX.bindPickleballSettings(document);
     document.getElementById('refresh-interval-choice').addEventListener('change',e=>WX.setRefreshInterval(parseInt(e.target.value,10)));
     if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
   </script>

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'sha256-iaGyl+MesImCrVNj4kQ20S4RvzBpRSK0LS5TGRYQTug=' 'sha256-6XyVAYtuv+jkgyrSiq42/6atyVSXKZOy4u5OsGZQIGw='; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob: https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org; connect-src 'self' https://api.weather.gov https://photon.komoot.io https://api.open-meteo.com https://air-quality-api.open-meteo.com https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org; worker-src 'self' blob:; child-src 'self' blob:; font-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'sha256-iaGyl+MesImCrVNj4kQ20S4RvzBpRSK0LS5TGRYQTug=' 'sha256-M66d17I5aX0byiSLPe+kDi4dZQC1kr7VSAs/DtYnegc='; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob: https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org; connect-src 'self' https://api.weather.gov https://photon.komoot.io https://api.open-meteo.com https://air-quality-api.open-meteo.com https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org; worker-src 'self' blob:; child-src 'self' blob:; font-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
   <script>try{var t=localStorage.getItem('weather-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);else if(t!=='system')document.documentElement.setAttribute('data-theme','dark')}catch{}</script>
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -191,7 +191,7 @@
         el('tomorrow-card').innerHTML=renderFutureCardHTML(tomorrowTitle,tomorrow.day,tomorrow.night,tomorrowMetrics,tomorrow.hi,tomorrow.lo,tomorrowKey);
       }else{el('tomorrow-card').innerHTML=renderFutureCardHTML('Tomorrow',null,null,'')}
       await todayCard;
-      renderDayNotes(el('content'),{hourly:hourlyPeriods,rows,loc,tz,gridKey:point.properties.forecast});
+      renderDayNotes(el('content'),{hourly:hourlyPeriods,grid,rows,loc,tz,gridKey:point.properties.forecast});
       const gridTemp=gridValues(grid.properties.temperature,times,v=>grid.properties.temperature.uom?.includes('degC')?cToF(v):Math.round(v));
       const gridPop=gridValues(grid.properties.probabilityOfPrecipitation,times,v=>Math.round(v));
       const gridWind=gridValues(grid.properties.windSpeed,times,v=>grid.properties.windSpeed.uom?.includes('km_h')?kphToMph(v):Math.round(v));

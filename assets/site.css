@@ -76,6 +76,10 @@ h3{font-size:1rem;margin:0}
 .choice-btn{flex:1;padding:.6rem;border-radius:10px;border:1px solid var(--line);background:var(--surface-2);color:var(--text);font-weight:650;font-size:.85rem;transition:background-color .15s ease-out,border-color .15s ease-out,color .15s ease-out}
 .choice-btn.active{background:var(--blue);color:#fff;border-color:var(--blue)}
 .setting-select{width:100%;margin-top:.65rem;padding:.62rem .75rem;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);color:var(--text);font:inherit;font-size:.88rem}
+.setting-fields{display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin-top:.6rem}
+.setting-fields[hidden]{display:none}
+.setting-field{display:block;color:var(--muted);font-size:.85rem;font-weight:600}
+.setting-field .setting-select{margin-top:.35rem}
 .timezone-dialog{width:min(420px,calc(100% - 2rem));padding:0;border:0;border-radius:18px;background:var(--surface);color:var(--text);box-shadow:var(--shadow)}
 .timezone-dialog::backdrop{background:rgba(0,0,0,.58);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
 .timezone-dialog-card{padding:1.15rem}

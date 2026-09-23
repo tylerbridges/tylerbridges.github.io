@@ -84,6 +84,47 @@ window.WX = (function(){
   const SHOW_FEELS_LIKE_KEY='weather-show-feels-like';
   function getShowFeelsLike(){try{return localStorage.getItem(SHOW_FEELS_LIKE_KEY)!=='false'}catch{return true}}
   function setShowFeelsLike(show){try{localStorage.setItem(SHOW_FEELS_LIKE_KEY,show?'true':'false')}catch{}document.dispatchEvent(new CustomEvent('unitschange'))}
+  // Optional pickleball note: off by default. Wind limits are stored in mph
+  // whatever the display unit, like every other wind value on the site.
+  const PICKLEBALL_KEY='weather-pickleball',PICKLEBALL_WIND_KEY='weather-pickleball-wind',PICKLEBALL_GUST_KEY='weather-pickleball-gust';
+  const PICKLEBALL_DEFAULTS={wind:12,gust:18};
+  function getPickleball(){try{return localStorage.getItem(PICKLEBALL_KEY)==='on'}catch{return false}}
+  function setPickleball(on){try{localStorage.setItem(PICKLEBALL_KEY,on?'on':'off')}catch{}document.dispatchEvent(new CustomEvent('unitschange'))}
+  function getPickleballLimits(){
+    const read=(key,fallback)=>{try{const v=parseFloat(localStorage.getItem(key));return Number.isFinite(v)&&v>0?v:fallback}catch{return fallback}};
+    return {wind:read(PICKLEBALL_WIND_KEY,PICKLEBALL_DEFAULTS.wind),gust:read(PICKLEBALL_GUST_KEY,PICKLEBALL_DEFAULTS.gust)};
+  }
+  function setPickleballLimit(kind,mph){
+    if(!Number.isFinite(mph)||mph<=0)return;
+    try{localStorage.setItem(kind==='gust'?PICKLEBALL_GUST_KEY:PICKLEBALL_WIND_KEY,String(Math.round(mph*10)/10))}catch{}
+    document.dispatchEvent(new CustomEvent('unitschange'));
+  }
+  // Wires the Pickleball settings card, on settings.html and in the menu's
+  // settings dialog alike. Limits show in the current wind unit and are
+  // stored in mph; an empty or invalid entry snaps back to the saved value.
+  function bindPickleballSettings(root){
+    const group=root?.querySelector('#pickleball-choice-group');
+    if(!group)return;
+    const fields=root.querySelector('#pickleball-limits'),inputs={wind:root.querySelector('#pickleball-wind'),gust:root.querySelector('#pickleball-gust')};
+    const paint=()=>{
+      const on=getPickleball(),limits=getPickleballLimits();
+      group.querySelectorAll('.choice-btn').forEach(b=>{const active=(b.dataset.choice==='on')===on;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active))});
+      if(fields)fields.hidden=!on;
+      root.querySelectorAll('[data-wind-unit]').forEach(n=>n.textContent=windUnitLabel());
+      for(const kind of ['wind','gust'])if(inputs[kind])inputs[kind].value=windValue(limits[kind]);
+    };
+    group.querySelectorAll('.choice-btn').forEach(b=>b.addEventListener('click',()=>{setPickleball(b.dataset.choice==='on');paint()}));
+    for(const kind of ['wind','gust'])inputs[kind]?.addEventListener('change',e=>{
+      const v=parseFloat(e.target.value);
+      if(Number.isFinite(v)&&v>=1&&v<=150)setPickleballLimit(kind,getWindUnit()==='kmh'?v/1.60934:v);
+      paint();
+    });
+    // Follows the Wind speed setting; the menu dialog's copy is rebuilt on
+    // every open, so a detached copy drops its listener.
+    const onUnits=()=>{if(group.isConnected)paint();else document.removeEventListener('unitschange',onUnits)};
+    document.addEventListener('unitschange',onUnits);
+    paint();
+  }
   const REFRESH_KEY='weather-refresh-minutes',REFRESH_OPTIONS=[0,5,10,30];
   function getRefreshInterval(){try{const v=parseInt(localStorage.getItem(REFRESH_KEY),10);return REFRESH_OPTIONS.includes(v)?v:10}catch{return 10}}
   function setRefreshInterval(minutes){if(!REFRESH_OPTIONS.includes(minutes))return;try{localStorage.setItem(REFRESH_KEY,String(minutes))}catch{}document.dispatchEvent(new CustomEvent('refreshintervalchange'))}
@@ -1074,6 +1115,46 @@ window.WX = (function(){
     }
     return notes;
   }
+  // Pickleball: for today and the next few days, the longest run of daylight
+  // hours whose sustained wind and gusts stay within the saved limits and
+  // that is dry enough to play — or, when there is none, a plain "play
+  // indoors" note naming the reason. Gusts come from the NWS grid, since
+  // the hourly forecast carries sustained wind only.
+  function pickleballNotes(hourly,grid,loc,tz){
+    const now=Date.now(),hours=(hourly||[]).filter(p=>Date.parse(p.endTime)>now),notes=[];
+    const limits=getPickleballLimits(),gustField=grid?.properties?.windGust;
+    const gusts=gridValues(gustField,hours.map(p=>new Date(p.startTime)),v=>gustField.uom?.includes('km_h')?kphToMph(v):Math.round(v));
+    const rated=hours.map((p,i)=>{
+      const wind=maxWind(p.windSpeed)||0,gust=gusts[i]==null?null:Math.max(gusts[i],wind);
+      const windy=wind>limits.wind||(gust!=null&&gust>limits.gust),wet=popOf(p)>30||/thunder/i.test(p.shortForecast);
+      return {p,wind,gust,windy,wet,ok:!windy&&!wet};
+    });
+    for(const target of upcomingDayKeys(tz,HOURLY_NOTE_DAYS)){
+      const {sunrise,sunset}=sunTimes(target,loc.lat,loc.lon);
+      if(!sunrise||!sunset)continue;
+      const day=rated.filter(r=>dayKey(tz,r.p.startTime)===target&&Date.parse(r.p.endTime)>sunrise.getTime()&&Date.parse(r.p.startTime)<sunset.getTime());
+      if(!day.length)continue;
+      let best=null,run=[];
+      const close=()=>{if(run.length&&(!best||run.length>best.length))best=run;run=[]};
+      day.forEach((r,i)=>{
+        if(r.ok&&(!run.length||Date.parse(r.p.startTime)-Date.parse(run[run.length-1].p.startTime)===3600000))run.push(r);
+        else{close();if(r.ok)run.push(r)}
+        if(i===day.length-1)close();
+      });
+      const peakWind=list=>Math.max(...list.map(r=>r.wind)),peakGust=list=>{const g=list.map(r=>r.gust).filter(v=>v!=null);return g.length?Math.max(...g):null};
+      if(best){
+        const gust=peakGust(best);
+        notes.push({icon:'🏓',text:`Pickleball outdoors: ${hourRange(new Date(best[0].p.startTime),new Date(best[best.length-1].p.endTime),tz)} · wind ${fmtWind(peakWind(best))}${gust!=null?`, gusts ${fmtWind(gust)}`:''}`,day:target});
+      }else if(day.some(r=>!r.wet)){
+        // Some hours are dry, so wind is what rules them out.
+        const windy=day.filter(r=>!r.wet),gust=peakGust(windy);
+        notes.push({icon:'🏓',tone:'elevated',text:`Too windy for outdoor pickleball — play indoors (wind to ${fmtWind(peakWind(windy))}${gust!=null?`, gusts to ${fmtWind(gust)}`:''})`,day:target});
+      }else{
+        notes.push({icon:'🏓',tone:'elevated',text:`Too ${day.some(r=>r.windy)?'wet and windy':'wet'} for outdoor pickleball — play indoors`,day:target});
+      }
+    }
+    return notes;
+  }
   // "What changed since you last looked": keeps one snapshot per gridpoint
   // in localStorage. The first load of a browsing session pins the previous
   // snapshot as this session's baseline, so refreshes keep comparing against
@@ -1203,7 +1284,7 @@ window.WX = (function(){
   // Places notes inside each rendered card (article[data-day]) under its
   // forecast sentence. Notes without a day belong to today. Severe risk
   // comes from a separate NOAA service and is added first when it answers.
-  function renderDayNotes(root,{hourly=null,rows,loc,tz,gridKey}){
+  function renderDayNotes(root,{hourly=null,grid=null,rows,loc,tz,gridKey}){
     if(!root)return;
     for(const [key,text] of outlookClauses(rows,tz)){
       const card=root.querySelector(`article[data-day="${key}"]`),sentence=card?.querySelector('.condition');
@@ -1217,6 +1298,7 @@ window.WX = (function(){
       // card; per-day timing then covers the days it didn't.
       const next=nextPrecip(hourly,tz);
       base.push(next,...dayPrecipNotes(hourly,tz,new Set([todayKey,next?.day].filter(Boolean))),...bestOutdoorWindows(hourly,loc,tz));
+      if(getPickleball())base.push(...pickleballNotes(hourly,grid,loc,tz));
     }
     if(gridKey)base.push(...forecastChanges(gridKey,rows,tz).values());
     const paint=items=>{
@@ -1437,6 +1519,7 @@ window.WX = (function(){
           });
           subpageContent.querySelector('#time-zone-choice')?.addEventListener('change',e=>setTimeZone(e.target.value));
           subpageContent.querySelector('#refresh-interval-choice')?.addEventListener('change',e=>setRefreshInterval(parseInt(e.target.value,10)));
+          bindPickleballSettings(subpageContent);
         }
       }catch{
         if(!subpage.open)return;
@@ -1884,7 +1967,7 @@ window.WX = (function(){
     getSavedLocations,isLocationSaved,addSavedLocation,removeSavedLocation,toggleSavedLocation,setFavoriteLocation,clearFavoriteLocation,toggleFavoriteLocation,getFavoriteLocation,mountLocationSwitcher,
     getStartupMode,setStartupMode,
     getTempUnit,setTempUnit,getWindUnit,setWindUnit,getHourFormat,setHourFormat,hour12,tempValue,tempUnitLabel,fmtTemp,fmtTempRange,windValue,windUnitLabel,fmtWind,
-    getShowFeelsLike,setShowFeelsLike,getRefreshInterval,setRefreshInterval,scheduleAutoRefresh,
+    getShowFeelsLike,setShowFeelsLike,getPickleball,setPickleball,getPickleballLimits,setPickleballLimit,bindPickleballSettings,pickleballNotes,getRefreshInterval,setRefreshInterval,scheduleAutoRefresh,
     emoji,local,maxWind,gustFrom,durationMs,gridValues,kphToMph,cToF,product,
     currentObservation,observationHistory,currentHeadline,alertLine,dayKey,startOfDay,hourLabel,dayPartLabel,dayRows,uvForDate,humidityForDate,gustForDate,popForDate,maxTempForDate,minTempForDate,extraDayMetrics,dayMetrics,metricsHTML,
     todayBrief,futureBrief,renderFutureCardHTML,loadTodayCard,sunMetrics,hourlyUVEstimate,
