@@ -853,8 +853,14 @@ window.WX = (function(){
     const range=fmtTempRange(lo,hi);
     return `${condition}${range?` · ${range}`:''}`;
   }
+  // Card titles lead with a weather emoji; screen readers would read it out
+  // ("cloud with rain"), so it is hidden from them and the text stays.
+  function cardTitleHTML(title){
+    const m=String(title??'').match(/^([^\p{L}\p{N}\s]+)\s+(.+)$/u);
+    return m?`<span aria-hidden="true">${esc(m[1])}</span> ${esc(m[2])}`:esc(title);
+  }
   function renderFutureCardHTML(title,d,n,metrics,gridHi=null,gridLo=null,day=''){
-    return `<article class="brief"${day?` data-day="${esc(day)}"`:''}><h3>${esc(title)}</h3><hr><p class="now-line">${esc(futureHeadline(d,n,gridHi,gridLo))}</p>${futureBrief(d,n)?`<p class="condition">${esc(futureBrief(d,n))}</p>`:''}<div class="metrics">${metrics}</div></article>`;
+    return `<article class="brief"${day?` data-day="${esc(day)}"`:''}><h3>${cardTitleHTML(title)}</h3><hr><p class="now-line">${esc(futureHeadline(d,n,gridHi,gridLo))}</p>${futureBrief(d,n)?`<p class="condition">${esc(futureBrief(d,n))}</p>`:''}<div class="metrics">${metrics}</div></article>`;
   }
   function renderDaysHTML(rows,tz,loc){
     return rows.map((r,index)=>{
@@ -897,7 +903,7 @@ window.WX = (function(){
     // trailing section) as every other day's card instead of always
     // reserving space for a "No active NWS alerts." line.
     const alertsSectionHTML=active.length?`<hr><h3>NWS Alerts</h3><div id="alerts">${active.map(a=>alertLine(a,tz)).join('')}</div>`:'';
-    container.innerHTML=`<article class="brief" data-day="${esc(todayKey)}"><h3>${esc(title)}</h3><hr><p class="now-line">${esc(brief.now)}</p>${laterHTML}<div class="metrics">${metrics}</div>${alertsSectionHTML}</article>`;
+    container.innerHTML=`<article class="brief" data-day="${esc(todayKey)}"><h3>${cardTitleHTML(title)}</h3><hr><p class="now-line">${esc(brief.now)}</p>${laterHTML}<div class="metrics">${metrics}</div>${alertsSectionHTML}</article>`;
     // Two more NWS text products can take seconds to arrive; the card is
     // already complete without them, so the page doesn't wait.
     hazardOutlook(container,loc,officeId,todayPeriods,active,tz).catch(()=>{});
