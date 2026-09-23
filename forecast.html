@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'sha256-iaGyl+MesImCrVNj4kQ20S4RvzBpRSK0LS5TGRYQTug=' 'sha256-Vz8+biajhIq/VfOsaJZcA2xOPtVV1gbgC9iVZEM2cWs='; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob: https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org; connect-src 'self' https://api.weather.gov https://photon.komoot.io https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org; worker-src 'self' blob:; child-src 'self' blob:; font-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'sha256-iaGyl+MesImCrVNj4kQ20S4RvzBpRSK0LS5TGRYQTug=' 'sha256-vkHnbo+fQoKC9QYLm2WyUALZJofDOXB5tXPdTPa0JiA='; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob: https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org; connect-src 'self' https://api.weather.gov https://photon.komoot.io https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org; worker-src 'self' blob:; child-src 'self' blob:; font-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
   <script>try{var t=localStorage.getItem('weather-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);else if(t!=='system')document.documentElement.setAttribute('data-theme','dark')}catch{}</script>
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -60,7 +60,8 @@
       loc=await resolveLocation();
       const {point,label,tz,officeId}=await resolvePoint(loc);
       header.setKicker('');el('headline').textContent=label;
-      const [grid,forecast]=await Promise.all([json(point.properties.forecastGridData,{ttl:CACHE_TTL.forecast}).catch(()=>({properties:{}})),json(point.properties.forecast,{ttl:CACHE_TTL.forecast})]);
+      // Hourly feeds the per-day rain-timing and best-time notes; optional.
+      const [grid,forecast,hourly]=await Promise.all([json(point.properties.forecastGridData,{ttl:CACHE_TTL.forecast}).catch(()=>({properties:{}})),json(point.properties.forecast,{ttl:CACHE_TTL.forecast}),json(point.properties.forecastHourly,{ttl:CACHE_TTL.forecast}).catch(()=>null)]);
       const now=new Date(),freshPeriods=forecast.properties.periods.filter(p=>new Date(p.endTime)>now);
       if(!freshPeriods.length||!forecast.properties.updateTime||now-new Date(forecast.properties.updateTime)>36*3600000)throw new Error('The NWS 7-day forecast is out of date or unavailable right now. Try again shortly.');
       const rows=dayRows(forecast.properties.periods,grid,tz,loc.lat);
@@ -68,7 +69,8 @@
       const todayTitle=`${emoji((today.day||today.night).shortForecast)} Today · ${now.toLocaleDateString('en-US',{timeZone:tz,month:'short',day:'numeric'})}`;
       await loadTodayCard(el('today-card'),todayTitle,loc,point,officeId,today,grid,tz);
       el('days').innerHTML=renderDaysHTML(rows.slice(1),tz,loc);
-      renderDayNotes(el('content'),{rows,loc,tz,gridKey:point.properties.forecast});
+      const hourlyFresh=hourly?.properties?.updateTime&&now-new Date(hourly.properties.updateTime)<36*3600000;
+      renderDayNotes(el('content'),{hourly:hourlyFresh?hourly.properties.periods:null,rows,loc,tz,gridKey:point.properties.forecast});
       status.loaded({loc:{...loc,label},issued:forecast.properties.updateTime,tz});
       el('loading').classList.add('hidden');el('content').classList.remove('hidden');hasLoaded=true;
     }catch(e){status.failed(e,loc)}

@@ -833,18 +833,47 @@ window.WX = (function(){
     if(chance>=0)return starting(hours[chance],`Chance of ${kind(hours[chance])}`);
     return {icon:'🌂',text:'Dry for the next 24 hours'};
   }
-  // Scores every two-hour daylight window left today (or tomorrow, once
-  // today's are used up) on rain chance, distance from a comfortable
-  // 60–75°F, wind, and thunder/snow, and only suggests one that is
-  // genuinely decent — no suggestion beats a bad one.
-  function bestOutdoorWindow(hourly,loc,tz){
-    const now=Date.now(),hours=(hourly||[]).filter(p=>Date.parse(p.endTime)>now).slice(0,48);
+  // Hourly timing is only reasonably reliable a few days out, so the
+  // hourly-based notes (rain timing, best time outside) stop after this.
+  const HOURLY_NOTE_DAYS=3;
+  const upcomingDayKeys=(tz,count)=>Array.from({length:count+1},(_,i)=>dayKey(tz,new Date(Date.now()+i*864e5)));
+  // Hours after midnight belong to the start of that date, not the night
+  // after it, so they read "before dawn" rather than "overnight".
+  const daypart=h=>h<5?'before dawn':h<12?'in the morning':h<17?'in the afternoon':h<21?'in the evening':'late at night';
+  // Precipitation timing for each upcoming day that has a meaningful chance:
+  // an hour for tomorrow ("from around 2 PM"), a part of the day further out
+  // ("mainly in the afternoon"), since hourly timing blurs with lead time.
+  function dayPrecipNotes(hourly,tz,skip){
+    const now=Date.now(),[today,tomorrow,...later]=upcomingDayKeys(tz,HOURLY_NOTE_DAYS),notes=[];
+    const icon=k=>k==='snow'?'❄️':k==='storms'?'⛈️':'🌧️';
+    for(const key of [tomorrow,...later]){
+      if(skip.has(key))continue;
+      const hours=(hourly||[]).filter(p=>Date.parse(p.endTime)>now&&dayKey(tz,p.startTime)===key);
+      if(!hours.length)continue;
+      const peak=hours.reduce((a,b)=>popOf(b)>popOf(a)?b:a),pop=popOf(peak);
+      if(pop<30)continue;
+      const kind=precipKind(peak.shortForecast),level=pop>=50?`${capitalize(kind)} likely`:`Chance of ${kind}`;
+      if(key===tomorrow){
+        const first=hours.find(p=>popOf(p)>=(pop>=50?50:30)),at=new Date(first.startTime),h=localHour(at,tz);
+        notes.push({icon:icon(kind),text:`${level} from around ${h===12&&hour12()?'noon':h===0&&hour12()?'midnight':hourText(at,tz)} (${pop}%)`,day:key});
+      }else{
+        notes.push({icon:icon(kind),text:`${level}, mainly ${daypart(localHour(new Date(peak.startTime),tz))} (${pop}%)`,day:key});
+      }
+    }
+    return notes;
+  }
+  // Scores every two-hour daylight window on each of the next few days on
+  // rain chance, distance from a comfortable 60–75°F, wind, and
+  // thunder/snow, and only suggests one that is genuinely decent — no
+  // suggestion beats a bad one.
+  function bestOutdoorWindows(hourly,loc,tz){
+    const now=Date.now(),hours=(hourly||[]).filter(p=>Date.parse(p.endTime)>now),notes=[];
     const penalty=p=>{
       const t=p.temperature,w=maxWind(p.windSpeed)||0;
       return Math.max(0,popOf(p)-10)*1.5+(t<60?60-t:t>75?t-75:0)*2+Math.max(0,w-12)*2+(/thunder|snow|sleet|freezing/i.test(p.shortForecast)?40:0);
     };
     const ok=p=>popOf(p)<=30&&p.temperature>=35&&p.temperature<=95&&!/thunder/i.test(p.shortForecast);
-    for(const target of [dayKey(tz,new Date()),dayKey(tz,new Date(now+864e5))]){
+    for(const target of upcomingDayKeys(tz,HOURLY_NOTE_DAYS)){
       const {sunrise,sunset}=sunTimes(target,loc.lat,loc.lon);
       if(!sunrise||!sunset)continue;
       const day=hours.filter(p=>dayKey(tz,p.startTime)===target&&Date.parse(p.startTime)>=sunrise.getTime()-1800000&&Date.parse(p.endTime)<=sunset.getTime()+1800000);
@@ -858,10 +887,10 @@ window.WX = (function(){
       if(best&&best.score<=60){
         const [a,b]=best.pair,temp=Math.round((a.temperature+b.temperature)/2),pop=Math.max(popOf(a),popOf(b)),wind=Math.max(maxWind(a.windSpeed)||0,maxWind(b.windSpeed)||0);
         const details=[fmtTemp(temp),pop<=10?'dry':`${pop}% rain`,wind>20?'windy':wind>12?'breezy':null].filter(Boolean).join(', ');
-        return {icon:'🚶',text:`Best time outside: ${hourRange(new Date(a.startTime),new Date(b.endTime),tz)} · ${details}`,day:target};
+        notes.push({icon:'🚶',text:`Best time outside: ${hourRange(new Date(a.startTime),new Date(b.endTime),tz)} · ${details}`,day:target});
       }
     }
-    return null;
+    return notes;
   }
   // "What changed since you last looked": keeps one snapshot per gridpoint
   // in localStorage. The first load of a browsing session pins the previous
@@ -923,7 +952,7 @@ window.WX = (function(){
     const path=l=>{const names=[];for(let x=l;x;x=byId.get(x.parentLayerId))names.unshift(x.name||'');return names.join(' ')};
     const layers=all.filter(l=>!l.subLayerIds?.length).map(l=>({id:l.id,name:path(l)}));
     const notes=[];
-    for(const [offset,pattern] of [[0,/day\s*1\b.*categorical/i],[1,/day\s*2\b.*categorical/i]]){
+    for(const [offset,pattern] of [[0,/day\s*1\b.*categorical/i],[1,/day\s*2\b.*categorical/i],[2,/day\s*3\b.*categorical/i]]){
       const layer=layers.find(l=>pattern.test(l.name));
       if(!layer)continue;
       const params=new URLSearchParams({geometry:`${loc.lon},${loc.lat}`,geometryType:'esriGeometryPoint',inSR:'4326',spatialRel:'esriSpatialRelIntersects',outFields:'*',returnGeometry:'false',f:'json'});
@@ -979,7 +1008,12 @@ window.WX = (function(){
     }
     const todayKey=dayKey(tz,new Date());
     const base=[];
-    if(hourly){base.push(nextPrecip(hourly,tz),bestOutdoorWindow(hourly,loc,tz))}
+    if(hourly){
+      // Today's rain note looks 24 hours ahead and may land on tomorrow's
+      // card; per-day timing then covers the days it didn't.
+      const next=nextPrecip(hourly,tz);
+      base.push(next,...dayPrecipNotes(hourly,tz,new Set([todayKey,next?.day].filter(Boolean))),...bestOutdoorWindows(hourly,loc,tz));
+    }
     if(gridKey)base.push(...forecastChanges(gridKey,rows,tz).values());
     const paint=items=>{
       root.querySelectorAll('.card-notes').forEach(n=>n.remove());
@@ -1637,7 +1671,7 @@ window.WX = (function(){
     });
   }
 
-  return {API,DEFAULT_LOC,CACHE_TTL,normalizedLabel,renderDayNotes,outlookClauses,naturalForecast,nextPrecip,bestOutdoorWindow,forecastChanges,bypassCache,friendlyError,mountStatus,showLocationNote,activeAlerts,renderAlertBanner,DEFAULT_TIME_ZONE,el,esc,getSavedLocation,saveLocation,getCurrentLocation,getTimeZone,setTimeZone,timeZoneLabel,timeZoneOptionsHTML,geolocate,geocodeSearch,resolveLocation,resolvePoint,json,
+  return {API,DEFAULT_LOC,CACHE_TTL,normalizedLabel,renderDayNotes,outlookClauses,naturalForecast,nextPrecip,dayPrecipNotes,bestOutdoorWindows,forecastChanges,bypassCache,friendlyError,mountStatus,showLocationNote,activeAlerts,renderAlertBanner,DEFAULT_TIME_ZONE,el,esc,getSavedLocation,saveLocation,getCurrentLocation,getTimeZone,setTimeZone,timeZoneLabel,timeZoneOptionsHTML,geolocate,geocodeSearch,resolveLocation,resolvePoint,json,
     getSavedLocations,isLocationSaved,addSavedLocation,removeSavedLocation,toggleSavedLocation,setFavoriteLocation,clearFavoriteLocation,toggleFavoriteLocation,getFavoriteLocation,mountLocationSwitcher,
     getStartupMode,setStartupMode,
     getTempUnit,setTempUnit,getWindUnit,setWindUnit,getHourFormat,setHourFormat,hour12,tempValue,tempUnitLabel,fmtTemp,fmtTempRange,windValue,windUnitLabel,fmtWind,
