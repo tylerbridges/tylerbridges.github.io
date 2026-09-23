@@ -414,7 +414,8 @@ window.WX = (function(){
   // whole multi-section product inline.
   function hazardExcerpt(text){
     if(!text)return null;
-    const sentences=text.replace(/\s+/g,' ').split(/(?<=[.!?])\s+/);
+    // "$$" ends each segment of an NWS text product; nothing after it is prose.
+    const sentences=text.split(/\n\s*\$\$/)[0].replace(/\s+/g,' ').split(/(?<=[.!?])\s+/);
     const idx=sentences.findIndex(s=>/severe|tornado|hail|damaging|blizzard|flood/i.test(s));
     if(idx<0)return null;
     return toSentenceCase(sentences.slice(idx,idx+2).join(' ').trim());
