@@ -849,10 +849,9 @@ window.WX = (function(){
   async function loadTodayCard(container,title,loc,point,officeId,todayPeriods,grid,tz){
     const todayKey=dayKey(tz,new Date());
     const metrics=metricsHTML([...dayMetrics(todayPeriods.day,todayPeriods.night,uvForDate(todayKey,loc.lat),humidityForDate(grid,todayKey,tz),gustForDate(grid,todayKey,tz),maxTempForDate(grid,todayKey,tz),minTempForDate(grid,todayKey,tz),popForDate(grid,todayKey,tz)),...sunMetrics(new Date(),loc.lat,loc.lon,tz),...extraDayMetrics(grid,todayKey,tz)]);
-    const current=await currentObservation(point).catch(()=>null);
+    const [current,active]=await Promise.all([currentObservation(point).catch(()=>null),activeAlerts(loc).catch(()=>[])]);
     const currentText=current?currentHeadline(current.observation):null;
     const brief=todayBrief(currentText,todayPeriods.day,todayPeriods.night,new Date(),tz);
-    const active=await activeAlerts(loc).catch(()=>[]);
     const laterHTML=brief.later?`<p class="condition">${esc(brief.later)}</p>`:'';
     // Only show the NWS Alerts block when there's a genuine active alert —
     // otherwise this card keeps the exact same shape (brief + metrics, no
@@ -860,7 +859,18 @@ window.WX = (function(){
     // reserving space for a "No active NWS alerts." line.
     const alertsSectionHTML=active.length?`<hr><h3>NWS Alerts</h3><div id="alerts">${active.map(a=>alertLine(a,tz)).join('')}</div>`:'';
     container.innerHTML=`<article class="brief" data-day="${esc(todayKey)}"><h3>${esc(title)}</h3><hr><p class="now-line">${esc(brief.now)}</p>${laterHTML}<div class="metrics">${metrics}</div>${alertsSectionHTML}</article>`;
-    if(!active.length||!officeId)return;
+    // Two more NWS text products can take seconds to arrive; the card is
+    // already complete without them, so the page doesn't wait.
+    hazardOutlook(container,loc,officeId,todayPeriods,active,tz).catch(()=>{});
+  }
+  async function hazardOutlook(container,loc,officeId,todayPeriods,active,tz){
+    // The Hazardous Weather Outlook matters most before anything has been
+    // issued, so it's checked whenever today's forecast mentions a hazard —
+    // not only once an alert is already active.
+    // A refresh re-renders the card while this is still waiting; results
+    // for the replaced card are dropped rather than added to the new one.
+    const article=container.querySelector('article');
+    if(!officeId||!article)return;
     const hazardText=[todayPeriods.day?.detailedForecast,todayPeriods.night?.detailedForecast].filter(Boolean).join(' ');
     const needsHazard=/thunder|snow|ice|freezing|fog|heavy rain|blizzard/i.test(hazardText)||(gustFrom(hazardText)||0)>20;
     if(needsHazard){
@@ -868,8 +878,10 @@ window.WX = (function(){
       const guidance=[hwo?.productText,afd?.productText].filter(Boolean).join(' ');
       let extra='';
       if(hwo&&/severe|tornado|hail|damaging|blizzard|flood/i.test(guidance))extra+=hwoCardHTML(hwo,officeId,loc,tz);
-      if(!hwo||!afd)extra+='<p class="note">Some regional hazard guidance could not be refreshed.</p>';
-      if(extra){const slot=container.querySelector('#alerts');if(slot)slot.innerHTML+=extra}
+      if(active.length&&(!hwo||!afd))extra+='<p class="note">Some regional hazard guidance could not be refreshed.</p>';
+      if(!extra||!article.isConnected)return;
+      if(!article.querySelector('#alerts'))article.insertAdjacentHTML('beforeend','<hr><h3>Hazard Outlook</h3><div id="alerts"></div>');
+      article.querySelector('#alerts').insertAdjacentHTML('beforeend',extra);
     }
   }
 
