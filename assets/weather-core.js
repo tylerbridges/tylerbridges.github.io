@@ -869,10 +869,26 @@ window.WX = (function(){
   // Shared by the Today page and the 7-day page's first (today) card so the
   // two never drift apart: same brief statement, same metrics, same NWS
   // Alerts section, fetched and rendered by this one function.
+  // Current US AQI from Open-Meteo's air-quality model (free, no key). A
+  // model estimate rather than EPA monitor readings, labelled as such.
+  const AQI_API='https://air-quality-api.open-meteo.com/v1/air-quality';
+  const AQI_LEVELS=[[50,'Good'],[100,'Moderate'],[150,'Unhealthy for sensitive groups'],[200,'Unhealthy'],[300,'Very unhealthy'],[Infinity,'Hazardous']];
+  async function airQuality(loc){
+    const params=new URLSearchParams({latitude:loc.lat.toFixed(4),longitude:loc.lon.toFixed(4),current:'us_aqi',timezone:'GMT'});
+    const value=(await json(`${AQI_API}?${params}`,{ttl:30*60000}))?.current?.us_aqi;
+    if(!Number.isFinite(value))return null;
+    const aqi=Math.round(value);
+    return {aqi,level:AQI_LEVELS.find(([max])=>aqi<=max)[1]};
+  }
   async function loadTodayCard(container,title,loc,point,officeId,todayPeriods,grid,tz){
     const todayKey=dayKey(tz,new Date());
-    const metrics=metricsHTML([...dayMetrics(todayPeriods.day,todayPeriods.night,uvForDate(todayKey,loc.lat),humidityForDate(grid,todayKey,tz),gustForDate(grid,todayKey,tz),maxTempForDate(grid,todayKey,tz),minTempForDate(grid,todayKey,tz),popForDate(grid,todayKey,tz)),...sunMetrics(new Date(),loc.lat,loc.lon,tz),...extraDayMetrics(grid,todayKey,tz)]);
-    const [current,active]=await Promise.all([currentObservation(point).catch(()=>null),activeAlerts(loc).catch(()=>[])]);
+    const pairs=[...dayMetrics(todayPeriods.day,todayPeriods.night,uvForDate(todayKey,loc.lat),humidityForDate(grid,todayKey,tz),gustForDate(grid,todayKey,tz),maxTempForDate(grid,todayKey,tz),minTempForDate(grid,todayKey,tz),popForDate(grid,todayKey,tz)),...sunMetrics(new Date(),loc.lat,loc.lon,tz),...extraDayMetrics(grid,todayKey,tz)];
+    const [current,active,air]=await Promise.all([currentObservation(point).catch(()=>null),activeAlerts(loc).catch(()=>[]),Promise.race([airQuality(loc),new Promise(resolve=>setTimeout(resolve,6000,null))]).catch(()=>null)]);
+    // Air quality is capped at 6 s above so a slow third-party service can't
+    // hold up the card. Unhealthy air is promoted into the always-visible row; otherwise it
+    // sits with the other extra details.
+    if(air){const pill=['Est. AQI',`${air.aqi} (${air.level})`];if(air.aqi>100)pairs.splice(1,0,pill);else pairs.push(pill)}
+    const metrics=metricsHTML(pairs);
     const currentText=current?currentHeadline(current.observation):null;
     const brief=todayBrief(currentText,todayPeriods.day,todayPeriods.night,new Date(),tz);
     const laterHTML=brief.later?`<p class="condition">${esc(brief.later)}</p>`:'';
