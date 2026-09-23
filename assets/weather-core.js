@@ -865,19 +865,20 @@ window.WX = (function(){
     return {now,later};
   }
   // Future days haven't started, so the summary covers the whole day first
-  // ("Mostly sunny during the day.") and then how it turns into the night.
-  function futureBrief(d,n){
-    const day=d?timed(naturalForecast(d.shortForecast),'during the day'):'';
+  // ("Mostly sunny during the day, with a high near 65°F.") and then how it
+  // turns into the night. The high and low live here, not in the headline.
+  const withLow=(sentence,lo)=>lo==null?sentence:`${sentence.replace(/\.$/,'')}, with a low near ${fmtTemp(lo)}.`;
+  function futureBrief(d,n,gridHi=null,gridLo=null){
+    const hi=d?.temperature??gridHi,lo=n?.temperature??gridLo;
+    const phrase=d?naturalForecast(d.shortForecast):'';
+    const day=phrase?`${phrase.includes(',')?`During the day, ${phrase}`:`${capitalize(phrase)} during the day`}${hi!=null?`, with a high near ${fmtTemp(hi)}`:''}.`:hi!=null?`High near ${fmtTemp(hi)}.`:'';
     // "Overnight", not "tonight" — these cards are never today, and
     // "tonight" specifically reads as "later today".
-    return [day,nightSentence(d,n,'overnight'),windSentence(d||n)].filter(Boolean).join(' ');
+    const night=nightSentence(d,n,'overnight');
+    const nightLine=night?withLow(night,lo):lo!=null?`Low near ${fmtTemp(lo)} overnight.`:'';
+    return [day,nightLine,windSentence(d||n)].filter(Boolean).join(' ');
   }
-  function futureHeadline(d,n,gridHi=null,gridLo=null){
-    const condition=(d||n)?.shortForecast||'Conditions unavailable';
-    const hi=d?.temperature??gridHi,lo=n?.temperature??gridLo;
-    const range=fmtTempRange(lo,hi);
-    return `${condition}${range?` · ${range}`:''}`;
-  }
+  function futureHeadline(d,n){return (d||n)?.shortForecast||'Conditions unavailable'}
   // Card titles lead with a weather emoji; screen readers would read it out
   // ("cloud with rain"), so it is hidden from them and the text stays.
   function cardTitleHTML(title){
@@ -885,7 +886,8 @@ window.WX = (function(){
     return m?`<span aria-hidden="true">${esc(m[1])}</span> ${esc(m[2])}`:esc(title);
   }
   function renderFutureCardHTML(title,d,n,metrics,gridHi=null,gridLo=null,day=''){
-    return `<article class="brief"${day?` data-day="${esc(day)}"`:''}><h3>${cardTitleHTML(title)}</h3><hr><p class="now-line">${esc(futureHeadline(d,n,gridHi,gridLo))}</p>${futureBrief(d,n)?`<p class="condition">${esc(futureBrief(d,n))}</p>`:''}<div class="metrics">${metrics}</div></article>`;
+    const brief=futureBrief(d,n,gridHi,gridLo);
+    return `<article class="brief"${day?` data-day="${esc(day)}"`:''}><h3>${cardTitleHTML(title)}</h3><hr><p class="now-line">${esc(futureHeadline(d,n))}</p>${brief?`<p class="condition">${esc(brief)}</p>`:''}<div class="metrics">${metrics}</div></article>`;
   }
   function renderDaysHTML(rows,tz,loc){
     return rows.map((r,index)=>{
