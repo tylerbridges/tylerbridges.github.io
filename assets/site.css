@@ -82,6 +82,24 @@ h3{font-size:1rem;margin:0}
 .timezone-dialog-card h2{margin:0 0 .5rem;font-size:1.15rem}
 .timezone-dialog-card p{margin:0;color:var(--muted);font-size:.9rem}
 .timezone-dialog-actions{display:grid;gap:.5rem;margin-top:1rem}
+/* Source popups: an NWS/SPC text shown in place, verbatim. */
+.text-link{padding:0;border:0;background:none;color:var(--blue);font:inherit;font-weight:650;text-decoration:underline;cursor:pointer}
+.text-link:focus-visible{outline:2px solid var(--blue);outline-offset:2px;border-radius:3px}
+.source-dialog{width:min(560px,calc(100% - 2rem));max-height:min(85dvh,760px);padding:0;border:1px solid var(--line);border-radius:18px;background:var(--surface);color:var(--text);box-shadow:var(--shadow);overflow:hidden}
+.source-dialog[open]{display:flex;flex-direction:column}
+.source-dialog::backdrop{background:rgba(0,0,0,.58);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+.source-dialog-card{display:flex;flex-direction:column;min-height:0;max-height:inherit}
+.source-dialog-head{display:flex;align-items:flex-start;justify-content:space-between;gap:.75rem;padding:1rem 1.1rem 0}
+.source-dialog-head h2{margin:0;color:var(--blue);font-size:1.15rem;line-height:1.3}
+.source-dialog-close{flex:0 0 auto;width:32px;height:32px;display:flex;align-items:center;justify-content:center;padding:0;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);color:var(--text);cursor:pointer}
+.source-dialog-close svg{width:16px;height:16px}
+.source-dialog-close:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.source-dialog-meta{margin:.3rem 1.1rem 0;color:var(--muted);font-size:.8rem}
+.source-dialog-meta:empty{display:none}
+.source-dialog-body{overflow-y:auto;overscroll-behavior:contain;margin-top:.75rem;padding:0 1.1rem 1.1rem;border-top:1px solid var(--line);font-size:.9rem;line-height:1.5}
+.source-dialog-body h3{margin:1rem 0 .3rem;color:var(--muted);font-size:.78rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.source-dialog-body p{margin:.45rem 0;overflow-wrap:anywhere}
+.source-headline{font-weight:650}
 hr{border:0;border-top:1px solid var(--line);margin:.85rem 0}
 .charts{display:grid;gap:1.35rem}
 .chart{margin:0}

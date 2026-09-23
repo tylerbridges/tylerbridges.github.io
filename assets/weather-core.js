@@ -410,11 +410,100 @@ window.WX = (function(){
     if(idx<0)return null;
     return toSentenceCase(sentences.slice(idx,idx+2).join(' ').trim());
   }
+  // ---- Source popups -------------------------------------------------------
+  // "Full NWS alert", "Full NWS product" and a severe-risk "Details" open the
+  // source's own text in a dialog instead of sending people off-site. The
+  // wording is verbatim; only the layout changes: hard-wrapped lines are
+  // joined, "...SECTION..." markers become headings, and "* WHAT..." style
+  // bullets become labelled paragraphs.
+  const sourceStore=new Map();
+  let sourceSeq=0;
+  function sourceButton(label,loader){
+    const id=`src-${++sourceSeq}`;
+    sourceStore.set(id,loader);
+    if(sourceStore.size>200)sourceStore.delete(sourceStore.keys().next().value);
+    return `<button class="text-link" type="button" data-source="${id}" aria-haspopup="dialog">${esc(label)}</button>`;
+  }
+  function productTextHTML(text,{startAt=null,stopAt=null}={}){
+    let t=String(text||'').replace(/\r/g,'');
+    if(startAt){const i=t.search(startAt);if(i>=0)t=t.slice(i)}
+    if(stopAt){const i=t.search(stopAt);if(i>0)t=t.slice(0,i)}
+    const out=[];
+    for(const raw of t.split(/\n\s*\n/)){
+      const para=raw.trim();
+      if(!para||/^(\$\$|&&)$/.test(para))continue;
+      const flat=para.replace(/\s*\n\s*/g,' ');
+      let m=flat.match(/^\*\s*([A-Z][A-Z .\/-]{1,40}?)\.\.\.\s*([\s\S]*)$/);
+      if(m){out.push(`<p><strong>${esc(m[1].trim())}</strong> ${esc(m[2])}</p>`);continue}
+      m=flat.match(/^\.{1,3}([^.]{2,40}?)\.\.\.\s*([\s\S]*)$/);
+      if(m){out.push(`<h3>${esc(m[1].trim())}</h3>`);if(m[2])out.push(`<p>${esc(m[2])}</p>`);continue}
+      out.push(/^\.\.\..*\.\.\.$/.test(flat)?`<p class="source-headline">${esc(flat)}</p>`:`<p>${esc(flat)}</p>`);
+    }
+    return out.join('');
+  }
+  function alertSourceButton(p,tz){
+    return sourceButton('Full NWS alert',async()=>({
+      title:p.event||'NWS alert',
+      meta:[p.senderName,p.effective||p.onset?`in effect ${local(p.onset||p.effective,tz)}–${local(p.ends||p.expires,tz)}`:null].filter(Boolean).join(' · '),
+      html:`${p.headline?`<p class="source-headline">${esc(p.headline)}</p>`:''}${p.areaDesc?`<h3>Areas</h3><p>${esc(p.areaDesc)}</p>`:''}${p.description?`<h3>Details</h3>${productTextHTML(p.description)}`:''}${p.instruction?`<h3>Instructions</h3>${productTextHTML(p.instruction)}`:''}`
+    }));
+  }
+  // The Storm Prediction Center's own outlook discussion for day 1–3, from
+  // NWS's product feed (type SWO), found by its "Day N Convective Outlook"
+  // title among the newest few.
+  async function spcOutlookSource(day){
+    const list=await json(`${API}/products/types/SWO`,{ttl:CACHE_TTL.products});
+    for(const item of (list['@graph']||[]).slice(0,8)){
+      const product=await json(item['@id']&&safeNwsUrl(item['@id'])||`${API}/products/${encodeURIComponent(item.id)}`,{ttl:CACHE_TTL.products});
+      if(!new RegExp(`Day ${day} Convective Outlook`,'i').test(product.productText||''))continue;
+      return {
+        title:`Day ${day} Convective Outlook`,
+        meta:`NOAA Storm Prediction Center · issued ${local(product.issuanceTime)}`,
+        html:productTextHTML(product.productText,{startAt:/\nValid /,stopAt:/\n\s*\.PREV DISCUSSION|\n\s*\$\$/})
+      };
+    }
+    throw new Error('Outlook not found');
+  }
+  let sourceTrigger=null;
+  function sourceDialog(){
+    let dialog=el('source-dialog');
+    if(dialog)return dialog;
+    document.body.insertAdjacentHTML('beforeend',`<dialog class="source-dialog" id="source-dialog" aria-labelledby="source-dialog-title"><div class="source-dialog-card"><div class="source-dialog-head"><h2 id="source-dialog-title"></h2><button class="source-dialog-close" type="button" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></div><p class="source-dialog-meta"></p><div class="source-dialog-body"></div></div></dialog>`);
+    dialog=el('source-dialog');
+    dialog.querySelector('.source-dialog-close').addEventListener('click',()=>dialog.close());
+    dialog.addEventListener('click',e=>{if(e.target===dialog)dialog.close()});
+    dialog.addEventListener('close',()=>{document.body.classList.remove('subpage-open');sourceTrigger?.focus();sourceTrigger=null});
+    return dialog;
+  }
+  async function openSource(loader,trigger){
+    const dialog=sourceDialog(),title=dialog.querySelector('h2'),meta=dialog.querySelector('.source-dialog-meta'),body=dialog.querySelector('.source-dialog-body');
+    sourceTrigger=trigger;
+    title.textContent='Loading…';meta.textContent='';body.innerHTML='';
+    if(!dialog.open)dialog.showModal();
+    document.body.classList.add('subpage-open');
+    dialog.querySelector('.source-dialog-close').focus();
+    try{
+      const src=await loader();
+      title.textContent=src.title;meta.textContent=src.meta||'';body.innerHTML=src.html||'<p>No text was provided.</p>';
+    }catch{
+      title.textContent='Not available';
+      body.innerHTML='<p>The original text couldn\'t be loaded right now. Try again in a moment.</p>';
+    }
+    body.scrollTop=0;
+  }
+  if(typeof document!=='undefined')document.addEventListener('click',e=>{
+    const button=e.target.closest?.('[data-source]');
+    const loader=button&&sourceStore.get(button.dataset.source);
+    if(loader){e.preventDefault();openSource(loader,button)}
+  });
   function hwoCardHTML(hwo,officeId,loc,tz){
     const office=officeLabel(hwo.productText,officeId);
     const place=esc((loc.label||'your area').split(',')[0]);
-    const href=safeNwsUrl(hwo['@id'])||(hwo.id?`${API}/products/${encodeURIComponent(hwo.id)}`:null);
-    const linkHTML=href?`<a href="${esc(href)}" target="_blank" rel="noreferrer">Full NWS product</a>`:'';
+    const linkHTML=hwo.productText?sourceButton('Full NWS product',async()=>({
+      title:'Hazardous Weather Outlook',
+      meta:`${office} · issued ${local(hwo.issuanceTime,tz)}`,
+      html:productTextHTML(hwo.productText,{startAt:/This Hazardous Weather Outlook is for/i,stopAt:/\n\s*\$\$/})
+    })):'';
     return `<div class="alert alert-outlook"><h4>Hazardous Weather Outlook — ${esc(office)}</h4><p>Regional guidance for the ${esc(office)} area — not an issued alert, and may not apply to ${place}.</p><p>Issued ${esc(local(hwo.issuanceTime,tz))}</p><p>${esc(hazardExcerpt(hwo.productText)||'See the full outlook for details.')}</p>${linkHTML}</div>`;
   }
   // Links taken from API data are only used when they point back at
@@ -438,8 +527,7 @@ window.WX = (function(){
     const p=a.properties,level=alertLevel(p);
     const title=`${esc(p.event)} — ${esc(officeLabel(p.senderName))}`;
     const body=toSentenceCase((p.instruction||p.description||'See NWS alert for instructions.').replace(/\s+/g,' '));
-    const href=safeNwsUrl(p['@id'])||safeNwsUrl(a.id);
-    return `<div class="alert alert-${level}"><h4>${title}</h4><p>${esc(p.areaDesc)}</p><p>${esc(local(p.onset||p.effective,tz))}–${esc(local(p.ends||p.expires,tz))}</p><p>${esc(body)}</p>${href?`<a href="${esc(href)}" target="_blank" rel="noreferrer">Full NWS alert</a>`:''}</div>`;
+    return `<div class="alert alert-${level}"><h4>${title}</h4><p>${esc(p.areaDesc)}</p><p>${esc(local(p.onset||p.effective,tz))}–${esc(local(p.ends||p.expires,tz))}</p><p>${esc(body)}</p>${alertSourceButton(p,tz)}</div>`;
   }
   // Compact, collapsible version for pages without a Today card (Hourly,
   // Radar), so an active warning is visible wherever someone is looking.
@@ -448,8 +536,7 @@ window.WX = (function(){
     return `<section class="alert-banner" aria-label="Active NWS alerts">${alerts.map(a=>{
       const p=a.properties,level=alertLevel(p),until=p.ends||p.expires;
       const body=toSentenceCase((p.instruction||p.description||'See NWS alert for instructions.').replace(/\s+/g,' '));
-      const href=safeNwsUrl(p['@id'])||safeNwsUrl(a.id);
-      return `<details class="alert alert-${level}"><summary><strong>${esc(p.event)}</strong>${until?` <span class="alert-until">until ${esc(local(until,tz))}</span>`:''}</summary><p>${esc(p.areaDesc)}</p><p>${esc(body)}</p>${href?`<a href="${esc(href)}" target="_blank" rel="noreferrer">Full NWS alert</a>`:''}</details>`;
+      return `<details class="alert alert-${level}"><summary><strong>${esc(p.event)}</strong>${until?` <span class="alert-until">until ${esc(local(until,tz))}</span>`:''}</summary><p>${esc(p.areaDesc)}</p><p>${esc(body)}</p>${alertSourceButton(p,tz)}</details>`;
     }).join('')}</section>`;
   }
   async function renderAlertBanner(container,loc,tz){
@@ -962,7 +1049,7 @@ window.WX = (function(){
         const code=spcCode(f.attributes);
         if(code&&(!worst||SPC_LEVELS[code][0]>worst[0]))worst=SPC_LEVELS[code];
       }
-      if(worst)notes.push({icon:'⚠️',tone:worst[0]>=3?'high':'elevated',text:`${worst[1]} risk of severe storms (${worst[0]} of 5)`,href:'https://www.spc.noaa.gov/products/outlook/',day:dayKey(tz,new Date(Date.now()+offset*864e5))});
+      if(worst)notes.push({icon:'⚠️',tone:worst[0]>=3?'high':'elevated',text:`${worst[1]} risk of severe storms (${worst[0]} of 5)`,source:()=>spcOutlookSource(offset+1),day:dayKey(tz,new Date(Date.now()+offset*864e5))});
     }
     return notes;
   }
@@ -994,8 +1081,9 @@ window.WX = (function(){
     return out;
   }
   function notesHTML(items){
-    return `<ul class="card-notes">${items.map(i=>`<li class="card-note${i.tone?` card-note-${i.tone}`:''}"><span class="card-note-icon" aria-hidden="true">${i.icon}</span><span>${esc(i.text)}${i.href?` <a href="${esc(i.href)}" target="_blank" rel="noreferrer">Details</a>`:''}</span></li>`).join('')}</ul>`;
+    return `<ul class="card-notes">${items.map(i=>`<li class="card-note${i.tone?` card-note-${i.tone}`:''}"><span class="card-note-icon" aria-hidden="true">${i.icon}</span><span>${esc(i.text)}${i.source?` ${sourceButton('Details',i.source)}`:''}</span></li>`).join('')}</ul>`;
   }
+
   // Places notes inside each rendered card (article[data-day]) under its
   // forecast sentence. Notes without a day belong to today. Severe risk
   // comes from a separate NOAA service and is added first when it answers.
