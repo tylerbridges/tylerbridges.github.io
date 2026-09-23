@@ -679,25 +679,63 @@ window.WX = (function(){
   // "Mostly sunny with a high near 65°F" / "…, then likely, with a high near
   // 63°F" — the comma keeps a multi-part phrase from running into the number.
   function withTemp(phrase,kind,temp){return `${phrase}${phrase.includes(',')?',':''} with a ${kind} near ${fmtTemp(temp)}`}
-  // Always keep the live observation in today's bold first line. Earlier in
-  // the day, the italic line covers the rest of today and tonight; in the
-  // final two hours of the daytime period it covers only tonight, because
-  // the daytime high and broad daytime forecast are stale by then.
+  // The italic summary says what the rest of the card doesn't: the headline
+  // already shows the main condition and the high/low, and the pills the
+  // numbers. So the summary describes how the day turns into the night
+  // ("Drying out overnight, mostly clear.", "Clearing overnight.") and adds
+  // wind only when it's notable — no repeated temperatures.
+  const hasPrecip=text=>/rain|shower|thunder|storm|snow|sleet|drizzle|freezing|ice|flurr/i.test(String(text||''));
+  function skyRank(text){
+    const t=String(text||'').toLowerCase();
+    if(/mostly cloudy/.test(t))return 3;
+    if(/cloudy|overcast/.test(t))return /partly/.test(t)?2:4;
+    if(/partly/.test(t))return 2;
+    if(/mostly (sunny|clear)/.test(t))return 1;
+    if(/sunny|clear/.test(t))return 0;
+    return 2;
+  }
+  // "Mostly clear overnight." / "Overnight, showers possible, then likely."
+  const timed=(phrase,when)=>phrase.includes(',')?`${capitalize(when)}, ${phrase}.`:`${capitalize(phrase)} ${when}.`;
+  function nightSentence(d,n,when){
+    if(!n)return '';
+    const nn=naturalForecast(n.shortForecast);
+    if(!d)return timed(nn,when);
+    const nd=naturalForecast(d.shortForecast),pd=hasPrecip(d.shortForecast),pn=hasPrecip(n.shortForecast);
+    if(pd&&pn&&nd===nn){
+      const kind=precipKind(n.shortForecast),chance=/chance/i.test(n.shortForecast);
+      return chance?`${capitalize(kind==='storms'?'storm':kind)} chances continue ${when}.`:`${capitalize(kind)} ${kind==='storms'?'continue':'continues'} ${when}.`;
+    }
+    if(pd&&pn)return timed(nn,when);
+    if(pd)return `Drying out ${when}${nn?`, ${nn}`:''}.`;
+    if(pn)return timed(nn,when);
+    const rd=skyRank(d.shortForecast),rn=skyRank(n.shortForecast);
+    if(rd>=3&&rn<=1)return `Clearing ${when}.`;
+    if(rd<=1&&rn>=3)return `Clouds increasing ${when}.`;
+    return timed(nn,when);
+  }
+  const COMPASS={N:'north',NE:'northeast',E:'east',SE:'southeast',S:'south',SW:'southwest',W:'west',NW:'northwest',NNE:'north-northeast',ENE:'east-northeast',ESE:'east-southeast',SSE:'south-southeast',SSW:'south-southwest',WSW:'west-southwest',WNW:'west-northwest',NNW:'north-northwest'};
+  function windSentence(p){
+    const max=p?maxWind(p.windSpeed):null;
+    if(max==null||max<15)return '';
+    const dir=COMPASS[String(p.windDirection||'').toUpperCase()];
+    return `${max>=25?'Windy':'Breezy'}, with ${dir?`${dir} `:''}winds up to ${fmtWind(max)}.`;
+  }
+  // Today's bold first line is the live observation, so the summary covers
+  // the rest of today and tonight. In the final two hours of the daytime
+  // period it covers only tonight, since the daytime forecast is stale.
   function todayBrief(current,d,n,at=new Date(),tz=getTimeZone()){
     const end=d?.endTime?new Date(d.endTime).getTime():NaN;
     const localHour=+new Intl.DateTimeFormat('en-US',{timeZone:tz,hour:'numeric',hour12:false}).format(at)%24;
     const nearingEvening=Number.isFinite(end)?at.getTime()>=end-2*3600000:localHour>=16;
     const now=current||(d?capitalize(withTemp(naturalForecast(d.shortForecast),'high',d.temperature)):'Conditions unavailable');
-    const day=d&&!nearingEvening?`${capitalize(withTemp(naturalForecast(d.shortForecast),'high',d.temperature))}.`:'';
-    const night=n?`Tonight, ${withTemp(naturalForecast(n.shortForecast),'low',n.temperature)}.`:'';
-    return {now,later:[day,night].filter(Boolean).join(' ')};
+    const day=d&&!nearingEvening?`${capitalize(naturalForecast(d.shortForecast))}${naturalForecast(d.shortForecast).includes(',')?',':''} for the rest of the day.`:'';
+    const later=[day,nightSentence(d,n,'tonight'),windSentence(day?d:n)].filter(Boolean).join(' ');
+    return {now,later};
   }
   function futureBrief(d,n){
     // "Overnight", not "tonight" — these cards are never today, and
     // "tonight" specifically reads as "later today".
-    const day=d?`${capitalize(withTemp(naturalForecast(d.shortForecast),'high',d.temperature))}.`:'';
-    const night=n?`${day?'Overnight, ':''}${day?withTemp(naturalForecast(n.shortForecast),'low',n.temperature):capitalize(withTemp(naturalForecast(n.shortForecast),'low',n.temperature))}.`:'';
-    return [day,night].filter(Boolean).join(' ')||'Forecast unavailable.';
+    return [nightSentence(d,n,'overnight'),windSentence(d||n)].filter(Boolean).join(' ');
   }
   function futureHeadline(d,n,gridHi=null,gridLo=null){
     const condition=(d||n)?.shortForecast||'Conditions unavailable';
@@ -706,7 +744,7 @@ window.WX = (function(){
     return `${condition}${range?` · ${range}`:''}`;
   }
   function renderFutureCardHTML(title,d,n,metrics,gridHi=null,gridLo=null,day=''){
-    return `<article class="brief"${day?` data-day="${esc(day)}"`:''}><h3>${esc(title)}</h3><hr><p class="now-line">${esc(futureHeadline(d,n,gridHi,gridLo))}</p><p class="condition">${esc(futureBrief(d,n))}</p><div class="metrics">${metrics}</div></article>`;
+    return `<article class="brief"${day?` data-day="${esc(day)}"`:''}><h3>${esc(title)}</h3><hr><p class="now-line">${esc(futureHeadline(d,n,gridHi,gridLo))}</p>${futureBrief(d,n)?`<p class="condition">${esc(futureBrief(d,n))}</p>`:''}<div class="metrics">${metrics}</div></article>`;
   }
   function renderDaysHTML(rows,tz,loc){
     return rows.map((r,index)=>{
@@ -935,8 +973,9 @@ window.WX = (function(){
   function renderDayNotes(root,{hourly=null,rows,loc,tz,gridKey}){
     if(!root)return;
     for(const [key,text] of outlookClauses(rows,tz)){
-      const sentence=root.querySelector(`article[data-day="${key}"] .condition`);
+      const card=root.querySelector(`article[data-day="${key}"]`),sentence=card?.querySelector('.condition');
       if(sentence)sentence.textContent=`${sentence.textContent} ${text}`;
+      else card?.querySelector('.now-line')?.insertAdjacentHTML('afterend',`<p class="condition">${esc(text)}</p>`);
     }
     const todayKey=dayKey(tz,new Date());
     const base=[];
