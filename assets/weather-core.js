@@ -813,8 +813,8 @@ window.WX = (function(){
   function withTemp(phrase,kind,temp){return `${phrase}${phrase.includes(',')?',':''} with a ${kind} near ${fmtTemp(temp)}`}
   // The italic summary says what the rest of the card doesn't: the headline
   // already shows the main condition and the high/low, and the pills the
-  // numbers. So the summary describes how the day turns into the night
-  // ("Drying out overnight, mostly clear.", "Clearing overnight.") and adds
+  // numbers. So the summary walks through the day and how it turns into the
+  // night ("Drying out overnight, mostly clear.", "Clearing overnight.") and adds
   // wind only when it's notable — no repeated temperatures.
   const hasPrecip=text=>/rain|shower|thunder|storm|snow|sleet|drizzle|freezing|ice|flurr/i.test(String(text||''));
   function skyRank(text){
@@ -864,10 +864,13 @@ window.WX = (function(){
     const later=[day,nightSentence(d,n,'tonight'),windSentence(day?d:n)].filter(Boolean).join(' ');
     return {now,later};
   }
+  // Future days haven't started, so the summary covers the whole day first
+  // ("Mostly sunny during the day.") and then how it turns into the night.
   function futureBrief(d,n){
+    const day=d?timed(naturalForecast(d.shortForecast),'during the day'):'';
     // "Overnight", not "tonight" — these cards are never today, and
     // "tonight" specifically reads as "later today".
-    return [nightSentence(d,n,'overnight'),windSentence(d||n)].filter(Boolean).join(' ');
+    return [day,nightSentence(d,n,'overnight'),windSentence(d||n)].filter(Boolean).join(' ');
   }
   function futureHeadline(d,n,gridHi=null,gridLo=null){
     const condition=(d||n)?.shortForecast||'Conditions unavailable';
