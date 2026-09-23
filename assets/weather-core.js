@@ -693,8 +693,8 @@ window.WX = (function(){
     const range=fmtTempRange(lo,hi);
     return `${condition}${range?` · ${range}`:''}`;
   }
-  function renderFutureCardHTML(title,d,n,metrics,gridHi=null,gridLo=null){
-    return `<article class="brief"><h3>${esc(title)}</h3><hr><p class="now-line">${esc(futureHeadline(d,n,gridHi,gridLo))}</p><p class="condition">${esc(futureBrief(d,n))}</p><div class="metrics">${metrics}</div></article>`;
+  function renderFutureCardHTML(title,d,n,metrics,gridHi=null,gridLo=null,day=''){
+    return `<article class="brief"${day?` data-day="${esc(day)}"`:''}><h3>${esc(title)}</h3><hr><p class="now-line">${esc(futureHeadline(d,n,gridHi,gridLo))}</p><p class="condition">${esc(futureBrief(d,n))}</p><div class="metrics">${metrics}</div></article>`;
   }
   function renderDaysHTML(rows,tz,loc){
     return rows.map((r,index)=>{
@@ -703,7 +703,7 @@ window.WX = (function(){
       const day=index===0?'Tomorrow':r.date.toLocaleDateString('en-US',{weekday:'long',timeZone:tz});
       const title=`${emoji(b.shortForecast)} ${day} · ${date}`;
       const metrics=metricsHTML([...dayMetrics(d,n,r.uv,r.humidity,r.gust,r.hi,r.lo,r.pop).slice(1),...sunMetrics(r.date,loc?.lat,loc?.lon,tz),...(r.extraMetrics||[])]);
-      return renderFutureCardHTML(title,d,n,metrics,r.hi,r.lo);
+      return renderFutureCardHTML(title,d,n,metrics,r.hi,r.lo,dayKey(tz,r.date));
     }).join('');
   }
   // Shared by the Today page and the 7-day page's first (today) card so the
@@ -722,7 +722,7 @@ window.WX = (function(){
     // trailing section) as every other day's card instead of always
     // reserving space for a "No active NWS alerts." line.
     const alertsSectionHTML=active.length?`<hr><h3>NWS Alerts</h3><div id="alerts">${active.map(a=>alertLine(a,tz)).join('')}</div>`:'';
-    container.innerHTML=`<article class="brief"><h3>${esc(title)}</h3><hr><p class="now-line">${esc(brief.now)}</p>${laterHTML}<div class="metrics">${metrics}</div>${alertsSectionHTML}</article>`;
+    container.innerHTML=`<article class="brief" data-day="${esc(todayKey)}"><h3>${esc(title)}</h3><hr><p class="now-line">${esc(brief.now)}</p>${laterHTML}<div class="metrics">${metrics}</div>${alertsSectionHTML}</article>`;
     if(!active.length||!officeId)return;
     const hazardText=[todayPeriods.day?.detailedForecast,todayPeriods.night?.detailedForecast].filter(Boolean).join(' ');
     const needsHazard=/thunder|snow|ice|freezing|fog|heavy rain|blizzard/i.test(hazardText)||(gustFrom(hazardText)||0)>20;
@@ -736,11 +736,12 @@ window.WX = (function(){
     }
   }
 
-  // ---- At a glance (Today page) ------------------------------------------
-  // A short list of answers rather than more data: will it rain and when,
-  // when is it nicest to be outside, is there a severe-storm risk, and what
-  // changed since you last looked. Each line only appears when it has
-  // something to say, so a quiet day stays a short list.
+  // ---- Day notes ----------------------------------------------------------
+  // Short answers rather than more data — will it rain and when, when is it
+  // nicest to be outside, is there a severe-storm risk, what changed since
+  // you last looked — each placed inside the card of the day it's about, so
+  // the card's own heading says which day. A note only appears when it has
+  // something to say.
   const popOf=p=>p?.probabilityOfPrecipitation?.value??0;
   const hourText=(date,tz)=>new Intl.DateTimeFormat('en-US',{timeZone:tz,hour:'numeric',hour12:hour12()}).format(date);
   function dayName(date,tz){
@@ -769,10 +770,17 @@ window.WX = (function(){
       const k=kind(hours[0]),end=hours.findIndex(p=>popOf(p)<30);
       return {icon:icon(k),text:end<0?`${capitalize(k)} likely through the next 24 hours`:`${capitalize(k)} likely until ${whenText(new Date(hours[end].startTime),tz)}`};
     }
+    // Rain that starts tomorrow goes on tomorrow's card, where "tomorrow"
+    // would be redundant; anything starting today stays on today's.
+    const starting=(p,phrase)=>{
+      const at=new Date(p.startTime),onTomorrow=dayName(at,tz)==='tomorrow'&&localHour(at,tz)!==0;
+      const when=onTomorrow?`around ${localHour(at,tz)===12&&hour12()?'noon':hourText(at,tz)}`:whenText(at,tz);
+      return {icon:icon(kind(p)),text:`${phrase} from ${when} (${popOf(p)}%)`,day:onTomorrow?dayKey(tz,new Date(now+864e5)):null};
+    };
     const likely=hours.findIndex(p=>popOf(p)>=50);
-    if(likely>=0){const p=hours[likely],k=kind(p);return {icon:icon(k),text:`${capitalize(k)} likely from ${whenText(new Date(p.startTime),tz)} (${popOf(p)}%)`}}
+    if(likely>=0)return starting(hours[likely],`${capitalize(kind(hours[likely]))} likely`);
     const chance=hours.findIndex(p=>popOf(p)>=30);
-    if(chance>=0){const p=hours[chance],k=kind(p);return {icon:icon(k),text:`Chance of ${k} from ${whenText(new Date(p.startTime),tz)} (${popOf(p)}%)`}}
+    if(chance>=0)return starting(hours[chance],`Chance of ${kind(hours[chance])}`);
     return {icon:'🌂',text:'Dry for the next 24 hours'};
   }
   // Scores every two-hour daylight window left today (or tomorrow, once
@@ -799,9 +807,8 @@ window.WX = (function(){
       }
       if(best&&best.score<=60){
         const [a,b]=best.pair,temp=Math.round((a.temperature+b.temperature)/2),pop=Math.max(popOf(a),popOf(b)),wind=Math.max(maxWind(a.windSpeed)||0,maxWind(b.windSpeed)||0);
-        const label=dayName(new Date(a.startTime),tz)==='today'?'Best time outside':'Best time outside tomorrow';
         const details=[fmtTemp(temp),pop<=10?'dry':`${pop}% rain`,wind>20?'windy':wind>12?'breezy':null].filter(Boolean).join(', ');
-        return {icon:'🚶',text:`${label}: ${hourRange(new Date(a.startTime),new Date(b.endTime),tz)} · ${details}`};
+        return {icon:'🚶',text:`Best time outside: ${hourRange(new Date(a.startTime),new Date(b.endTime),tz)} · ${details}`,day:target};
       }
     }
     return null;
@@ -824,27 +831,27 @@ window.WX = (function(){
     keys.slice(5).forEach(k=>delete all[k]);
     try{localStorage.setItem(SNAPSHOT_KEY,JSON.stringify(all))}catch{}
     const age=now-(baseline.ts||0);
-    if(!baseline.days||age<3600000||age>7*864e5)return null;
-    const changes=[];
+    if(!baseline.days||age<3600000||age>7*864e5)return new Map();
+    const since=new Date(baseline.ts),sinceKey=dayKey(tz,since);
+    const sinceText=sinceKey===todayKey?'earlier today':sinceKey===dayKey(tz,new Date(now-864e5))?'yesterday':`${new Intl.DateTimeFormat('en-US',{timeZone:tz,weekday:'long'}).format(since)}`;
+    // Returns one note per day that changed meaningfully, keyed by day.
+    const notes=new Map();
     for(const [key,cur] of Object.entries(days)){
       const old=baseline.days[key];
       if(!old)continue;
-      const [y,m,d]=key.split('-').map(Number),name=capitalize(dayName(new Date(Date.UTC(y,m-1,d,18)),tz));
-      for(const [field,label] of [['hi','high'],['lo','low']]){
+      const changes=[];
+      for(const [field,label] of [['hi','High'],['lo','Low']]){
         if(cur[field]==null||old[field]==null)continue;
         const diff=cur[field]-old[field];
-        if(Math.abs(diff)>=4)changes.push({weight:Math.abs(diff)/4,text:`${name}'s ${label} ${diff>0?'up':'down'} ${Math.abs(tempValue(cur[field])-tempValue(old[field]))}°, now ${fmtTemp(cur[field])}`});
+        if(Math.abs(diff)>=4)changes.push({weight:Math.abs(diff)/4,text:`${label} ${diff>0?'up':'down'} ${Math.abs(tempValue(cur[field])-tempValue(old[field]))}°`});
       }
       if(cur.pop!=null&&old.pop!=null){
         const diff=cur.pop-old.pop;
-        if(Math.abs(diff)>=20&&Math.max(cur.pop,old.pop)>=30)changes.push({weight:Math.abs(diff)/20,text:`${name}'s rain chance ${old.pop}% → ${cur.pop}%`});
+        if(Math.abs(diff)>=20&&Math.max(cur.pop,old.pop)>=30)changes.push({weight:Math.abs(diff)/20,text:`Rain chance ${old.pop}% → ${cur.pop}%`});
       }
+      if(changes.length)notes.set(key,{icon:'🔄',text:`${changes.sort((a,b)=>b.weight-a.weight).slice(0,2).map(c=>c.text).join(', ')} since ${sinceText}`,day:key});
     }
-    if(!changes.length)return null;
-    const since=new Date(baseline.ts),sinceKey=dayKey(tz,since);
-    const sinceText=sinceKey===todayKey?'earlier today':sinceKey===dayKey(tz,new Date(now-864e5))?'yesterday':`on ${new Intl.DateTimeFormat('en-US',{timeZone:tz,weekday:'long'}).format(since)}`;
-    const top=changes.sort((a,b)=>b.weight-a.weight).slice(0,2).map(c=>c.text);
-    return {icon:'🔄',text:`Changed since ${sinceText}: ${top.join(' · ')}`};
+    return notes;
   }
   // NOAA's own map service for the Storm Prediction Center's convective
   // outlooks. Layer ids are looked up by name from the service metadata
@@ -858,39 +865,52 @@ window.WX = (function(){
     const dn=values.find(([k])=>/^dn$/i.test(k));
     return dn?SPC_DN[dn[1]]||null:null;
   }
-  async function severeRisk(loc){
+  async function severeRisk(loc,tz){
     const meta=await json(`${SPC_SERVICE}?f=json`,{ttl:CACHE_TTL.stations});
     // Match on the full group path ("Day 1 Convective Outlook › Categorical"),
     // since the day can live in either the group's name or the layer's own.
     const all=meta.layers||[],byId=new Map(all.map(l=>[l.id,l]));
     const path=l=>{const names=[];for(let x=l;x;x=byId.get(x.parentLayerId))names.unshift(x.name||'');return names.join(' ')};
     const layers=all.filter(l=>!l.subLayerIds?.length).map(l=>({id:l.id,name:path(l)}));
-    let worst=null;
-    for(const [when,pattern] of [['today',/day\s*1\b.*categorical/i],['tomorrow',/day\s*2\b.*categorical/i]]){
+    const notes=[];
+    for(const [offset,pattern] of [[0,/day\s*1\b.*categorical/i],[1,/day\s*2\b.*categorical/i]]){
       const layer=layers.find(l=>pattern.test(l.name));
       if(!layer)continue;
       const params=new URLSearchParams({geometry:`${loc.lon},${loc.lat}`,geometryType:'esriGeometryPoint',inSR:'4326',spatialRel:'esriSpatialRelIntersects',outFields:'*',returnGeometry:'false',f:'json'});
       const res=await json(`${SPC_SERVICE}/${layer.id}/query?${params}`,{ttl:30*60000});
+      let worst=null;
       for(const f of res.features||[]){
         const code=spcCode(f.attributes);
-        if(code&&(!worst||SPC_LEVELS[code][0]>worst.level))worst={level:SPC_LEVELS[code][0],name:SPC_LEVELS[code][1],when};
+        if(code&&(!worst||SPC_LEVELS[code][0]>worst[0]))worst=SPC_LEVELS[code];
       }
+      if(worst)notes.push({icon:'⚠️',tone:worst[0]>=3?'high':'elevated',text:`${worst[1]} risk of severe storms (${worst[0]} of 5)`,href:'https://www.spc.noaa.gov/products/outlook/',day:dayKey(tz,new Date(Date.now()+offset*864e5))});
     }
-    return worst?{icon:'⚠️',tone:worst.level>=3?'high':'elevated',text:`${worst.name} risk of severe storms ${worst.when} (${worst.level} of 5)`,href:'https://www.spc.noaa.gov/products/outlook/'}:null;
+    return notes;
   }
-  function glanceHTML(items){
-    const list=items.filter(Boolean);
-    if(!list.length)return '';
-    return `<ul class="glance-list">${list.map(i=>`<li class="glance-item${i.tone?` glance-${i.tone}`:''}"><span class="glance-icon" aria-hidden="true">${i.icon}</span><span>${esc(i.text)}${i.href?` <a href="${esc(i.href)}" target="_blank" rel="noreferrer">Details</a>`:''}</span></li>`).join('')}</ul>`;
+  function notesHTML(items){
+    return `<ul class="card-notes">${items.map(i=>`<li class="card-note${i.tone?` card-note-${i.tone}`:''}"><span class="card-note-icon" aria-hidden="true">${i.icon}</span><span>${esc(i.text)}${i.href?` <a href="${esc(i.href)}" target="_blank" rel="noreferrer">Details</a>`:''}</span></li>`).join('')}</ul>`;
   }
-  // Renders the synchronous lines immediately, then adds the severe-risk
-  // line (a separate NOAA service) at the top if and when it answers.
-  function renderGlance(container,{hourly,rows,loc,tz,gridKey}){
-    if(!container)return;
-    const base=[nextPrecip(hourly,tz),bestOutdoorWindow(hourly,loc,tz),gridKey?forecastChanges(gridKey,rows,tz):null];
-    const paint=items=>{container.innerHTML=glanceHTML(items);container.classList.toggle('hidden',!container.innerHTML)};
+  // Places notes inside each rendered card (article[data-day]) under its
+  // forecast sentence. Notes without a day belong to today. Severe risk
+  // comes from a separate NOAA service and is added first when it answers.
+  function renderDayNotes(root,{hourly=null,rows,loc,tz,gridKey}){
+    if(!root)return;
+    const todayKey=dayKey(tz,new Date());
+    const base=[];
+    if(hourly){base.push(nextPrecip(hourly,tz),bestOutdoorWindow(hourly,loc,tz))}
+    if(gridKey)base.push(...forecastChanges(gridKey,rows,tz).values());
+    const paint=items=>{
+      root.querySelectorAll('.card-notes').forEach(n=>n.remove());
+      const byDay=new Map();
+      items.filter(Boolean).forEach(i=>{const k=i.day||todayKey;if(!byDay.has(k))byDay.set(k,[]);byDay.get(k).push(i)});
+      for(const [key,list] of byDay){
+        const card=root.querySelector(`article[data-day="${key}"]`);
+        const anchor=card?.querySelector('.condition')||card?.querySelector('.now-line');
+        anchor?.insertAdjacentHTML('afterend',notesHTML(list));
+      }
+    };
     paint(base);
-    severeRisk(loc).then(risk=>{if(risk)paint([risk,...base])}).catch(()=>{});
+    if(hourly)severeRisk(loc,tz).then(risks=>{if(risks.length)paint([...risks,...base])}).catch(()=>{});
   }
   // ---- Forecaster's notes (7-Day page) -----------------------------------
   // Pulls the local NWS meteorologist's own "Key Messages" (or, for offices
@@ -1574,7 +1594,7 @@ window.WX = (function(){
     });
   }
 
-  return {API,DEFAULT_LOC,CACHE_TTL,renderGlance,mountForecasterNotes,forecasterNotes,naturalForecast,nextPrecip,bestOutdoorWindow,forecastChanges,bypassCache,friendlyError,mountStatus,showLocationNote,activeAlerts,renderAlertBanner,DEFAULT_TIME_ZONE,el,esc,getSavedLocation,saveLocation,getCurrentLocation,getTimeZone,setTimeZone,timeZoneLabel,timeZoneOptionsHTML,geolocate,geocodeSearch,resolveLocation,resolvePoint,json,
+  return {API,DEFAULT_LOC,CACHE_TTL,renderDayNotes,mountForecasterNotes,forecasterNotes,naturalForecast,nextPrecip,bestOutdoorWindow,forecastChanges,bypassCache,friendlyError,mountStatus,showLocationNote,activeAlerts,renderAlertBanner,DEFAULT_TIME_ZONE,el,esc,getSavedLocation,saveLocation,getCurrentLocation,getTimeZone,setTimeZone,timeZoneLabel,timeZoneOptionsHTML,geolocate,geocodeSearch,resolveLocation,resolvePoint,json,
     getSavedLocations,isLocationSaved,addSavedLocation,removeSavedLocation,toggleSavedLocation,setFavoriteLocation,clearFavoriteLocation,toggleFavoriteLocation,getFavoriteLocation,mountLocationSwitcher,
     getStartupMode,setStartupMode,
     getTempUnit,setTempUnit,getWindUnit,setWindUnit,getHourFormat,setHourFormat,hour12,tempValue,tempUnitLabel,fmtTemp,fmtTempRange,windValue,windUnitLabel,fmtWind,
