@@ -1619,21 +1619,24 @@ window.WX = (function(){
         <button class="location-switcher-jump" type="button" role="menuitem" data-jump-lat="${loc.lat}" data-jump-lon="${loc.lon}" data-jump-label="${esc(loc.label)}">${esc(loc.label)}</button>
         <button class="location-switcher-remove" type="button" data-remove-lat="${loc.lat}" data-remove-lon="${loc.lon}" aria-label="Remove ${esc(loc.label)}">&times;</button>
       </div>`;
-    }).join(''):'<p class="location-switcher-empty">No saved locations yet. Save this one below, or search for another.</p>';
-    return `<button class="location-switcher-save" type="button" data-toggle-save>${saved?`${STAR_FILLED_ICON} Saved — tap to remove`:`${STAR_OUTLINE_ICON} Save this location`}</button><div class="location-switcher-list">${rows}</div>`;
+    }).join(''):'<p class="location-switcher-empty">No saved locations yet. Save this one above, or search for another.</p>';
+    // Only offered while unsaved: once saved, the location's own row (with
+    // its × remove button) is the place to manage it.
+    return `${saved?'':`<button class="location-switcher-save" type="button" data-toggle-save>${STAR_OUTLINE_ICON} Save this location</button>`}<div class="location-switcher-list">${rows}</div>`;
   }
   // Delegated click handling for a location-switcher-HTML container,
   // shared the same way. onJump fires only for a jump-to-location click,
   // since that's the one action the caller needs to react to (closing a
   // panel/drawer, reloading the page's data); the rest are self-contained.
   // Re-rendering the list after Save/Remove/Favorite replaces the button that
-  // had focus; put focus back on its replacement (or the Save button, when
-  // the row itself was removed) so keyboard users aren't dropped to <body>.
+  // had focus; put focus back on its replacement (the new row after a Save,
+  // since the Save button goes away; the Save button when a row was removed)
+  // so keyboard users aren't dropped to <body>.
   function repaintKeepingFocus(container,html){
     const active=document.activeElement,hadFocus=container.contains(active);
     let selector=null;
     if(hadFocus){
-      if(active.hasAttribute('data-toggle-save'))selector='[data-toggle-save]';
+      if(active.hasAttribute('data-toggle-save'))selector='.location-switcher-row.active .location-switcher-jump';
       else if(active.dataset.favLat)selector=`[data-fav-lat="${active.dataset.favLat}"][data-fav-lon="${active.dataset.favLon}"]`;
       else if(active.dataset.jumpLat)selector=`[data-jump-lat="${active.dataset.jumpLat}"][data-jump-lon="${active.dataset.jumpLon}"]`;
     }
