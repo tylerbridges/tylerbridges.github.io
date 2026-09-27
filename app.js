@@ -456,8 +456,9 @@
     //   boxes per NWS time block, one row each for liquid, snow and ice).
     var COVW = { SChc: "slight chance", Chc: "chance", Lkly: "likely", Ocnl: "occasional", Iso: "isolated", Patchy: "patchy", Sct: "scattered", Areas: "areas",
       Num: "numerous", Wide: "widespread", Pds: "periods", Inter: "intermittent", Brf: "brief", Def: "definite", Frq: "frequent" };
-    var PT = [["rain", "Rain"], ["snow", "Snow"], ["fzra", "Freezing rain"], ["sleet", "Sleet"]], MKT = [["thunder", "Thunder"], ["fog", "Fog"]];
-    var AMT = [["qpf", "Liquid", "rain", 2], ["snow", "Snow", "snow", 1], ["ice", "Ice", "fzra", 2]].filter(function (a) { return (g[a[0]] || []).some(function (b) { return b[2] > 0; }); });
+    var PT = [["rain", "Rain"], ["snow", "Snow"], ["fzra", "Freezing rain"], ["sleet", "Sleet"]], MKT = [["thunder", "Thunder"], ["hail", "Hail"], ["fog", "Fog"]].filter(function (t) { return s[t[0]]; }); // hail: older cached data has none
+    var frozen = ["snow", "ice"].some(function (k) { return (g[k] || []).some(function (b) { return b[2] > 0; }); });
+    var AMT = [["qpf", frozen ? "Liquid" : "Rain", "rain", 2], ["snow", "Snow", "snow", 1], ["ice", "Ice", "fzra", 2]].filter(function (a) { return (g[a[0]] || []).some(function (b) { return b[2] > 0; }); });
     var LVP = [20, 50, 70, 100]; // top of each NWS wording band: slight chance 10-20%, chance 30-50%, likely 60-70%, definite/occasional 80-100%
     var pTop = 34, pH = 108, pBase = pTop + pH, yP = function (v) { return pBase - pH * v / 100; };
     var rowY = function (k) { return pBase + 6 + k * 20; }, pHH = pBase + (AMT.length ? 6 + AMT.length * 20 : 6);
@@ -474,7 +475,7 @@
       });
       MKT.forEach(function (t, k) {
         var v = s[t[0]][i]; if (!v) return; used[t[0]] = 1;
-        pb += '<rect x="' + (i * PX + 1) + '" y="' + (18 + k * 7) + '" width="' + (PX - 2) + '" height="5" rx="1.5" fill="var(--' + t[0] + ')" fill-opacity="' + (0.35 + 0.16 * Math.min(4, v[0])) + '"/>';
+        pb += '<rect x="' + (i * PX + 1) + '" y="' + (16 + k * 6) + '" width="' + (PX - 2) + '" height="5" rx="1.5" fill="var(--' + t[0] + ')" fill-opacity="' + (0.35 + 0.16 * Math.min(4, v[0])) + '"/>';
       });
     }
     // exact chance of precipitation on top of the bars
@@ -500,8 +501,13 @@
       [{ txt: function (i) {
         var o = [s.pop[i] == null ? "Chance: –" : s.pop[i] + "% chance"];
         var ty = PT.concat(MKT).filter(function (t) { return s[t[0]][i]; }).map(function (t, k) { var w = COVW[s[t[0]][i][1]] || s[t[0]][i][1].toLowerCase(); return (k ? t[1].toLowerCase() : t[1]) + " " + w; });
-        for (var q = 0; q < ty.length; q += 2) o.push(ty.slice(q, q + 2).join(", "));
-        var am = AMT.map(function (a) { var b = blockAt(g[a[0]] || [], start + i * H); return b && b[2] ? (a[1] === "Liquid" ? "Liquid " : a[1] + " ") + b[2].toFixed(a[3]) + '"' : null; }).filter(Boolean);
+        for (var q = 0; q < ty.length; q += 2) { var ln = ty.slice(q, q + 2).join(", "); o.push(ln.charAt(0).toUpperCase() + ln.slice(1)); }
+        // a liquid block with no snow or ice in it is plain rain
+        var am = AMT.map(function (a) {
+          var b = blockAt(g[a[0]] || [], start + i * H); if (!(b && b[2])) return null;
+          var nm = a[1] === "Liquid" && !["snow", "ice"].some(function (k) { var x = blockAt(g[k] || [], start + i * H); return x && x[2] > 0; }) ? "Rain" : a[1];
+          return nm + " " + b[2].toFixed(a[3]) + '"';
+        }).filter(Boolean);
         return o.concat(am);
         return o;
       } }], 0));

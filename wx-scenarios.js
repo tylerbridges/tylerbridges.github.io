@@ -74,7 +74,7 @@
         var t = h < 60 ? diurnal(lh, 70, 88) : diurnal(lh, 58, 76), td = h < 60 ? 72 : 55;
         var ws = r1 || r2 ? 20 : 10, wg = r1 ? 60 : r2 ? 45 : 18;
         return { t: r1 || r2 ? t - 8 : t, td: td, ws: ws, wg: wg, wd: 210, sky: r1 || r2 ? 95 : 40, pop: r1 ? 90 : r2 ? 60 : 15, thp: r1 ? 80 : r2 ? 50 : 5,
-          wx: r1 ? [wx("thunderstorms", "likely", "heavy"), wx("rain_showers", "definite")] : r2 ? [wx("thunderstorms", "scattered")] : [],
+          wx: r1 ? [wx("thunderstorms", "likely", "heavy"), wx("rain_showers", "definite")].concat(h >= 3 && h < 6 ? [wx("hail", "chance")] : []) : r2 ? [wx("thunderstorms", "scattered")] : [],
           q: r1 ? 0.35 : r2 ? 0.12 : 0, sn: 0, ice: 0 };
       }
     },

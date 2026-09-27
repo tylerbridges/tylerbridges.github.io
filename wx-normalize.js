@@ -11,8 +11,10 @@
     periods: "Pds", intermittent: "Inter", brief: "Brf", definite: "Def", frequent: "Frq" };
   var TYPE = { rain: "rain", rain_showers: "rain", drizzle: "rain", thunderstorms: "thunder",
     snow: "snow", snow_showers: "snow", blowing_snow: "snow", freezing_rain: "fzra",
-    freezing_drizzle: "fzra", sleet: "sleet", fog: "fog", freezing_fog: "fog", ice_fog: "fog" };
-  var WXKEYS = ["rain", "thunder", "snow", "fzra", "sleet", "fog"];
+    freezing_drizzle: "fzra", freezing_spray: "fzra", sleet: "sleet", ice_crystals: "snow", hail: "hail",
+    fog: "fog", freezing_fog: "fog", ice_fog: "fog" };
+  // not mapped (not precipitation): frost, haze, smoke, dust, sand, spray, volcanic ash, water spouts
+  var WXKEYS = ["rain", "thunder", "snow", "fzra", "sleet", "hail", "fog"];
   var H = 3600000;
 
   function durH(d) {
