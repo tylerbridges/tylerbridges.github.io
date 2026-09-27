@@ -896,21 +896,41 @@
   // Public-domain NWS/NOAA map images. "Local" maps are the NWS forecast office's own sector (from the location's
   //   office code); the WPC/CPC maps are national. Each product is a list of frames stepped like a model viewer.
   var WPC = "https://www.wpc.ncep.noaa.gov/", CPC = "https://www.cpc.ncep.noaa.gov/products/predictions/";
-  function ndfd(el, name, note, n, lab, src) {
-    var f = []; for (var i = 1; i <= (n || 12); i++) f.push({ l: lab ? lab(i) : (i - 1) * 6 + "–" + i * 6 + " hr", u: el + i });
+  // Frame labels are real days/times in the location's time zone, worked out when shown (products
+  //   roll forward on their own schedule). The exact valid time is still printed on each map.
+  var D24 = 24 * H;
+  function wd(ms) { return fmt(ms, { weekday: "short" }); }
+  function dayKey(ms) { return fmt(ms, { year: "numeric", month: "numeric", day: "numeric" }); }
+  function rel(ms) { var k = dayKey(ms); return k === dayKey(Date.now()) ? "Today" : k === dayKey(Date.now() + D24) ? "Tomorrow" : wd(ms); }
+  function span(a, b) { return wd(a) + " " + hr(a) + "–" + (dayKey(a) === dayKey(b) ? "" : wd(b) + " ") + hr(b); }
+  function md(ms) { return fmt(ms, { month: "short", day: "numeric" }); }
+  function mdRange(a, b) { return md(a) + "–" + (fmt(a, { month: "short" }) === fmt(b, { month: "short" }) ? fmt(b, { day: "numeric" }) : md(b)); }
+  // WPC day 1 starts at its latest 00Z/12Z cycle (allowing ~4 h for it to be issued); day N follows in 24-hour steps
+  function wpcDay(d) { var c = Math.floor((Date.now() - 4 * H) / (12 * H)) * 12 * H + (d - 1) * D24; return span(c, c + D24); }
+  // NDFD 6-hour periods end at 00/06/12/18Z; frame 1 is the period in progress
+  function six(i) { var e = Math.ceil((Date.now() + 1) / (6 * H)) * 6 * H + (i - 1) * 6 * H; return span(e - 6 * H, e); }
+  // CPC outlooks are issued each afternoon Eastern time and count days from the issue date
+  function cpc(a, b) { var et = +new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "numeric", hourCycle: "h23" }).format(new Date()); var t = Date.now() - (et < 15 ? D24 : 0); return mdRange(t + a * D24, t + b * D24); }
+  function highs(i) { return rel(Date.now() + (hourNum(Date.now()) >= 18 ? i : i - 1) * D24); }
+  function lows(i) { var early = hourNum(Date.now()) < 7; if (early && i === 1) return "This morning"; var t = Date.now() + (early ? i - 2 : i - 1) * D24, r = rel(t); return r === "Today" ? "Tonight" : (r === "Tomorrow" ? wd(t) : r) + " night"; }
+  // NDFD temperature images step every 3 hours for the first days (approximate, so marked ≈)
+  function three(i) { var t = Math.ceil(Date.now() / (3 * H)) * 3 * H + (i - 1) * 3 * H; return "≈ " + wd(t) + " " + hr(t); }
+  function lab(fr) { return typeof fr.l === "function" ? fr.l() : fr.l; }
+  function ndfd(el, name, note, n, lb, src) {
+    var f = []; for (var i = 1; i <= (n || 12); i++) f.push({ l: (lb || six).bind(null, i), u: el + i });
     return { id: "ndfd-" + el, name: name, area: true, el: el, frames: f, src: src || "NWS National Digital Forecast Database (official forecast, 6-hour amounts)", note: note,
       link: function (a) { return "https://graphical.weather.gov/sectors/" + a + ".php?element=" + el; } };
   }
   function days(name, pat, n0, n1, src, link, pre) {
-    var f = []; for (var d = n0; d <= n1; d++) f.push({ l: (pre || "Day ") + d, u: pat.replace("{d}", d) });
+    var f = []; for (var d = n0; d <= n1; d++) f.push({ l: wpcDay.bind(null, d), u: pat.replace("{d}", d) });
     return { id: pat, name: name, frames: f, src: src, link: link };
   }
   function grp(g, p) { p.g = g; return p; }
   var MCATS = [
     { id: "precip", name: "Precipitation", prods: [
       grp("Totals", { id: "wpc-qpf", name: "Precip totals, 1–7 days", src: "NWS Weather Prediction Center (liquid equivalent, rain + melted snow)", link: WPC + "qpf/qpf2.shtml",
-        frames: [{ l: "Day 1 (24 hr)", u: WPC + "qpf/fill_94qwbg.gif" }, { l: "Day 2 (24 hr)", u: WPC + "qpf/fill_98qwbg.gif" }, { l: "Day 3 (24 hr)", u: WPC + "qpf/fill_99qwbg.gif" },
-          { l: "Days 1–2 (48 hr)", u: WPC + "qpf/d12_fill.gif" }, { l: "5 days", u: WPC + "qpf/p120i.gif" }, { l: "7 days", u: WPC + "qpf/p168i.gif" }] }),
+        frames: [{ l: wpcDay.bind(null, 1), u: WPC + "qpf/fill_94qwbg.gif" }, { l: wpcDay.bind(null, 2), u: WPC + "qpf/fill_98qwbg.gif" }, { l: wpcDay.bind(null, 3), u: WPC + "qpf/fill_99qwbg.gif" },
+          { l: "Next 2 days", u: WPC + "qpf/d12_fill.gif" }, { l: "Next 5 days", u: WPC + "qpf/p120i.gif" }, { l: "Next 7 days", u: WPC + "qpf/p168i.gif" }] }),
       grp("Totals", ndfd("QPF", "6-hr precip forecast", "Each frame is 6 hours of liquid precipitation; the valid time is printed on the map.")),
       grp("Snow", ndfd("SnowAmt", "6-hr snowfall forecast", "Each frame is 6 hours of snow; the valid time is printed on the map.")),
       grp("Snow", days("Chance of 4\"+ snow", WPC + "wwd/day{d}_psnow_gt_04_conus.gif", 1, 3, "NWS Weather Prediction Center (24-hour periods)", WPC + "wwd/winter_wx.shtml")),
@@ -922,18 +942,18 @@
       grp("Snow & ice", days("Snow & ice odds, days 1–3", WPC + "wwd/day{d}_composite_conus.gif", 1, 3, "NWS Weather Prediction Center: 4/8/12\" snow and 0.25\" ice chances", WPC + "wwd/winter_wx.shtml"))
     ] },
     { id: "temp", name: "Temperature", prods: [
-      ndfd("MaxT", "Daytime highs", "The date is printed on the map.", 7, function (i) { return "Day " + i; }, "NWS National Digital Forecast Database (official forecast)"),
-      ndfd("MinT", "Overnight lows", "The date is printed on the map.", 7, function (i) { return "Night " + i; }, "NWS National Digital Forecast Database (official forecast)"),
-      ndfd("T", "Temperature by time", "Frames step forward in time; the valid time is printed on the map.", 24, function (i) { return "Step " + i; }, "NWS National Digital Forecast Database (official forecast)"),
-      ndfd("ApparentT", "Feels-like temperature", "Wind chill or heat index. Frames step forward in time; the valid time is printed on the map.", 24, function (i) { return "Step " + i; }, "NWS National Digital Forecast Database (official forecast)"),
+      ndfd("MaxT", "Daytime highs", "The date is printed on the map.", 7, highs, "NWS National Digital Forecast Database (official forecast)"),
+      ndfd("MinT", "Overnight lows", "The date is printed on the map.", 7, lows, "NWS National Digital Forecast Database (official forecast)"),
+      ndfd("T", "Temperature by time", "Frames step forward in time; the valid time is printed on the map.", 24, three, "NWS National Digital Forecast Database (official forecast)"),
+      ndfd("ApparentT", "Feels-like temperature", "Wind chill or heat index. Frames step forward in time; the valid time is printed on the map.", 24, three, "NWS National Digital Forecast Database (official forecast)"),
       { id: "cpc-t", name: "6–14 day outlook", src: "NOAA Climate Prediction Center: chance of above/below normal", link: "https://www.cpc.ncep.noaa.gov/",
-        frames: [{ l: "6–10 days", u: CPC + "610day/610temp.new.gif" }, { l: "8–14 days", u: CPC + "814day/814temp.new.gif" }] }
+        frames: [{ l: cpc.bind(null, 6, 10), u: CPC + "610day/610temp.new.gif" }, { l: cpc.bind(null, 8, 14), u: CPC + "814day/814temp.new.gif" }] }
     ] },
     { id: "outlook", name: "Outlooks", prods: [
       { id: "cpc-p", name: "6–14 day precip outlook", src: "NOAA Climate Prediction Center", link: "https://www.cpc.ncep.noaa.gov/",
-        frames: [{ l: "6–10 days", u: CPC + "610day/610prcp.new.gif" }, { l: "8–14 days", u: CPC + "814day/814prcp.new.gif" }] },
+        frames: [{ l: cpc.bind(null, 6, 10), u: CPC + "610day/610prcp.new.gif" }, { l: cpc.bind(null, 8, 14), u: CPC + "814day/814prcp.new.gif" }] },
       { id: "cpc-snow", name: "Week 2 heavy snow risk", src: "NOAA Climate Prediction Center", link: "https://www.cpc.ncep.noaa.gov/products/predictions/threats/threats.php",
-        frames: [{ l: "Days 8–14", u: CPC + "threats/snow_probhazards_d8_14_contours.png" }] }
+        frames: [{ l: cpc.bind(null, 8, 14), u: CPC + "threats/snow_probhazards_d8_14_contours.png" }] }
     ] }
   ];
   var winterNow = [10, 11, 0, 1, 2, 3].indexOf(new Date().getMonth()) >= 0;
@@ -990,8 +1010,8 @@
   function mShow() {
     var p = mProd(), fr = p.frames[M.f], img = $("mimg"), url = mUrl(p, fr);
     $("mrange").value = M.f;
-    $("mfr").textContent = fr.l;
-    img.alt = p.name + ", " + fr.l;
+    $("mfr").textContent = lab(fr);
+    img.alt = p.name + ", " + lab(fr);
     if (img.getAttribute("src") === url) return;
     $("mmsg").hidden = true; img.classList.add("ld");
     img.onload = function () { img.classList.remove("ld"); };
