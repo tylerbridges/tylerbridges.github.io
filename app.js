@@ -719,7 +719,7 @@
 
   function renderAll() {
     if (doc && doc.loc && doc.loc.tz) TZ = doc.loc.tz;
-    renderFresh(); renderNow(); renderWeek(); if (tab === "hourly") renderGraph(); else G = null; renderTotals(); renderDetail(); renderObs(); renderFoot();
+    renderFresh(); renderNow(); renderWeek(); if (tab === "hourly") renderGraph(); else G = null; renderTotals(); renderDetail(); renderObs(); renderFoot(); if (tab === "maps") renderMaps();
     activeCard = -1; if (tab === "daily") requestAnimationFrame(syncStrip);
   }
 
@@ -812,6 +812,7 @@
       s.hidden = s.dataset.tab !== t;
     });
     if (t === "hourly" && doc && (!G || changed)) renderGraph();
+    if (t === "maps") renderMaps(); else mStop();
     requestAnimationFrame(equalize);
     if (changed) window.scrollTo(0, 0);
     if (t === "daily") { activeCard = -1; setTopH(); requestAnimationFrame(syncStrip); }
@@ -890,6 +891,134 @@
   document.addEventListener("visibilitychange", function () { if (!document.hidden && Date.now() - lastCheck > 5 * 60000) refresh(false); });
   setInterval(renderFresh, 30000);
   var rw; window.addEventListener("resize", function () { clearTimeout(rw); rw = setTimeout(function () { if (doc && tab === "hourly") renderGraph(); }, 200); });
+
+  // ---------- forecast maps ----------
+  // Public-domain NWS/NOAA map images. "Local" maps are the NWS forecast office's own sector (from the location's
+  //   office code); the WPC/CPC maps are national. Each product is a list of frames stepped like a model viewer.
+  var WPC = "https://www.wpc.ncep.noaa.gov/", CPC = "https://www.cpc.ncep.noaa.gov/products/predictions/";
+  function ndfd(el, name, note) {
+    var f = []; for (var i = 1; i <= 12; i++) f.push({ l: (i - 1) * 6 + "–" + i * 6 + " hr", u: el + i });
+    return { id: "ndfd-" + el, name: name, area: true, el: el, frames: f, src: "NWS National Digital Forecast Database (official forecast, 6-hour amounts)", note: note,
+      link: function (a) { return "https://graphical.weather.gov/sectors/" + a + ".php?element=" + el; } };
+  }
+  function days(name, pat, n0, n1, src, link, pre) {
+    var f = []; for (var d = n0; d <= n1; d++) f.push({ l: (pre || "Day ") + d, u: pat.replace("{d}", d) });
+    return { id: pat, name: name, frames: f, src: src, link: link };
+  }
+  var MCATS = [
+    { id: "winter", name: "Snow & Ice", prods: [
+      ndfd("SnowAmt", "Snowfall forecast", "Each frame is 6 hours of snow; the valid time is printed on the map."),
+      ndfd("IceAccum", "Ice accumulation forecast", "Each frame is 6 hours of freezing rain ice; the valid time is printed on the map."),
+      days("Chance of 4\"+ snow", WPC + "wwd/day{d}_psnow_gt_04_conus.gif", 1, 3, "NWS Weather Prediction Center (24-hour periods)", WPC + "wwd/winter_wx.shtml"),
+      days("Chance of 8\"+ snow", WPC + "wwd/day{d}_psnow_gt_08_conus.gif", 1, 3, "NWS Weather Prediction Center (24-hour periods)", WPC + "wwd/winter_wx.shtml"),
+      days("Chance of 12\"+ snow", WPC + "wwd/day{d}_psnow_gt_12_conus.gif", 1, 3, "NWS Weather Prediction Center (24-hour periods)", WPC + "wwd/winter_wx.shtml"),
+      days("Chance of 0.25\"+ ice", WPC + "wwd/day{d}_pice_gt_25_conus.gif", 1, 3, "NWS Weather Prediction Center (24-hour periods)", WPC + "wwd/winter_wx.shtml"),
+      days("Winter composite", WPC + "wwd/day{d}_composite_conus.gif", 1, 3, "NWS Weather Prediction Center: 4/8/12\" snow and 0.25\" ice chances", WPC + "wwd/winter_wx.shtml"),
+      days("Days 4–7 snow outlook", WPC + "wwd/pwpf_d47/gif/prbww_sn25_DAY{d}.gif", 4, 7, "NWS Weather Prediction Center: chance of 0.25\"+ liquid as snow/sleet", WPC + "wwd/pwpf_d47/pwpf_medr.php")
+    ] },
+    { id: "precip", name: "Precipitation", prods: [
+      { id: "wpc-qpf", name: "Precip totals", src: "NWS Weather Prediction Center (liquid equivalent, rain + melted snow)", link: WPC + "qpf/qpf2.shtml",
+        frames: [{ l: "Day 1 (24 hr)", u: WPC + "qpf/fill_94qwbg.gif" }, { l: "Day 2 (24 hr)", u: WPC + "qpf/fill_98qwbg.gif" }, { l: "Day 3 (24 hr)", u: WPC + "qpf/fill_99qwbg.gif" },
+          { l: "Days 1–2 (48 hr)", u: WPC + "qpf/d12_fill.gif" }, { l: "5 days", u: WPC + "qpf/p120i.gif" }, { l: "7 days", u: WPC + "qpf/p168i.gif" }] },
+      ndfd("QPF", "Precip forecast (6-hr)", "Each frame is 6 hours of liquid precipitation; the valid time is printed on the map.")
+    ] },
+    { id: "outlook", name: "Outlooks", prods: [
+      { id: "cpc-t", name: "Temperature outlook", src: "NOAA Climate Prediction Center", link: "https://www.cpc.ncep.noaa.gov/",
+        frames: [{ l: "6–10 days", u: CPC + "610day/610temp.new.gif" }, { l: "8–14 days", u: CPC + "814day/814temp.new.gif" }] },
+      { id: "cpc-p", name: "Precip outlook", src: "NOAA Climate Prediction Center", link: "https://www.cpc.ncep.noaa.gov/",
+        frames: [{ l: "6–10 days", u: CPC + "610day/610prcp.new.gif" }, { l: "8–14 days", u: CPC + "814day/814prcp.new.gif" }] },
+      { id: "cpc-snow", name: "Week 2 heavy snow risk", src: "NOAA Climate Prediction Center", link: "https://www.cpc.ncep.noaa.gov/products/predictions/threats/threats.php",
+        frames: [{ l: "Days 8–14", u: CPC + "threats/snow_probhazards_d8_14_contours.png" }] }
+    ] }
+  ];
+  var winterNow = [10, 11, 0, 1, 2, 3].indexOf(new Date().getMonth()) >= 0;
+  var M = store("wx-map") || { cat: winterNow ? "winter" : "precip", id: winterNow ? "ndfd-SnowAmt" : "wpc-qpf", area: "local" };
+  M.f = 0; var mTimer = null;
+  function mCat() { return MCATS.filter(function (c) { return c.id === M.cat; })[0] || MCATS[0]; }
+  function mProd() { var c = mCat(); return c.prods.filter(function (p) { return p.id === M.id; })[0] || c.prods[0]; }
+  function mOffice() { var o = doc && doc.loc && doc.loc.office; return o ? String(o).toLowerCase() : null; }
+  function mSector(p) { return p.area && M.area === "local" && mOffice() ? mOffice() : "conus"; }
+  function mUrl(p, fr) {
+    var bust = "?t=" + Math.floor(Date.now() / 9e5); // new images every 15 min at most
+    if (p.el) { var s = mSector(p); return "https://graphical.weather.gov/images/" + s + "/" + fr.u + "_" + s + ".png" + bust; }
+    return fr.u + bust;
+  }
+  function mStop() { clearInterval(mTimer); mTimer = null; if ($("mplay")) { $("mplay").innerHTML = "&#9654;"; $("mplay").setAttribute("aria-label", "Play"); } }
+  function mSave() { store("wx-map", { cat: M.cat, id: M.id, area: M.area }); }
+  function mTotals() {
+    var g = doc && doc.grid, el = $("mtot"); if (!g) { el.innerHTML = '<div class="note">Local totals load with the forecast.</div>'; return; }
+    var now = Math.max(Date.now(), g.start), hrs = [24, 48, 72];
+    var rows = [["Snow", "snow", 1, "\""], ["Ice", "ice", 2, "\""], ["Precip", "qpf", 2, "\""]];
+    var o = '<div class="h">' + esc((doc.loc && doc.loc.label) || "Here") + '</div>' + hrs.map(function (h) { return '<div class="h">' + h + " hr</div>"; }).join("");
+    rows.forEach(function (r) {
+      o += '<div class="k">' + r[0] + "</div>" + hrs.map(function (h) {
+        var v = sumRange(g[r[1]] || [], now, now + h * H), z = !(v >= Math.pow(10, -r[2]) / 2);
+        return '<div class="v' + (z ? " z" : "") + '">' + (z ? "0" : v.toFixed(r[2])) + r[3] + "</div>";
+      }).join("");
+    });
+    el.innerHTML = o + '<div class="note">NWS forecast totals for this location. Precip is liquid equivalent (rain plus melted snow/ice).</div>';
+  }
+  function renderMaps() {
+    if (!$("maps")) return;
+    mTotals();
+    var c = mCat(), p = mProd(); M.id = p.id;
+    if (M.f >= p.frames.length) M.f = 0;
+    $("mcats").innerHTML = MCATS.map(function (x) { return '<button type="button" class="chip' + (x.id === c.id ? " on" : "") + '" data-mcat="' + x.id + '">' + x.name + "</button>"; }).join("");
+    $("mprods").innerHTML = c.prods.map(function (x) { return '<button type="button" class="chip' + (x.id === p.id ? " on" : "") + '" data-mprod="' + esc(x.id) + '">' + esc(x.name) + "</button>"; }).join("");
+    var off = mOffice();
+    $("marea").hidden = !p.area || !off;
+    $("marea").innerHTML = p.area && off ? '<button type="button" data-marea="local" class="' + (M.area === "local" ? "on" : "") + '">Local (' + off.toUpperCase() + ")</button>" +
+      '<button type="button" data-marea="conus" class="' + (M.area !== "local" ? "on" : "") + '">National</button>' : "";
+    $("mtitle").textContent = p.name;
+    $("mframes").innerHTML = p.frames.map(function (fr, i) { return '<button type="button" class="chip' + (i === M.f ? " on" : "") + '" data-mf="' + i + '">' + fr.l + "</button>"; }).join("");
+    $("mctl").hidden = p.frames.length < 2; $("mframes").hidden = p.frames.length < 2;
+    $("mrange").max = p.frames.length - 1;
+    var lk = typeof p.link === "function" ? p.link(mSector(p)) : p.link;
+    $("msrc").innerHTML = esc(p.src) + (p.note ? "<br>" + esc(p.note) : "") + ' · <a href="' + esc(lk) + '" target="_blank" rel="noopener">Source</a>';
+    // preload every frame so stepping and playback don't flash
+    p.frames.forEach(function (fr) { var im = new Image(); im.src = mUrl(p, fr); });
+    mShow();
+  }
+  function mShow() {
+    var p = mProd(), fr = p.frames[M.f], img = $("mimg"), url = mUrl(p, fr);
+    $("mrange").value = M.f;
+    $("mframes").querySelectorAll("[data-mf]").forEach(function (b) { var on = +b.dataset.mf === M.f; b.classList.toggle("on", on); if (on && b.scrollIntoView && !mTimer) b.scrollIntoView({ block: "nearest", inline: "nearest" }); });
+    img.alt = p.name + ", " + fr.l;
+    if (img.getAttribute("src") === url) return;
+    $("mmsg").hidden = true; img.classList.add("ld");
+    img.onload = function () { img.classList.remove("ld"); };
+    img.onerror = function () { img.classList.remove("ld"); $("mmsg").hidden = false; $("mmsg").textContent = "This map isn't available right now. Try another time step or open the source."; };
+    img.src = url;
+  }
+  function mStep(d) { var n = mProd().frames.length; M.f = (M.f + d + n) % n; mShow(); }
+  $("maps").addEventListener("click", function (e) {
+    var b;
+    if ((b = e.target.closest("[data-mcat]"))) { mStop(); M.cat = b.dataset.mcat; M.id = null; M.f = 0; renderMaps(); mSave(); return; }
+    if ((b = e.target.closest("[data-mprod]"))) { mStop(); M.id = b.dataset.mprod; M.f = 0; mSave(); renderMaps(); return; }
+    if ((b = e.target.closest("[data-marea]"))) { M.area = b.dataset.marea; mSave(); renderMaps(); return; }
+    if ((b = e.target.closest("[data-mf]"))) { mStop(); M.f = +b.dataset.mf; mShow(); return; }
+    if (e.target.closest("#mprev")) { mStop(); mStep(-1); return; }
+    if (e.target.closest("#mnext")) { mStop(); mStep(1); return; }
+    if (e.target.closest("#mplay")) {
+      if (mTimer) { mStop(); mShow(); return; }
+      $("mplay").innerHTML = "&#10074;&#10074;"; $("mplay").setAttribute("aria-label", "Pause");
+      mTimer = setInterval(function () { mStep(1); }, 900); mShow(); return;
+    }
+    if (e.target.closest("#mimgbox") && $("mmsg").hidden) { $("mfimg").src = $("mimg").src; $("mfimg").alt = $("mimg").alt; $("mfsc").classList.remove("z"); $("mfull").hidden = false; }
+  });
+  $("mrange").addEventListener("input", function () { mStop(); M.f = +this.value; mShow(); });
+  // full-screen viewer: tap zooms to 2.5x centred on where you tapped (local maps are centred on the forecast office)
+  $("mfimg").addEventListener("click", function (e) {
+    var sc = $("mfsc"), im = this, r = im.getBoundingClientRect(), fx = (e.clientX - r.left) / r.width, fy = (e.clientY - r.top) / r.height;
+    sc.classList.toggle("z");
+    if (sc.classList.contains("z")) { sc.scrollLeft = fx * im.clientWidth - sc.clientWidth / 2; sc.scrollTop = fy * im.clientHeight - sc.clientHeight / 2; }
+  });
+  $("mfx").addEventListener("click", function () { $("mfull").hidden = true; });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && !$("mfull").hidden) { $("mfull").hidden = true; return; }
+    if (tab !== "maps" || !$("locsheet").hidden || /INPUT|TEXTAREA/.test((e.target.tagName || "")) && e.target.type !== "range") return;
+    if (e.key === "ArrowLeft") { mStop(); mStep(-1); } else if (e.key === "ArrowRight") { mStop(); mStep(1); }
+  });
 
   // ---------- location ----------
   // Location comes from the URL (?q=Duluth MN or ?lat=46.78&lon=-92.1), else the last one used on this device, else Minneapolis.

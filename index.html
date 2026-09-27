@@ -374,6 +374,44 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
 .place{background:none;border:0;padding:0;text-align:left;color:inherit;cursor:pointer;font:inherit}
 .place b{display:inline-flex;align-items:center;gap:4px}
 .pchev{color:var(--muted);flex:none}
+/* forecast maps */
+.mtot{display:grid;grid-template-columns:auto repeat(3,1fr);gap:6px 10px;padding:12px 14px;align-items:baseline}
+.mtot .h{font:600 11px var(--sans);letter-spacing:.05em;text-transform:uppercase;color:var(--muted);text-align:right}
+.mtot .h:first-child{text-align:left}
+.mtot .k{font-size:14px;color:var(--ink2)}
+.mtot .v{font:600 17px var(--sans);text-align:right;color:var(--ink)}
+.mtot .v.z{color:var(--muted);font-weight:400}
+.mtot .note{grid-column:1/-1;font-size:11.5px;color:var(--muted)}
+.mcats,.mprods{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin-inline:-16px;padding-inline:16px}
+.mprods .chip{background:var(--sunk)}
+.mprods .chip.on{background:var(--ink);border-color:var(--ink);color:var(--surface)}
+.mview{padding:12px 0 12px;overflow:hidden}
+.mhead{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 12px 10px;flex-wrap:wrap}
+.mhead b{font:600 16px/1.25 var(--sans);color:var(--ink)}
+.marea{display:flex;border:1px solid var(--line);border-radius:999px;overflow:hidden}
+.marea button{border:0;background:none;padding:5px 11px;font:12.5px var(--sans);color:var(--ink2);cursor:pointer}
+.marea button.on{background:var(--accent);color:#fff}
+.mimg{position:relative;background:#fff;min-height:220px;display:flex;align-items:center;justify-content:center;cursor:zoom-in}
+.mimg img{display:block;width:100%;height:auto}
+.mimg img.ld{opacity:.55}
+.mmsg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px;font-size:13px;color:#555;background:#fff}
+.mhint{position:absolute;right:6px;bottom:6px;font-size:10.5px;background:rgba(0,0,0,.55);color:#fff;border-radius:6px;padding:2px 6px;pointer-events:none}
+.mctl{display:flex;align-items:center;gap:8px;padding:10px 12px 4px}
+.mctl input{flex:1;min-width:0;accent-color:var(--accent)}
+.mbtn{flex:0 0 auto;width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--ink);font-size:18px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.mbtn:disabled{opacity:.35}
+.mframes{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:6px 12px 2px}
+.mframes .chip{font-size:12px;padding:4px 9px}
+.msrc{padding:8px 12px 0;font-size:11.5px;color:var(--muted);line-height:1.45}
+.msrc a{color:var(--accent)}
+#mfull{position:fixed;inset:0;z-index:70;background:#000;display:flex;flex-direction:column}
+#mfull[hidden]{display:none}
+.mfsc{flex:1;overflow:auto;display:flex;align-items:center;-webkit-overflow-scrolling:touch}
+.mfsc img{display:block;width:100%;height:auto;margin:auto;background:#fff;cursor:zoom-in}
+.mfsc.z{align-items:flex-start}
+.mfsc.z img{width:250%;max-width:none;cursor:zoom-out}
+.mfx{position:absolute;top:calc(env(safe-area-inset-top,0px) + 8px);right:10px;z-index:2;width:40px;height:40px;border-radius:50%;border:0;background:rgba(255,255,255,.9);color:#000;font-size:26px;line-height:1;cursor:pointer}
+.mfhint{color:#bbb;font-size:12px;text-align:center;padding:8px 0 calc(env(safe-area-inset-bottom,0px) + 10px)}
 #locsheet{position:fixed;inset:0;z-index:60}
 .ls-back{position:absolute;inset:0;background:rgba(0,0,0,.35)}
 .ls-card{position:absolute;left:0;right:0;top:0;background:var(--surface);border-bottom:1px solid var(--line);border-radius:0 0 16px 16px;padding:calc(env(safe-area-inset-top,0px) + 14px) 16px 16px;box-shadow:0 10px 30px rgba(0,0,0,.25);max-width:640px;margin:0 auto}
@@ -416,7 +454,7 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
       <button class="rbtn" id="rbtn" type="button" aria-label="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button>
     </div>
     <nav class="nav" id="nav">
-      <button type="button" class="chip on" data-tab="now">Now</button><button type="button" class="chip" data-tab="daily">Daily</button><button type="button" class="chip" data-tab="hourly">Hourly</button><button type="button" class="chip" data-tab="totals">Totals &amp; Observations</button>
+      <button type="button" class="chip on" data-tab="now">Now</button><button type="button" class="chip" data-tab="daily">Daily</button><button type="button" class="chip" data-tab="hourly">Hourly</button><button type="button" class="chip" data-tab="maps">Maps</button><button type="button" class="chip" data-tab="totals">Totals &amp; Observations</button>
     </nav>
   </header>
 
@@ -441,6 +479,24 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
     <div class="gstack" id="gin"></div>
   </section>
 
+  <section id="maps" class="sec" data-tab="maps" hidden>
+    <div class="card mtot" id="mtot"></div>
+    <div class="mcats" id="mcats"></div>
+    <div class="mprods" id="mprods"></div>
+    <div class="card mview">
+      <div class="mhead"><b id="mtitle"></b><div class="marea" id="marea"></div></div>
+      <div class="mimg" id="mimgbox"><img id="mimg" alt="" decoding="async"><div class="mmsg" id="mmsg" hidden></div><span class="mhint">Tap to enlarge</span></div>
+      <div class="mctl" id="mctl">
+        <button type="button" class="mbtn" id="mprev" aria-label="Previous">&#8249;</button>
+        <button type="button" class="mbtn" id="mplay" aria-label="Play">&#9654;</button>
+        <input type="range" id="mrange" min="0" max="0" value="0" aria-label="Forecast time">
+        <button type="button" class="mbtn" id="mnext" aria-label="Next">&#8250;</button>
+      </div>
+      <div class="mframes" id="mframes"></div>
+      <div class="msrc" id="msrc"></div>
+    </div>
+  </section>
+
   <section id="totals" class="sec" data-tab="totals" hidden>
     <div class="sec-h"><h2>Storm totals</h2></div>
     <div class="card tot" id="tot"></div>
@@ -460,6 +516,7 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
   <footer class="foot" id="foot"></footer>
 </div>
 <div id="toast" hidden></div>
+<div id="mfull" hidden><button type="button" class="mfx" id="mfx" aria-label="Close">&times;</button><div class="mfsc" id="mfsc"><img id="mfimg" alt=""></div><div class="mfhint">Tap map to zoom in/out</div></div>
 <div id="locsheet" hidden>
   <div class="ls-back" data-close></div>
   <div class="ls-card" role="dialog" aria-label="Change location">
@@ -473,8 +530,8 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
   </div>
 </div>
 
-<script src="wx-normalize.js?v=3"></script>
-<script src="wx-live.js?v=3"></script>
-<script src="app.js?v=3"></script>
+<script src="wx-normalize.js?v=4"></script>
+<script src="wx-live.js?v=4"></script>
+<script src="app.js?v=4"></script>
 </body>
 </html>
