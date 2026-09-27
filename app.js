@@ -472,7 +472,8 @@
     var rowY = function (k) { return pBase + 6 + k * 20; }, pHH = pBase + (AMT.length ? 6 + AMT.length * 20 : 6);
     var pg = "", pb = "";
     // wording bands (the SChc/Chc/Lkly/Ocnl scale) behind everything
-    [[10, 20], [30, 50], [60, 70], [80, 100]].forEach(function (r) { pg += '<rect x="0" y="' + yP(r[1]) + '" width="' + W + '" height="' + (yP(r[0]) - yP(r[1])) + '" fill="var(--grid)" fill-opacity=".55"/>'; });
+    // one light gridline per wording level (evenly spaced); a bar stops exactly on its level's line
+    LVP.forEach(function (v) { pg += '<line x1="0" x2="' + W + '" y1="' + yP(v) + '" y2="' + yP(v) + '" stroke="var(--grid)" stroke-width="1"/>'; });
     pg += '<line x1="0" x2="' + W + '" y1="' + pBase + '" y2="' + pBase + '" stroke="var(--line)"/>';
     var used = {};
     for (i = 0; i < n; i++) {
@@ -497,10 +498,10 @@
       });
     });
     var pAxis = '<div class="yax" style="height:' + pHH + "px;margin-bottom:-" + pHH + 'px">' +
-      [["SChc", 15], ["Chc", 40], ["Lkly", 65], ["Ocnl", 90]] /* band centres */.map(function (l) { return '<span style="top:' + yP(l[1]) + 'px">' + l[0] + "</span>"; }).join("") +
+      [["SChc", 20], ["Chc", 50], ["Lkly", 70], ["Ocnl", 100]] /* on each level's line */.map(function (l) { return '<span style="top:' + yP(l[1]) + 'px">' + l[0] + "</span>"; }).join("") +
       AMT.map(function (a, k) { return '<span style="top:' + (rowY(k) + 8) + 'px">' + (a[1] === "Liquid" ? "Liq" : a[1]) + "</span>"; }).join("") + "</div>";
     var pLegend = li("var(--ink2)", "", "Precip chance") + PT.concat(MKT).filter(function (t) { return used[t[0]]; }).map(function (t) { return li("var(--" + t[0] + ")", "blk", t[1]); }).join("") +
-      (AMT.length ? li("var(--line)", "box", "Amount per NWS time block") : "") + '<span style="white-space:nowrap;color:var(--muted)">Bands: slight chance · chance · likely · definite</span>';
+      (AMT.length ? li("var(--line)", "box", "Amount per NWS time block") : "") + '<span style="white-space:nowrap;color:var(--muted)">Levels: slight chance · chance · likely · definite</span>';
     var pMarks = [{ a: s.pop, y: yP, c: "var(--ink2)", u: "%", n: "Precip chance" }];
     var PK = out.length; // this card leads the Hourly tab
     out.push(wrap("Precipitation", pLegend, pAxis, '<svg class="gsvg plot" width="' + W + '" height="' + pHH + '">' +
