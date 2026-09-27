@@ -468,8 +468,12 @@
       var arr = s[ty[0]], any = arr.some(function (v) { return v; }), amts = ty[2] ? (g[ty[2]] || []) : [];
       var anyAmt = amts.some(function (b) { return b[2] > 0; });
       if (!any && !anyAmt) return; // only show types with some chance or amount anywhere in the forecast
-      // the Rain card's amounts are total liquid (snow and ice melted too), so only its rain chance counts as rain activity
-      if (/^(rain|snow|fzra|sleet)$/.test(ty[0])) PRECIP.push({ k: out.length, arr: arr, amts: ty[0] === "rain" ? [] : amts });
+      // every weather-type card (rain, thunder, snow, freezing rain, sleet, fog) moves up when it has activity on screen.
+      //   Rain's amounts are total liquid (melted snow/ice too), so they only count for blocks with no snow or ice.
+      var own = ty[0] !== "rain" ? amts : amts.filter(function (b) {
+        return !(g.snow || []).concat(g.ice || []).some(function (x) { return x[2] > 0 && x[0] < b[0] + b[1] * H && x[0] + x[1] * H > b[0]; });
+      });
+      PRECIP.push({ k: out.length, arr: arr, amts: own });
       var grid = "", body = "";
       LV.forEach(function (l, k) { var y = base - lvH * (k + 1); grid += '<line x1="0" x2="' + W + '" y1="' + y + '" y2="' + y + '" stroke="var(--grid)"/>'; });
       grid += '<line x1="0" x2="' + W + '" y1="' + base + '" y2="' + base + '" stroke="var(--line)"/>';
@@ -515,7 +519,7 @@
     select(selIdx, null, false);
     requestAnimationFrame(function () { scrollAll(Math.max(0, GL + ((Date.now() - start) / H) * PX - firstSc().clientWidth * 0.3)); precipFirst(); });
   }
-  // rain/snow/freezing rain/sleet cards with any chance or amount in the hours on screen move to the top (CSS order,
+  // weather-type cards (rain, thunder, snow, freezing rain, sleet, fog) with any chance or amount in the hours on screen move to the top (CSS order,
   //   so the DOM order that G.marks is indexed by stays put); the card being scrolled stays where it is on the page
   function precipFirst(sc) {
     if (!G || !G.precip) return;
