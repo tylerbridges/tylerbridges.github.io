@@ -516,7 +516,7 @@
     // 4 cloud cover
     var pt = [0, 25, 50, 75, 100], h3 = 90, y3 = scale(pt, h3, 6);
     var sky = path(s.sky, y3); var skyA = sky ? sky + "L" + X(n - 1) + " " + y3(0) + "L" + X(0) + " " + y3(0) + "Z" : "";
-    var CLOUDK = out.length; // right under Precipitation, above Temperature
+    var CLOUDK = out.length; // last, after Wind
     out.push(panel("Cloud Cover (%)", li("var(--sky)", "blk", "Sky cover (cloud %)"), h3, pt, y3, "",
       '<path d="' + skyA + '" fill="var(--sky)" fill-opacity=".28" stroke="var(--sky)" stroke-width="1"/>',
       [{ a: s.sky, y: y3, c: "var(--sky)", u: "%", area: true, n: "Sky cover" }]));
@@ -525,8 +525,8 @@
     //   display's full refresh rate with no script keeping cards in step. Card backgrounds sit in a fixed layer behind it
     //   (.gbg); titles, legends and y-axes stay put with position:sticky.
     gin.innerHTML = '<div class="gbg"></div><div class="gall"><div class="gwide" style="width:' + (W + GL) + 'px">' + out.join("") + "</div></div>";
-    // order: Precipitation, Cloud Cover, then Temperature and Wind (CSS order, so the DOM order that MARKS is indexed by stays put)
-    gin.querySelectorAll(".pan").forEach(function (pn, k) { var r = WXK.indexOf(k); pn.style.order = r >= 0 ? r - 100 : k === CLOUDK ? -50 : k; });
+    // order: Precipitation, Temperature, Wind, Cloud Cover (CSS order, so the DOM order that MARKS is indexed by stays put)
+    gin.querySelectorAll(".pan").forEach(function (pn, k) { var r = WXK.indexOf(k); pn.style.order = r >= 0 ? r - 100 : k === CLOUDK ? 100 : k; });
     gLayout();
     G = { start: start, n: n, nowI: nowI, mids: mids, marks: MARKS, W: W };
 
