@@ -896,9 +896,9 @@
   // Public-domain NWS/NOAA map images. "Local" maps are the NWS forecast office's own sector (from the location's
   //   office code); the WPC/CPC maps are national. Each product is a list of frames stepped like a model viewer.
   var WPC = "https://www.wpc.ncep.noaa.gov/", CPC = "https://www.cpc.ncep.noaa.gov/products/predictions/";
-  function ndfd(el, name, note) {
-    var f = []; for (var i = 1; i <= 12; i++) f.push({ l: (i - 1) * 6 + "–" + i * 6 + " hr", u: el + i });
-    return { id: "ndfd-" + el, name: name, area: true, el: el, frames: f, src: "NWS National Digital Forecast Database (official forecast, 6-hour amounts)", note: note,
+  function ndfd(el, name, note, n, lab, src) {
+    var f = []; for (var i = 1; i <= (n || 12); i++) f.push({ l: lab ? lab(i) : (i - 1) * 6 + "–" + i * 6 + " hr", u: el + i });
+    return { id: "ndfd-" + el, name: name, area: true, el: el, frames: f, src: src || "NWS National Digital Forecast Database (official forecast, 6-hour amounts)", note: note,
       link: function (a) { return "https://graphical.weather.gov/sectors/" + a + ".php?element=" + el; } };
   }
   function days(name, pat, n0, n1, src, link, pre) {
@@ -916,6 +916,14 @@
       days("Winter composite", WPC + "wwd/day{d}_composite_conus.gif", 1, 3, "NWS Weather Prediction Center: 4/8/12\" snow and 0.25\" ice chances", WPC + "wwd/winter_wx.shtml"),
       days("Days 4–7 snow outlook", WPC + "wwd/pwpf_d47/gif/prbww_sn25_DAY{d}.gif", 4, 7, "NWS Weather Prediction Center: chance of 0.25\"+ liquid as snow/sleet", WPC + "wwd/pwpf_d47/pwpf_medr.php")
     ] },
+    { id: "temp", name: "Temperature", prods: [
+      ndfd("MaxT", "Daytime highs", "The date is printed on the map.", 7, function (i) { return "Day " + i; }, "NWS National Digital Forecast Database (official forecast)"),
+      ndfd("MinT", "Overnight lows", "The date is printed on the map.", 7, function (i) { return "Night " + i; }, "NWS National Digital Forecast Database (official forecast)"),
+      ndfd("T", "Temperature by time", "Frames step forward in time; the valid time is printed on the map.", 24, function (i) { return "Step " + i; }, "NWS National Digital Forecast Database (official forecast)"),
+      ndfd("ApparentT", "Feels-like temperature", "Wind chill or heat index. Frames step forward in time; the valid time is printed on the map.", 24, function (i) { return "Step " + i; }, "NWS National Digital Forecast Database (official forecast)"),
+      { id: "cpc-t", name: "6–14 day outlook", src: "NOAA Climate Prediction Center: chance of above/below normal", link: "https://www.cpc.ncep.noaa.gov/",
+        frames: [{ l: "6–10 days", u: CPC + "610day/610temp.new.gif" }, { l: "8–14 days", u: CPC + "814day/814temp.new.gif" }] }
+    ] },
     { id: "precip", name: "Precipitation", prods: [
       { id: "wpc-qpf", name: "Precip totals", src: "NWS Weather Prediction Center (liquid equivalent, rain + melted snow)", link: WPC + "qpf/qpf2.shtml",
         frames: [{ l: "Day 1 (24 hr)", u: WPC + "qpf/fill_94qwbg.gif" }, { l: "Day 2 (24 hr)", u: WPC + "qpf/fill_98qwbg.gif" }, { l: "Day 3 (24 hr)", u: WPC + "qpf/fill_99qwbg.gif" },
@@ -923,9 +931,7 @@
       ndfd("QPF", "Precip forecast (6-hr)", "Each frame is 6 hours of liquid precipitation; the valid time is printed on the map.")
     ] },
     { id: "outlook", name: "Outlooks", prods: [
-      { id: "cpc-t", name: "Temperature outlook", src: "NOAA Climate Prediction Center", link: "https://www.cpc.ncep.noaa.gov/",
-        frames: [{ l: "6–10 days", u: CPC + "610day/610temp.new.gif" }, { l: "8–14 days", u: CPC + "814day/814temp.new.gif" }] },
-      { id: "cpc-p", name: "Precip outlook", src: "NOAA Climate Prediction Center", link: "https://www.cpc.ncep.noaa.gov/",
+      { id: "cpc-p", name: "6–14 day precip outlook", src: "NOAA Climate Prediction Center", link: "https://www.cpc.ncep.noaa.gov/",
         frames: [{ l: "6–10 days", u: CPC + "610day/610prcp.new.gif" }, { l: "8–14 days", u: CPC + "814day/814prcp.new.gif" }] },
       { id: "cpc-snow", name: "Week 2 heavy snow risk", src: "NOAA Climate Prediction Center", link: "https://www.cpc.ncep.noaa.gov/products/predictions/threats/threats.php",
         frames: [{ l: "Days 8–14", u: CPC + "threats/snow_probhazards_d8_14_contours.png" }] }
