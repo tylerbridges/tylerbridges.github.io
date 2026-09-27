@@ -64,6 +64,15 @@
     var m = /^(.{20,}?[.!?])(\s|$)/.exec(t); t = m ? m[1] : t;
     return t.length > max ? t.slice(0, max - 1).replace(/\s+\S*$/, "") + "…" : t;
   }
+  // expanded alerts can be long: collapse from the header ("Hide details") or from this button at the end
+  var HZCLOSE = '<button type="button" class="hz-close">Hide details ▴</button>';
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest && e.target.closest(".hz-close"); if (!b) return;
+    var d = b.closest("details"); d.open = false;
+    var top = d.getBoundingClientRect().top, hdr = document.querySelector(".top");
+    var min = hdr ? hdr.getBoundingClientRect().bottom + 8 : 8;
+    if (top < min) window.scrollBy(0, top - min); // bring the collapsed alert back into view
+  });
   function hazHtml() {
     var a = (doc && doc.alerts) || [], h = doc && doc.hwo, out = [];
     var sev = { Extreme: "var(--sev-ext)", Severe: "var(--sev-sev)", Moderate: "var(--sev-mod)", Minor: "var(--sev-min)" };
@@ -72,17 +81,17 @@
       var brief = firstSent(what ? what[1] : (x.desc || x.headline || ""), 170);
       var when = x.ends ? "Until " + dtm(x.ends) : x.onset ? "From " + dtm(x.onset) : "";
       out.push('<details class="haz" style="--sev:' + (sev[x.severity] || "var(--sev-mod)") + '"><summary><div class="hz-t">' + esc(x.event) + '<span class="hz-when">' + esc(when) + '</span></div>' +
-        '<div class="hz-b">' + esc(brief) + '</div><span class="hz-more">Details</span></summary>' +
+        '<div class="hz-b">' + esc(brief) + '</div><span class="hz-more"><span class="hz-o">Details ▾</span><span class="hz-c">Hide details ▴</span></span></summary>' +
         '<div class="hz-body">' + (x.headline ? "<b>" + esc(x.headline) + "</b>\n\n" : "") + esc(x.desc) + (x.instr ? "\n\n<b>Precautionary/preparedness actions</b>\n" + esc(x.instr) : "") +
-        (x.area ? '\n\n<span class="hz-area">' + esc(x.area) + "</span>" : "") + "</div></details>");
+        (x.area ? '\n\n<span class="hz-area">' + esc(x.area) + "</span>" : "") + "</div>" + HZCLOSE + "</details>");
     });
     if (h && h.hazard) {
       var parts = [];
       if (h.day1 && !/^No hazardous/i.test(h.day1)) parts.push(["Today and tonight", h.day1]);
       if (h.days27 && !/^No hazardous/i.test(h.days27)) parts.push(["Next 7 days", h.days27]);
       out.push('<details class="haz hwo" style="--sev:var(--sev-min)"><summary><div class="hz-t">Hazardous Weather Outlook<span class="hz-when">NWS ' + esc(doc.loc.office || "") + " · " + esc(dtm(h.issued)) + '</span></div>' +
-        '<div class="hz-b">' + esc(firstSent(parts[0][1], 170)) + '</div><span class="hz-more">Details</span></summary>' +
-        '<div class="hz-body">' + parts.map(function (p) { return "<b>" + p[0] + "</b>\n" + esc(p[1]); }).join("\n\n") + "</div></details>");
+        '<div class="hz-b">' + esc(firstSent(parts[0][1], 170)) + '</div><span class="hz-more"><span class="hz-o">Details ▾</span><span class="hz-c">Hide details ▴</span></span></summary>' +
+        '<div class="hz-body">' + parts.map(function (p) { return "<b>" + p[0] + "</b>\n" + esc(p[1]); }).join("\n\n") + "</div>" + HZCLOSE + "</details>");
     }
     return out.length ? '<div class="hazs">' + out.join("") + "</div>" : "";
   }
