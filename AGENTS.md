@@ -25,6 +25,9 @@ iteration loop: request, implement, review, publish, verify.
 - When a task runs on a branch instead of `main`, push each commit to that
   branch as soon as verification passes, without being asked. Never end a
   reply with local commits that aren't on the remote.
+- Push and publish without waiting for Tyler's approval. This includes
+  merging a task's branch or pull request into `main` once verification
+  passes. Stop to ask only when a specific blocker needs Tyler's decision.
 - Never force-push or rewrite published history.
 - After pushing, confirm that `origin/main` contains the new commit and check
   the GitHub Pages deployment. Report the commit, verification results, and
