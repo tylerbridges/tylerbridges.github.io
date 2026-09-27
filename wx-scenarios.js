@@ -117,8 +117,9 @@
     var sc = S[id]; if (!sc) return Promise.reject(new Error("unknown scenario " + id));
     var pl = (prev && prev.loc) || {}, tz = pl.tz || "America/Chicago";
     var now = Date.now(), h0 = Math.floor(now / H) * H;
-    var hourOf = function (ms) { return +new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", hourCycle: "h23" }).format(new Date(ms)); };
-    var dayName = function (ms) { return new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "long" }).format(new Date(ms)); };
+    var fH = new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", hourCycle: "h23" }), fD = new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "long" });
+    var hourOf = function (ms) { return +fH.format(ms); };
+    var dayName = function (ms) { return fD.format(ms); };
     var iso = function (ms) { return new Date(ms).toISOString().replace(".000Z", "+00:00"); };
     // hour-by-hour recipe, 30 h back (observations) to 7 days ahead
     var R = {};

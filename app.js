@@ -5,7 +5,12 @@
   var $ = function (id) { return document.getElementById(id); };
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   var TZ = "America/Chicago";
-  function fmt(ms, o) { try { return new Intl.DateTimeFormat("en-US", Object.assign({ timeZone: TZ }, o)).format(new Date(ms)); } catch (e) { return new Date(ms).toLocaleString(); } }
+  // Intl.DateTimeFormat objects are slow to build (this was ~70% of drawing the Hourly graphs), so reuse one per zone + options
+  var FMTS = {};
+  function fmt(ms, o) {
+    var k = TZ + JSON.stringify(o || {}), f = FMTS[k];
+    try { if (!f) f = FMTS[k] = new Intl.DateTimeFormat("en-US", Object.assign({ timeZone: TZ }, o)); return f.format(ms); } catch (e) { return new Date(ms).toLocaleString(); }
+  }
   var tm = function (ms) { return fmt(ms, { hour: "numeric", minute: "2-digit" }); };
   var dtm = function (ms) { return fmt(ms, { weekday: "short", hour: "numeric", minute: "2-digit" }); };
   var hr = function (ms) { return fmt(ms, { hour: "numeric" }).replace(" AM", "a").replace(" PM", "p"); };
@@ -844,13 +849,12 @@
   function scrubStart(target, x, y) {
     if (!G) return; var sc = target.closest && target.closest(".gsc"); if (!sc) return;
     clearTimeout(sc0 && sc0.t);
-    sc0 = { sc: sc, host: target.closest(".pan"), x0: x, y0: y, x: x, t: setTimeout(function () { scrubbing = true; firstSc().classList.add("scrub"); select(idxAt(sc0.sc, sc0.x), sc0.host, true); }, 300) };
+    sc0 = { sc: sc, host: target.closest(".pan"), x0: x, y0: y, x: x, t: setTimeout(function () { scrubbing = true; firstSc().classList.add("scrub"); gin.addEventListener("touchmove", holdStill, { passive: false }); select(idxAt(sc0.sc, sc0.x), sc0.host, true); }, 300) };
   }
   function scrubMove(x, y, ev) {
     if (!sc0) return;
     sc0.x = x;
     if (scrubbing) {
-      if (ev && ev.cancelable) ev.preventDefault();
       if (!scrubMove.q) { scrubMove.q = true; requestAnimationFrame(function () { scrubMove.q = false; if (!sc0 || !scrubbing) return; var i = idxAt(sc0.sc, sc0.x); if (i !== selIdx || sc0.host.querySelector(".gread").hidden) select(i, sc0.host, true); }); }
       return;
     }
@@ -858,13 +862,15 @@
   }
   function scrubEnd() {
     if (sc0) clearTimeout(sc0.t);
-    firstSc().classList.remove("scrub");
+    firstSc().classList.remove("scrub"); gin.removeEventListener("touchmove", holdStill, { passive: false });
     if (scrubbing) { scrubbing = false; select(G ? G.nowI : 0, null, false); }
     sc0 = null;
   }
   var gin = $("gin");
   gin.addEventListener("touchstart", function (e) { if (e.touches.length === 1) scrubStart(e.target, e.touches[0].clientX, e.touches[0].clientY); }, { passive: true });
-  gin.addEventListener("touchmove", function (e) { if (e.touches.length === 1) scrubMove(e.touches[0].clientX, e.touches[0].clientY, e); }, { passive: false });
+  gin.addEventListener("touchmove", function (e) { if (e.touches.length === 1) scrubMove(e.touches[0].clientX, e.touches[0].clientY, e); }, { passive: true });
+  // while holding to read values, stop the page from scrolling (a blocking listener only for that time)
+  function holdStill(e) { if (e.cancelable) e.preventDefault(); }
   gin.addEventListener("touchend", scrubEnd); gin.addEventListener("touchcancel", scrubEnd);
   gin.addEventListener("mousedown", function (e) { scrubStart(e.target, e.clientX, e.clientY); });
   window.addEventListener("mousemove", function (e) { if (sc0) scrubMove(e.clientX, e.clientY, e); });
@@ -875,17 +881,31 @@
   //   starts with the page already at the top is cancelled. Sideways drags (graphs, maps) and scrollable panels are left alone.
   var pt0 = null;
   window.addEventListener("touchstart", function (e) { pt0 = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null; }, { passive: true });
-  window.addEventListener("touchmove", function (e) {
+  function noPull(e) {
     if (!pt0 || e.touches.length !== 1 || window.scrollY > 0) return;
     var dx = e.touches[0].clientX - pt0.x, dy = e.touches[0].clientY - pt0.y;
     if (dy <= 0 || Math.abs(dy) < Math.abs(dx)) return;
     for (var el = e.target; el && el !== document.body; el = el.parentElement) if (el.scrollTop > 0) return; // an inner panel scrolling back up
     if (e.cancelable) e.preventDefault();
-  }, { passive: false });
+  }
+  // A blocking (non-passive) touch listener makes every scroll wait on script, so it's only attached while the page
+  //   sits at the very top, where a pull-to-refresh could start; everywhere else touch scrolling stays fully native.
+  var noPullOn = false;
+  function guardTop() {
+    var want = window.scrollY <= 0;
+    if (want === noPullOn) return; noPullOn = want;
+    if (want) window.addEventListener("touchmove", noPull, { passive: false }); else window.removeEventListener("touchmove", noPull, { passive: false });
+  }
+  window.addEventListener("scroll", guardTop, { passive: true }); guardTop();
 
   document.addEventListener("visibilitychange", function () { if (!document.hidden && Date.now() - lastCheck > 5 * 60000) refresh(false); });
   setInterval(renderFresh, 30000);
-  var rw; window.addEventListener("resize", function () { clearTimeout(rw); rw = setTimeout(function () { if (doc && tab === "hourly") renderGraph(); }, 200); });
+  // phones fire resize whenever the address bar slides in/out while scrolling; only redraw the graphs when the width changes
+  var rw, lastW = window.innerWidth;
+  window.addEventListener("resize", function () {
+    if (window.innerWidth === lastW) return; lastW = window.innerWidth;
+    clearTimeout(rw); rw = setTimeout(function () { if (doc && tab === "hourly") renderGraph(); }, 200);
+  });
 
   // ---------- forecast maps ----------
   // Public-domain NWS/NOAA map images. "Local" maps are the NWS forecast office's own sector (from the location's
@@ -954,7 +974,7 @@
   var winterNow = [10, 11, 0, 1, 2, 3].indexOf(new Date().getMonth()) >= 0;
   var M = store("wx-map") || { cat: "precip", id: winterNow ? "ndfd-SnowAmt" : "wpc-qpf", area: "local" };
   if (M.cat === "winter") M.cat = "precip";
-  M.f = 0; var mTimer = null;
+  M.f = 0; var mTimer = null, mPre = {};
   function mCat() { return MCATS.filter(function (c) { return c.id === M.cat; })[0] || MCATS[0]; }
   function mProd() { var c = mCat(); return c.prods.filter(function (p) { return p.id === M.id; })[0] || c.prods[0]; }
   function mOffice() { var o = doc && doc.loc && doc.loc.office; return o ? String(o).toLowerCase() : null; }
@@ -988,14 +1008,15 @@
     var who = p.el ? "NWS official forecast" : /wpc\./.test(lk) ? "NWS Weather Prediction Center" : "NOAA Climate Prediction Center";
     $("msrc").title = p.src + (p.note ? ". " + p.note : "");
     $("msrc").innerHTML = esc(who) + ' · <a href="' + esc(lk) + '" target="_blank" rel="noopener">Source</a>';
-    // preload every frame so stepping and playback don't flash
-    p.frames.forEach(function (fr) { var im = new Image(); im.src = mUrl(p, fr); });
     mShow();
   }
   function mShow() {
     var p = mProd(), fr = p.frames[M.f], img = $("mimg"), url = mUrl(p, fr);
     $("mrange").value = M.f;
     $("mfr").textContent = lab(fr);
+    // warm the next and previous frames (all of them while playing) so stepping doesn't flash, without downloading
+    //   every frame of every product up front
+    (mTimer ? p.frames : [p.frames[M.f + 1], p.frames[M.f - 1]]).forEach(function (f2) { if (f2 && !mPre[mUrl(p, f2)]) { mPre[mUrl(p, f2)] = 1; new Image().src = mUrl(p, f2); } });
     img.alt = p.name + ", " + lab(fr);
     if (img.getAttribute("src") === url) return;
     $("mmsg").hidden = true; img.classList.add("ld");

@@ -6,6 +6,10 @@
   function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
   function get(url, optional) {
     var tries = 0;
+    // extras (UV, discussion, outlook, MapClick wording, observations) can't hold up the forecast: give them 8 s
+    if (optional) return Promise.race([getNow(), sleep(8000).then(function () { console.warn("optional timed out:", url); return null; })]);
+    return getNow();
+    function getNow() { tries = 0; return once(); }
     function once() {
       return fetch(url, { cache: "no-store" }).then(function (r) {
         if (!r.ok) throw new Error(r.status + " " + url);
@@ -16,7 +20,6 @@
         throw e;
       });
     }
-    return once();
   }
   // same geocoder forecast.weather.gov's search box uses
   function geocode(q) {

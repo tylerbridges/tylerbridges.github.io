@@ -12,7 +12,11 @@
 <style>html,body{margin:0;padding:0}</style>
 <title>Weather</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://api.weather.gov" crossorigin>
+<!-- fonts load without blocking the first paint (system fonts show until they arrive) -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap"></noscript>
 <style>
 :root{
   --ground:#EEF2F5; --surface:#FFFFFF; --sunk:#F5F7F9; --ink:#15202B; --ink2:#44525F; --muted:#6B7988; --line:#DCE3E9; --grid:#E7ECF0;
@@ -539,9 +543,9 @@ body:has(#testbar:not([hidden])) .sec{scroll-margin-top:140px}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=23"></script>
-<script src="wx-live.js?v=23"></script>
-<script src="wx-scenarios.js?v=23"></script>
-<script src="app.js?v=23"></script>
+<script src="wx-normalize.js?v=24"></script>
+<script src="wx-live.js?v=24"></script>
+<script src="wx-scenarios.js?v=24"></script>
+<script src="app.js?v=24"></script>
 </body>
 </html>
