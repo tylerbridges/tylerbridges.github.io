@@ -343,7 +343,9 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
 .dhl2 .k{color:var(--muted);font-weight:400;margin-right:8px}
 /* Daily: each detail row leads with its compact card */
 .dday .drow{grid-template-columns:88px 1fr;align-items:center}
-.dday .ccard.dc{width:auto;cursor:default;padding:6px 2px;position:sticky;top:calc(env(safe-area-inset-top,0px) + var(--toph,96px) + 8px)}
+/* the card sticks to the top of the screen while its row scrolls up past it, and to the bottom while its row is still
+   coming in from (or leaving through) the bottom, so it stays in view for as much of its row as possible in both directions */
+.dday .ccard.dc{width:auto;cursor:default;padding:6px 2px;position:sticky;top:calc(env(safe-area-inset-top,0px) + var(--toph,96px) + 8px);bottom:calc(env(safe-area-inset-bottom,0px) + 10px);align-self:start}
 #det .drow.on .ccard.dc{border-color:var(--accent);background:var(--surface)}
 /* Daily: one card per day (same spacing as the hourly cards), day/night subheads inside */
 .dstack{display:flex;flex-direction:column;gap:22px}
@@ -543,9 +545,9 @@ body:has(#testbar:not([hidden])) .sec{scroll-margin-top:140px}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=31"></script>
-<script src="wx-live.js?v=31"></script>
-<script src="wx-scenarios.js?v=31"></script>
-<script src="app.js?v=31"></script>
+<script src="wx-normalize.js?v=33"></script>
+<script src="wx-live.js?v=33"></script>
+<script src="wx-scenarios.js?v=33"></script>
+<script src="app.js?v=33"></script>
 </body>
 </html>
