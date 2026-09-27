@@ -496,18 +496,13 @@
           return o; }; })(ty[0], ty[2], ty[3], ty[1]) }], labTop));
     });
 
-    gin.innerHTML = out.join("");
-    // the cards scroll sideways together
+    // All cards share ONE native horizontal scroller (.gall), so sideways scrolling runs on the browser's compositor at the
+    //   display's full refresh rate with no script keeping cards in step. Card backgrounds sit in a fixed layer behind it
+    //   (.gbg); titles, legends and y-axes stay put with position:sticky.
+    gin.innerHTML = '<div class="gbg"></div><div class="gall"><div class="gwide" style="width:' + (W + GL) + 'px">' + out.join("") + "</div></div>";
     // weather cards first (CSS order, so the DOM order that MARKS is indexed by stays put)
     gin.querySelectorAll(".pan").forEach(function (pn, k) { var r = WXK.indexOf(k); pn.style.order = r >= 0 ? r - 100 : k; });
-    var scs = gin.querySelectorAll(".gsc"), syncing = false;
-    scs.forEach(function (sc) {
-      sc.addEventListener("scroll", function () {
-        if (syncing) return; syncing = true;
-        scs.forEach(function (o) { if (o !== sc) o.scrollLeft = sc.scrollLeft; });
-        requestAnimationFrame(function () { syncing = false; });
-      }, { passive: true });
-    });
+    gLayout();
     G = { start: start, n: n, nowI: nowI, mids: mids, marks: MARKS, W: W };
 
     // day chips
@@ -540,16 +535,26 @@
     return o;
   }
 
-  function firstSc() { return $("gin").querySelector(".gsc") || $("gin"); }
-  function scrollAll(x, smooth) { $("gin").querySelectorAll(".gsc").forEach(function (sc) { sc.scrollTo({ left: x, behavior: smooth ? "smooth" : "auto" }); }); }
+  function firstSc() { return $("gin").querySelector(".gall") || $("gin"); }
+  function scrollAll(x, smooth) { firstSc().scrollTo({ left: x, behavior: smooth ? "smooth" : "auto" }); }
+  // size sticky titles/legends to the visible width and draw each card's box behind its panel
+  function gLayout() {
+    var gin = $("gin"), all = gin.querySelector(".gall"), bg = gin.querySelector(".gbg"); if (!all || !bg) return;
+    all.style.setProperty("--vw", all.clientWidth + "px");
+    var pans = gin.querySelectorAll(".pan"), boxes = [];
+    for (var k = 0; k < pans.length; k++) boxes.push('<div style="top:' + pans[k].offsetTop + "px;height:" + pans[k].offsetHeight + 'px"></div>');
+    bg.innerHTML = boxes.join("");
+  }
+  if (window.ResizeObserver) new ResizeObserver(function () { requestAnimationFrame(gLayout); }).observe($("gin"));
   function select(i, host, show) {
     if (!G) return; selIdx = i;
     var s = doc.grid.s, t = G.start + i * H;
+    var cur = [];
     $("gin").querySelectorAll(".gin2").forEach(function (g2) {
       var c = g2.querySelector(".cursor"), sv = g2.querySelector("svg.plot"); if (!c || !sv) return;
-      var pr = g2.getBoundingClientRect(), vr = sv.getBoundingClientRect();
-      c.hidden = !show; c.style.left = (GL + i * PX + PX / 2) + "px"; c.style.top = (vr.top - pr.top) + "px"; c.style.height = vr.height + "px";
+      cur.push([c, sv.offsetTop, sv.getAttribute("height")]);
     });
+    cur.forEach(function (x) { var c = x[0]; c.hidden = !show; c.style.left = (GL + i * PX + PX / 2) + "px"; c.style.top = x[1] + "px"; c.style.height = x[2] + "px"; });
     $("gin").querySelectorAll(".pan").forEach(function (pn, k) {
       var mk = pn.querySelector("svg.mk"), sv = pn.querySelector("svg.plot"); if (!mk) return;
       var mm = (G.marks && G.marks[k]) || { list: [], top: 8 }, ms = mm.list;
@@ -833,16 +838,21 @@
   function scrubStart(target, x, y) {
     if (!G) return; var sc = target.closest && target.closest(".gsc"); if (!sc) return;
     clearTimeout(sc0 && sc0.t);
-    sc0 = { sc: sc, host: target.closest(".pan"), x0: x, y0: y, x: x, t: setTimeout(function () { scrubbing = true; sc0.sc.classList.add("scrub"); select(idxAt(sc0.sc, sc0.x), sc0.host, true); }, 300) };
+    sc0 = { sc: sc, host: target.closest(".pan"), x0: x, y0: y, x: x, t: setTimeout(function () { scrubbing = true; firstSc().classList.add("scrub"); select(idxAt(sc0.sc, sc0.x), sc0.host, true); }, 300) };
   }
   function scrubMove(x, y, ev) {
     if (!sc0) return;
     sc0.x = x;
-    if (scrubbing) { if (ev && ev.cancelable) ev.preventDefault(); var i = idxAt(sc0.sc, x); if (i !== selIdx || sc0.host.querySelector(".gread").hidden) select(i, sc0.host, true); return; }
+    if (scrubbing) {
+      if (ev && ev.cancelable) ev.preventDefault();
+      if (!scrubMove.q) { scrubMove.q = true; requestAnimationFrame(function () { scrubMove.q = false; if (!sc0 || !scrubbing) return; var i = idxAt(sc0.sc, sc0.x); if (i !== selIdx || sc0.host.querySelector(".gread").hidden) select(i, sc0.host, true); }); }
+      return;
+    }
     if (Math.hypot(x - sc0.x0, y - sc0.y0) > 8) { clearTimeout(sc0.t); sc0 = null; } // it's a swipe, let the graph scroll
   }
   function scrubEnd() {
-    if (sc0) { clearTimeout(sc0.t); sc0.sc.classList.remove("scrub"); }
+    if (sc0) clearTimeout(sc0.t);
+    firstSc().classList.remove("scrub");
     if (scrubbing) { scrubbing = false; select(G ? G.nowI : 0, null, false); }
     sc0 = null;
   }

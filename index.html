@@ -268,14 +268,22 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
 .dcols .divd{width:100%;height:1px;align-self:auto}
 .dcol p{max-width:65ch}
 /* hourly: one card per graph, half-inch gaps between them */
-.gstack{position:relative;display:flex;flex-direction:column;gap:22px}
-.gstack .pan{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 0 10px;margin:0;overflow:hidden}
+.gstack{position:relative}
+/* one shared sideways scroller for every graph card; card boxes are drawn behind it in .gbg */
+.gbg{position:absolute;inset:0;pointer-events:none}
+.gbg div{position:absolute;left:0;right:0;background:var(--surface);border:1px solid var(--line);border-radius:12px}
+.gall{position:relative;margin:0 1px;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:none;overscroll-behavior-x:contain;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+.gall::-webkit-scrollbar{display:none}
+.gall.scrub{touch-action:none;overflow-x:hidden}
+.gwide{display:flex;flex-direction:column;gap:22px}
+.gstack .pan{padding:13px 0 11px;margin:0;border:0;background:none}
+.gstack .pan > .gt,.gstack .pan > .lg,.gstack .pan > .gread{position:sticky;left:0;box-sizing:border-box;width:var(--vw,100%)}
+.gstack .pan > .gread{width:calc(var(--vw,100%) - 24px)}
 .gt{font:600 16px/1.2 var(--sans);padding:0 12px 10px;color:var(--ink)}
-.gsc{overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:none;overscroll-behavior-x:contain}
-.gsc::-webkit-scrollbar{display:none}
+.gsc{position:relative}
 .gin2{position:relative}
 .gin2 svg.gsvg{margin-left:38px}
-.gstack .lg{position:static;width:auto;padding:10px 12px 0;border-top:1px solid var(--grid);margin-top:6px}
+.gstack .lg{padding:10px 12px 0;border-top:1px solid var(--grid);margin-top:6px}
 .gstack .gbub{position:absolute}
 .days{padding:0 0 4px;margin-inline:-16px;padding-inline:16px}
 /* highlighted day row: same text position as unhighlighted rows */
@@ -296,7 +304,7 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
 .gread dl div:last-child{border-bottom:0}
 .gread dt{color:var(--muted)} .gread dd{margin:0;font-weight:600;text-align:right}
 .gin2 svg.mk{position:absolute;left:38px;top:0;pointer-events:none;overflow:visible;z-index:3}
-.gsc.scrub{touch-action:none;overflow-x:hidden}
+
 /* scrub cursor is green; light grey is reserved for the day dividers */
 .pan .cursor{border-left:2px solid var(--nowg)!important;opacity:1!important}
 .trow{background:transparent}
@@ -528,9 +536,9 @@ body:has(#testbar:not([hidden])) .sec{scroll-margin-top:140px}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=21"></script>
-<script src="wx-live.js?v=21"></script>
-<script src="wx-scenarios.js?v=21"></script>
-<script src="app.js?v=21"></script>
+<script src="wx-normalize.js?v=22"></script>
+<script src="wx-live.js?v=22"></script>
+<script src="wx-scenarios.js?v=22"></script>
+<script src="app.js?v=22"></script>
 </body>
 </html>
