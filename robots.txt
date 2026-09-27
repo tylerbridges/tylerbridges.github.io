@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://tylerbridges.github.io/sitemap.xml

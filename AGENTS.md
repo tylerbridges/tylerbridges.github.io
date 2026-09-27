@@ -1,70 +1,33 @@
 # Repository workflow
 
-This is Tyler's personal GitHub Pages weather site. Optimize for a simple
-iteration loop: request, implement, review, publish, verify.
+Tyler's personal GitHub Pages weather site: a single-page, live weather.gov dashboard.
+Optimize for a simple loop: request, implement, review, publish, verify.
 
-## Default publishing workflow
+## Publishing
 
-- Work directly on `main` unless Tyler explicitly asks for a branch or pull
-  request.
-- At the start of a task, inspect `git status`. When the checkout is clean,
-  update it with `git pull --ff-only origin main` before editing.
-- Preserve unrelated or pre-existing changes. Never reset, overwrite, or
-  discard them to make the checkout clean.
-- Implement the complete requested change, including necessary accessibility
-  and responsive behavior.
-- Run `bash scripts/verify-site.sh` after editing.
-- Review the full diff before publishing. Check correctness, regressions,
-  accessibility, mobile layout, stale duplicated markup, secrets, and whether
-  the service-worker cache key needs to change. Fix material findings and run
-  verification again.
-- Commit only task-scoped files with a descriptive commit message.
-- Push the completed commit directly with `git push origin main`. Do not stop
-  merely to ask whether to push, and do not open a pull request unless Tyler
-  explicitly requests one.
-- When a task runs on a branch instead of `main`, push each commit to that
-  branch as soon as verification passes, without being asked. Never end a
-  reply with local commits that aren't on the remote.
-- Push and publish without waiting for Tyler's approval. This includes
-  merging a task's branch or pull request into `main` once verification
-  passes. Stop to ask only when a specific blocker needs Tyler's decision.
-- Never force-push or rewrite published history.
-- After pushing, confirm that `origin/main` contains the new commit and check
-  the GitHub Pages deployment. Report the commit, verification results, and
-  deployment status.
-- End every reply to Tyler that involves a change or review — including
-  short follow-ups and small fixes — with this summary block, so the reply
-  can be skimmed without reading the details:
+- Work directly on `main` unless Tyler asks for a branch or pull request.
+- Start with `git status`; when clean, `git pull --ff-only origin main`. Never discard pre-existing changes.
+- Commit task-scoped files with a descriptive message and push with `git push origin main` without waiting for approval. Never force-push.
+- After pushing, confirm `origin/main` has the commit and the GitHub Pages build finished, then load the live site and confirm it serves the change.
+- End every reply that involves a change with:
 
   ```
   ---
-  - **Done:** high-level bullets of what changed (and the commit/deploy status)
+  - **Done:** what changed (and the commit/deploy status)
   - **Couldn't do:** anything skipped, unverified, or blocked (or "Nothing")
   - **Your action items:** what Tyler needs to check or decide (or "None")
   ```
 
-## Site-specific checks
+## How the site works
 
-- `index.html`, `brief.html`, and `live.html` are synchronized entry pages and
-  must remain byte-identical unless the task explicitly separates them.
-- When changing a file listed in `SHELL` in `sw.js`, increment the
-  `sky-report-vNN` cache key so installed clients refresh cleanly, and set
-  every page's `/assets/…?v=NN` references to the same number
-  (`verify-site.sh` checks this).
-- Each page carries a Content-Security-Policy `<meta>` that allows its inline
-  scripts by hash. After changing any inline `<script>`, run
-  `node scripts/csp.js` to refresh the hashes; `verify-site.sh` fails until
-  you do.
-- Keep the site dependency-light and compatible with static GitHub Pages
-  hosting.
-- Prefer the existing design tokens and shared components in `assets/` over
-  page-specific duplication.
+- `index.html` holds the markup and all CSS; `app.js` renders everything (Now, Daily, Hourly graphs, Totals & Observations, location picker, pull-to-refresh).
+- `wx-live.js` fetches live data in the browser on every open/refresh: api.weather.gov (points, forecast, gridpoint data, alerts, observations, AFD/HWO products), forecast.weather.gov MapClick JSON (for the site's exact period wording and precip-trend percentages), EPA Envirofacts UV (daily + hourly), and the ArcGIS World Geocoder for location search. All allow cross-origin requests.
+- `wx-normalize.js` turns those responses into the one data document `app.js` renders. Change data shape there, not in `app.js`.
+- Location: `?q=City ST` or `?lat=..&lon=..` in the URL, else the last location used on the device (localStorage), else Rochester, MN.
+- `sw.js` only retires the old Sky Report service worker; don't add caching back without a cache-busting plan.
 
-## Code Review Rules
+## Checks before publishing
 
-- Treat broken navigation, stale cached assets, inaccessible controls, runtime
-  JavaScript errors, and layouts that fail at narrow widths as release-blocking.
-- Verify dialogs and menus have correct focus behavior, Escape dismissal,
-  backdrop dismissal where appropriate, and accurate ARIA state.
-- Do not publish credentials, private data, generated build debris, or
-  unrelated formatting churn.
+- No runtime JavaScript errors; layouts work at 360–430px wide in light and dark mode.
+- Load Rochester, run a location search, and open each tab against live data.
+- Keep it dependency-free and static-host compatible.
