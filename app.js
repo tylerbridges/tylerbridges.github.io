@@ -460,7 +460,15 @@
     var frozen = ["snow", "ice"].some(function (k) { return (g[k] || []).some(function (b) { return b[2] > 0; }); });
     var AMT = [["qpf", frozen ? "Liquid" : "Rain", "rain", 2], ["snow", "Snow", "snow", 1], ["ice", "Ice", "fzra", 2]].filter(function (a) { return (g[a[0]] || []).some(function (b) { return b[2] > 0; }); });
     var LVP = [20, 50, 70, 100]; // top of each NWS wording band: slight chance 10-20%, chance 30-50%, likely 60-70%, definite/occasional 80-100%
-    var pTop = 34, pH = 108, pBase = pTop + pH, yP = function (v) { return pBase - pH * v / 100; };
+    // The four wording bands get equal height with equal gaps between them (like weather.gov's graph), so the % scale is
+    //   piecewise: 0-10 gap, 10-20 SChc, 20-30 gap, 30-50 Chc, 50-60 gap, 60-70 Lkly, 70-80 gap, 80-100 Ocnl.
+    var BH = 13, GH = 7, pTop = 34, pH = 4 * (BH + GH), pBase = pTop + pH;
+    var PCT = [0, 10, 20, 30, 50, 60, 70, 80, 100], PY = [0, GH, GH + BH, 2 * GH + BH, 2 * (GH + BH), 3 * GH + 2 * BH, 3 * (GH + BH), 4 * GH + 3 * BH, pH];
+    var yP = function (v) {
+      v = Math.max(0, Math.min(100, v));
+      for (var q = 1; q < PCT.length; q++) if (v <= PCT[q]) return pBase - (PY[q - 1] + (PY[q] - PY[q - 1]) * (v - PCT[q - 1]) / (PCT[q] - PCT[q - 1]));
+      return pTop;
+    };
     var rowY = function (k) { return pBase + 6 + k * 20; }, pHH = pBase + (AMT.length ? 6 + AMT.length * 20 : 6);
     var pg = "", pb = "";
     // wording bands (the SChc/Chc/Lkly/Ocnl scale) behind everything
@@ -489,7 +497,7 @@
       });
     });
     var pAxis = '<div class="yax" style="height:' + pHH + "px;margin-bottom:-" + pHH + 'px">' +
-      [["SChc", 15], ["Chc", 40], ["Lkly", 65], ["Ocnl", 90]].map(function (l) { return '<span style="top:' + yP(l[1]) + 'px">' + l[0] + "</span>"; }).join("") +
+      [["SChc", 15], ["Chc", 40], ["Lkly", 65], ["Ocnl", 90]] /* band centres */.map(function (l) { return '<span style="top:' + yP(l[1]) + 'px">' + l[0] + "</span>"; }).join("") +
       AMT.map(function (a, k) { return '<span style="top:' + (rowY(k) + 8) + 'px">' + (a[1] === "Liquid" ? "Liq" : a[1]) + "</span>"; }).join("") + "</div>";
     var pLegend = li("var(--ink2)", "", "Precip chance") + PT.concat(MKT).filter(function (t) { return used[t[0]]; }).map(function (t) { return li("var(--" + t[0] + ")", "blk", t[1]); }).join("") +
       (AMT.length ? li("var(--line)", "box", "Amount per NWS time block") : "") + '<span style="white-space:nowrap;color:var(--muted)">Bands: slight chance · chance · likely · definite</span>';
