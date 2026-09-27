@@ -422,7 +422,7 @@
       (hasWc ? '<path d="' + path(s.wc, y1) + '" fill="none" stroke="var(--wc)" stroke-width="2"/>' : "") +
       (hasHi ? '<path d="' + path(s.hi, y1) + '" fill="none" stroke="var(--hi)" stroke-width="2"/>' : "") +
       '<path d="' + path(s.t, y1) + '" fill="none" stroke="var(--t)" stroke-width="2.75"/>',
-      [{ a: s.t, y: y1, c: "var(--t)", u: "°" }, { a: s.wc, y: y1, c: "var(--wc)", u: "°" }, { a: s.hi, y: y1, c: "var(--hi)", u: "°" }]));
+      [{ a: s.t, y: y1, c: "var(--t)", u: "°", n: "Temp" }, { a: s.wc, y: y1, c: "var(--wc)", u: "°", n: "Wind chill" }, { a: s.hi, y: y1, c: "var(--hi)", u: "°", n: "Heat index" }]));
 
     // 1b UV index (EPA hourly forecast; it covers about the next day only)
     var uvA = []; for (i = 0; i < n; i++) uvA.push(uvAt(start + i * H));
@@ -444,7 +444,7 @@
     out.push(panel("Wind (mph)", li("var(--wind)", "", "Sustained") + li("var(--gust)", "", "Gusts"), h2, wt, y2, "",
       '<path d="' + path(s.wg, y2) + '" fill="none" stroke="var(--gust)" stroke-width="2.25"/>' +
       '<path d="' + path(s.ws, y2) + '" fill="none" stroke="var(--wind)" stroke-width="2.25"/>',
-      [{ a: s.ws, y: y2, c: "var(--wind)", u: "" }, { a: s.wg, y: y2, c: "var(--gust)", u: "" }]));
+      [{ a: s.ws, y: y2, c: "var(--wind)", u: " mph", n: "Sustained" }, { a: s.wg, y: y2, c: "var(--gust)", u: " mph", n: "Gusts" }]));
 
     // 3 sky / pop / rh
     var pt = [0, 25, 50, 75, 100], h3 = 110, y3 = scale(pt, h3, 6);
@@ -452,10 +452,12 @@
     out.push(panel("Cloud Cover &amp; Precipitation (%)", li("var(--sky)", "blk", "Sky cover (cloud %)") + li("var(--pop)", "", "Precip chance"), h3, pt, y3, "",
       '<path d="' + skyA + '" fill="var(--sky)" fill-opacity=".28" stroke="var(--sky)" stroke-width="1"/>' +
       '<path d="' + path(s.pop, y3) + '" fill="none" stroke="var(--pop)" stroke-width="2.25"/>',
-      [{ a: s.sky, y: y3, c: "var(--sky)", u: "%", area: true }, { a: s.pop, y: y3, c: "var(--pop)", u: "%" }]));
+      [{ a: s.sky, y: y3, c: "var(--sky)", u: "%", area: true, n: "Sky cover" }, { a: s.pop, y: y3, c: "var(--pop)", u: "%", n: "Precip chance" }]));
 
     // 4 one panel per weather type, laid out like weather.gov's graph: SChc/Chc/Lkly/Ocnl axis with hourly bars,
     //   and the forecast amount for each NWS time block shown as a labeled box along the bottom
+    var COVW = { SChc: "slight chance", Chc: "chance", Lkly: "likely", Ocnl: "occasional", Iso: "isolated", Patchy: "patchy", Sct: "scattered", Areas: "areas",
+      Num: "numerous", Wide: "widespread", Pds: "periods", Inter: "intermittent", Brf: "brief", Def: "definite", Frq: "frequent" };
     var TYP = [["rain", "Rain", "qpf", 2], ["thunder", "Thunder"], ["snow", "Snow", "snow", 2], ["fzra", "Freezing rain", "ice", 2], ["sleet", "Sleet"], ["fog", "Fog"]];
     var LV = ["SChc", "Chc", "Lkly", "Ocnl"], ph = 118, top0 = 22, labTop = top0 - 18, // time label sits above the Ocnl line
       lvH = 17, base = top0 + lvH * 4, boxY = base + 6;
@@ -488,10 +490,10 @@
       var axis = '<div class="yax" style="height:' + hh + "px;margin-bottom:-" + hh + 'px">' + LV.map(function (l, k) { return '<span style="top:' + (base - lvH * (k + 1)) + 'px">' + l + "</span>"; }).join("") + "</div>";
       var legend = li("var(--" + ty[0] + ")", "blk", ty[1] + " chance") + (ty[2] ? li("var(--" + ty[0] + ")", "box", "Amount per NWS time block (in)") : "");
       out.push(wrap(ty[1], legend, axis, '<svg class="gsvg plot" width="' + W + '" height="' + hh + '">' + (function (v) { return grid + v[0] + body + v[1]; })(vlines(hh, labTop, base - lvH * 4)) + "</svg>",
-        [{ txt: (function (key, akey, dec) { return function (i) {
-          var o = [], v = s[key][i]; o.push(v ? v[1] : "None");
-          if (akey) { var b = blockAt(g[akey] || [], start + i * H); if (b && b[2]) o.push(b[2].toFixed(dec) + " in"); }
-          return o; }; })(ty[0], ty[2], ty[3]) }], labTop));
+        [{ txt: (function (key, akey, dec, NAME) { return function (i) {
+          var o = [], v = s[key][i]; o.push(NAME + ": " + (v ? (COVW[v[1]] || v[1].toLowerCase()) : "none"));
+          if (akey) { var b = blockAt(g[akey] || [], start + i * H); if (b && b[2]) o.push("Amount: " + b[2].toFixed(dec) + " in"); }
+          return o; }; })(ty[0], ty[2], ty[3], ty[1]) }], labTop));
     });
 
     gin.innerHTML = out.join("");
@@ -568,7 +570,7 @@
       pts.forEach(function (q) {
         var ly = Math.max(q.yy + 4, last + 13); last = ly;
         o += '<circle cx="' + x + '" cy="' + q.yy.toFixed(1) + '" r="4" fill="' + q.m.c + '" stroke="var(--surface)" stroke-width="2"/>' +
-          '<text x="' + (flip ? x - 8 : x + 8) + '" y="' + ly.toFixed(1) + '"' + (flip ? ' text-anchor="end"' : "") + ' font-size="11.5" ' + TX + ">" + q.v + q.m.u + "</text>";
+          '<text x="' + (flip ? x - 8 : x + 8) + '" y="' + ly.toFixed(1) + '"' + (flip ? ' text-anchor="end"' : "") + ' font-size="11.5" ' + TX + ">" + q.v + q.m.u + (q.m.n ? '<tspan dx="4" font-size="10" font-weight="600" fill="' + q.m.c + '">' + q.m.n + "</tspan>" : "") + "</text>";
       });
       mk.innerHTML = o; mk.removeAttribute("hidden");
     });
