@@ -23,11 +23,11 @@ Optimize for a simple loop: request, implement, review, publish, verify.
 - `index.html` holds the markup and all CSS; `app.js` renders everything (Now, Daily, Hourly graphs, Totals & Observations, location picker, pull-to-refresh).
 - `wx-live.js` fetches live data in the browser on every open/refresh: api.weather.gov (points, forecast, gridpoint data, alerts, observations, AFD/HWO products), forecast.weather.gov MapClick JSON (for the site's exact period wording and precip-trend percentages), EPA Envirofacts UV (daily + hourly), and the ArcGIS World Geocoder for location search. All allow cross-origin requests.
 - `wx-normalize.js` turns those responses into the one data document `app.js` renders. Change data shape there, not in `app.js`.
-- Location: `?q=City ST` or `?lat=..&lon=..` in the URL, else the last location used on the device (localStorage), else Rochester, MN.
+- Location: `?q=City ST` or `?lat=..&lon=..` in the URL, else the last location used on the device (localStorage), else Minneapolis, MN. The location sheet offers "Use my current location" (one-time browser geolocation, named via weather.gov points) and starred favorites (`wx-favs` in localStorage).
 - `sw.js` only retires the old Sky Report service worker; don't add caching back without a cache-busting plan.
 
 ## Checks before publishing
 
 - No runtime JavaScript errors; layouts work at 360–430px wide in light and dark mode.
-- Load Rochester, run a location search, and open each tab against live data.
+- Load Minneapolis, run a location search, and open each tab against live data.
 - Keep it dependency-free and static-host compatible.

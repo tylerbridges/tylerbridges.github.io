@@ -693,8 +693,8 @@
     if (!doc) { $("foot").innerHTML = ""; return; }
     var l = doc.loc;
     var link = "https://forecast.weather.gov/MapClick.php?lat=" + l.lat + "&lon=" + l.lon;
-    $("plabel").textContent = l.label || "Rochester, MN";
-    document.title = (l.label || "Rochester, MN") + " Weather";
+    $("plabel").textContent = l.label || HOME.label;
+    document.title = (l.label || HOME.label) + " Weather";
     if (false) $("psub").textContent = "NWS " + l.office + " · grid " + l.grid + " · " + l.lat.toFixed(4) + "°N " + Math.abs(l.lon).toFixed(4) + "°W" + (l.elevFt ? " · " + l.elevFt + " ft" : "");
     $("foot").innerHTML = ""; // no outbound links
   }
@@ -874,13 +874,18 @@
   var rw; window.addEventListener("resize", function () { clearTimeout(rw); rw = setTimeout(function () { if (doc && tab === "hourly") renderGraph(); }, 200); });
 
   // ---------- location ----------
-  // Location comes from the URL (?q=Duluth MN or ?lat=46.78&lon=-92.1), else the last one used on this device, else Rochester.
-  var HOME = { lat: 44.0597, lon: -92.4955, label: "Rochester, MN" };
+  // Location comes from the URL (?q=Duluth MN or ?lat=46.78&lon=-92.1), else the last one used on this device, else Minneapolis.
+  var HOME = { lat: 44.9778, lon: -93.2650, label: "Minneapolis, MN" };
   function store(k, v) { try { if (v === undefined) return JSON.parse(localStorage.getItem(k) || "null"); localStorage.setItem(k, JSON.stringify(v)); } catch (e) { return null; } }
-  var loc = store("wx-loc") || HOME, recents = store("wx-recents") || [HOME];
+  var loc = store("wx-loc") || HOME, recents = store("wx-recents") || [HOME], favs = store("wx-favs") || [];
   function curLoc() { return loc; }
   function saveCache(d) { store("wx-cache", d); }
   function same(a, b) { return a && b && Math.abs(a.lat - b.lat) < 0.02 && Math.abs(a.lon - b.lon) < 0.02; }
+  function isFav(l) { return favs.some(function (f) { return same(f, l); }); }
+  function toggleFav(l) {
+    favs = isFav(l) ? favs.filter(function (f) { return !same(f, l); }) : favs.concat([{ lat: l.lat, lon: l.lon, label: l.label || null }]);
+    store("wx-favs", favs); renderLs();
+  }
   function setUrl() {
     try {
       var u = new URL(location.href);
@@ -899,33 +904,59 @@
   function lsOpen() { $("locsheet").hidden = false; renderLs(); setTimeout(function () { try { $("lsq").focus(); } catch (e) {} }, 50); }
   function lsClose() { $("locsheet").hidden = true; lsStatus(""); }
   function lsStatus(msg, err) { var e = $("lsstat"); e.hidden = !msg; e.textContent = msg || ""; e.classList.toggle("err", !!err); }
+  var STAR = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="m12 3 2.6 5.85 6.4.62-4.85 4.3 1.4 6.28L12 16.9l-5.55 3.15 1.4-6.28-4.85-4.3 6.4-.62Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>';
   function renderLs() {
-    var rec = recents.slice(); if (!rec.some(function (r) { return same(r, HOME); })) rec.push(HOME);
-    $("lsrec").innerHTML = rec.map(function (r, i) {
-      return '<button type="button" data-r="' + i + '">' + esc(r.label || (r.lat + ", " + r.lon)) + (same(r, loc) ? "<small>Showing now</small>" : "") + "</button>";
-    }).join("");
-    renderLs.rec = rec;
+    var favWrap = $("lsfavwrap"), rows = [];
+    function row(r) {
+      var i = rows.push(r) - 1, f = isFav(r), name = esc(r.label || (r.lat + ", " + r.lon));
+      return '<div class="ls-row"><button type="button" class="ls-go" data-r="' + i + '">' + name + (same(r, loc) ? "<small>Showing now</small>" : "") + "</button>" +
+        (favWrap ? '<button type="button" class="ls-star' + (f ? " on" : "") + '" data-fav="' + i + '" aria-pressed="' + f + '" aria-label="' + (f ? "Remove " + name + " from favorites" : "Add " + name + " to favorites") + '">' + STAR + "</button>" : "") + "</div>";
+    }
+    var rec = recents.filter(function (r) { return r && !isFav(r); });
+    if (!isFav(HOME) && !rec.some(function (r) { return same(r, HOME); })) rec.push(HOME);
+    if (favWrap) { favWrap.hidden = !favs.length; $("lsfav").innerHTML = favs.map(row).join(""); }
+    $("lsrec").innerHTML = rec.map(row).join("");
+    if ($("lsreclbl")) $("lsreclbl").hidden = !rec.length;
+    renderLs.rows = rows;
     $("psub").textContent = (doc && doc.station && doc.station.id) || ""; $("psub").hidden = false;
   }
+  function busyLs(on) { $("lsgo").disabled = on; if ($("lsgps")) $("lsgps").disabled = on; }
   function go(l) {
-    $("lsgo").disabled = true; lsStatus("Loading " + (l.label || "location") + " from weather.gov…");
-    useLoc(l).then(function (ok) { $("lsgo").disabled = false; if (ok) lsClose(); else lsStatus("Couldn't load that location from weather.gov. Try again.", true); });
+    busyLs(true); lsStatus("Loading " + (l.label || "location") + " from weather.gov…");
+    useLoc(l).then(function (ok) { busyLs(false); if (ok) lsClose(); else lsStatus("Couldn't load that location from weather.gov. Try again.", true); });
   }
   function search(q) {
-    $("lsgo").disabled = true; lsStatus("Finding " + q + "…");
+    busyLs(true); lsStatus("Finding " + q + "…");
     return WXLive.geocode(q).then(function (hit) {
-      if (!hit) { lsStatus("No US location found for \"" + q + "\"", true); $("lsgo").disabled = false; return; }
+      if (!hit) { lsStatus("No US location found for \"" + q + "\"", true); busyLs(false); return; }
       return WXLive.covers(hit.lat, hit.lon).then(function (ok) {
-        if (!ok) { lsStatus("weather.gov has no forecast for " + hit.label, true); $("lsgo").disabled = false; return; }
+        if (!ok) { lsStatus("weather.gov has no forecast for " + hit.label, true); busyLs(false); return; }
         go(hit);
       });
-    }).catch(function () { lsStatus("Location search failed. Check your connection and try again.", true); $("lsgo").disabled = false; });
+    }).catch(function () { lsStatus("Location search failed. Check your connection and try again.", true); busyLs(false); });
+  }
+  // one-time lookup of the phone's position; it's then kept like any other location
+  function gps() {
+    if (!navigator.geolocation) { lsStatus("This browser can't share your location.", true); return; }
+    busyLs(true); lsStatus("Finding your location…");
+    navigator.geolocation.getCurrentPosition(function (p) {
+      var lat = +p.coords.latitude.toFixed(4), lon = +p.coords.longitude.toFixed(4);
+      WXLive.place(lat, lon).then(function (label) {
+        if (label === false) { lsStatus("weather.gov has no forecast for your location.", true); busyLs(false); return; }
+        go({ lat: lat, lon: lon, label: label || "Current location" });
+      });
+    }, function (err) {
+      busyLs(false);
+      lsStatus(err && err.code === 1 ? "Location access is blocked. Allow it for this site in your browser or phone settings, then try again." : "Couldn't get your location. Try again.", true);
+    }, { enableHighAccuracy: false, timeout: 15000, maximumAge: 300000 });
   }
   $("placebtn").addEventListener("click", lsOpen);
+  if ($("lsgps")) $("lsgps").addEventListener("click", gps);
   $("locsheet").addEventListener("click", function (e) {
     if (e.target.closest("[data-close]")) { lsClose(); return; }
+    var s = e.target.closest("[data-fav]"); if (s) { toggleFav(renderLs.rows[+s.dataset.fav]); return; }
     var b = e.target.closest("[data-r]"); if (!b) return;
-    var r = renderLs.rec[+b.dataset.r];
+    var r = renderLs.rows[+b.dataset.r];
     if (same(r, loc)) { lsClose(); return; }
     go(r);
   });
@@ -941,7 +972,10 @@
   // paint the last data this device saw right away (if it's for the same place), then pull live
   var cached = store("wx-cache");
   var qs = new URLSearchParams(location.search), qLat = parseFloat(qs.get("lat")), qLon = parseFloat(qs.get("lon")), qQ = qs.get("q");
-  if (isFinite(qLat) && isFinite(qLon)) loc = { lat: qLat, lon: qLon, label: qs.get("label") || null };
+  if (isFinite(qLat) && isFinite(qLon)) {
+    var known = [loc].concat(favs, recents).filter(function (r) { return r && r.label && same(r, { lat: qLat, lon: qLon }); })[0];
+    loc = { lat: qLat, lon: qLon, label: qs.get("label") || (known && known.label) || null };
+  }
   if (cached && cached.loc && same(cached.loc, loc)) doc = cached;
   renderAll(); showTab(startTab);
   if (qQ) {

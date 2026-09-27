@@ -388,9 +388,15 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
 .ls-stat.err{color:var(--crit)}
 .ls-lbl{margin:14px 0 6px;font:600 11px var(--sans);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .ls-rec{display:flex;flex-direction:column}
-.ls-rec button{display:flex;justify-content:space-between;align-items:center;background:none;border:0;border-top:1px solid var(--grid);padding:11px 2px;font:15px var(--sans);color:var(--ink);text-align:left;cursor:pointer}
-.ls-rec button:first-child{border-top:0}
-.ls-rec button small{color:var(--muted);font-size:12px}
+.ls-row{display:flex;align-items:center;border-top:1px solid var(--grid)}
+.ls-row:first-child{border-top:0}
+.ls-go{flex:1;min-width:0;display:flex;justify-content:space-between;align-items:center;gap:8px;background:none;border:0;padding:11px 2px;font:15px var(--sans);color:var(--ink);text-align:left;cursor:pointer}
+.ls-go small{color:var(--muted);font-size:12px;white-space:nowrap}
+.ls-star{flex:0 0 auto;width:40px;height:40px;margin-right:-8px;display:flex;align-items:center;justify-content:center;background:none;border:0;color:var(--muted);cursor:pointer;fill:none}
+.ls-star.on{color:#e0a100;fill:currentColor}
+.ls-star svg{fill:inherit}
+.ls-gps{display:flex;align-items:center;gap:8px;width:100%;margin-top:10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:none;font:500 15px var(--sans);color:var(--accent);cursor:pointer}
+.ls-gps:disabled{opacity:.5}
 .lspend{font-size:11.5px;color:var(--accent)}
 /* condition line flows as text so long conditions wrap from the left */
 .now-line{display:block!important;font-size:23px!important;line-height:1.25!important;text-align:left}
@@ -405,7 +411,7 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
 <div class="wrap">
   <header class="top">
     <div class="top-row">
-      <button type="button" class="place" id="placebtn" aria-label="Change location"><b><span id="plabel">Rochester, MN</span><svg class="pchev" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></b><span id="psub" hidden></span></button>
+      <button type="button" class="place" id="placebtn" aria-label="Change location"><b><span id="plabel">Minneapolis, MN</span><svg class="pchev" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></b><span id="psub" hidden></span></button>
       <span class="fresh" id="fresh"><i class="dot" id="fdot"></i><span id="ftxt">Loading…</span></span>
       <button class="rbtn" id="rbtn" type="button" aria-label="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button>
     </div>
@@ -460,13 +466,15 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
     <div class="ls-head"><b>Location</b><button type="button" class="ls-x" data-close aria-label="Close">&times;</button></div>
     <form id="lsform" autocomplete="off"><input id="lsq" type="search" enterkeyhint="search" placeholder="City, ST or ZIP code" maxlength="80"><button type="submit" id="lsgo">Go</button></form>
     <div id="lsstat" class="ls-stat" hidden></div>
-    <div class="ls-lbl">Recent</div>
+    <button type="button" id="lsgps" class="ls-gps"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>Use my current location</button>
+    <div id="lsfavwrap" hidden><div class="ls-lbl">Favorites</div><div id="lsfav" class="ls-rec"></div></div>
+    <div class="ls-lbl" id="lsreclbl">Recent</div>
     <div id="lsrec" class="ls-rec"></div>
   </div>
 </div>
 
-<script src="wx-normalize.js"></script>
-<script src="wx-live.js"></script>
-<script src="app.js"></script>
+<script src="wx-normalize.js?v=2"></script>
+<script src="wx-live.js?v=2"></script>
+<script src="app.js?v=2"></script>
 </body>
 </html>

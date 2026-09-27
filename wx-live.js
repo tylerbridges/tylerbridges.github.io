@@ -60,5 +60,15 @@
   }
   // does weather.gov forecast this point? (US only)
   function covers(lat, lon) { return fetch(API + "/points/" + lat + "," + lon).then(function (r) { return r.ok; }).catch(function () { return false; }); }
-  root.WXLive = { load: load, geocode: geocode, covers: covers };
+  // weather.gov's own place name for a point: "City, ST", null if unknown, false if it has no forecast there
+  function place(lat, lon) {
+    return fetch(API + "/points/" + lat + "," + lon).then(function (r) {
+      if (!r.ok) return r.status === 404 ? false : null;
+      return r.json().then(function (j) {
+        var rl = j.properties && j.properties.relativeLocation && j.properties.relativeLocation.properties;
+        return rl && rl.city ? rl.city + ", " + rl.state : null;
+      });
+    }).catch(function () { return null; });
+  }
+  root.WXLive = { load: load, geocode: geocode, covers: covers, place: place };
 })(window);
