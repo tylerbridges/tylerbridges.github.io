@@ -459,7 +459,8 @@
       var arr = s[ty[0]], any = arr.some(function (v) { return v; }), amts = ty[2] ? (g[ty[2]] || []) : [];
       var anyAmt = amts.some(function (b) { return b[2] > 0; });
       if (!any && !anyAmt) return; // only show types with some chance or amount anywhere in the forecast
-      if (/^(rain|snow|fzra|sleet)$/.test(ty[0])) PRECIP.push({ k: out.length, arr: arr, amts: amts });
+      // the Rain card's amounts are total liquid (snow and ice melted too), so only its rain chance counts as rain activity
+      if (/^(rain|snow|fzra|sleet)$/.test(ty[0])) PRECIP.push({ k: out.length, arr: arr, amts: ty[0] === "rain" ? [] : amts });
       var grid = "", body = "";
       LV.forEach(function (l, k) { var y = base - lvH * (k + 1); grid += '<line x1="0" x2="' + W + '" y1="' + y + '" y2="' + y + '" stroke="var(--grid)"/>'; });
       grid += '<line x1="0" x2="' + W + '" y1="' + base + '" y2="' + base + '" stroke="var(--line)"/>';
@@ -512,12 +513,16 @@
     var pans = $("gin").querySelectorAll(".pan"), f = firstSc(); if (!pans.length || !f.clientWidth) return;
     var i0 = Math.floor((f.scrollLeft + 34 - GL) / PX), i1 = Math.ceil((f.scrollLeft + f.clientWidth - GL) / PX) - 1;
     var t0 = G.start + i0 * H, t1 = G.start + (i1 + 1) * H, top = {};
+    // value = when that type first shows up on screen, so the earliest one leads
     G.precip.forEach(function (p) {
-      for (var i = Math.max(0, i0); i <= Math.min(G.n - 1, i1); i++) if (p.arr[i]) { top[p.k] = 1; return; }
-      if (p.amts.some(function (b) { return b[2] > 0 && b[0] < t1 && b[0] + b[1] * H > t0; })) top[p.k] = 1;
+      var first = Infinity;
+      for (var i = Math.max(0, i0); i <= Math.min(G.n - 1, i1); i++) if (p.arr[i]) { first = G.start + i * H; break; }
+      p.amts.forEach(function (b) { if (b[2] > 0 && b[0] < t1 && b[0] + b[1] * H > t0) first = Math.min(first, Math.max(b[0], t0)); });
+      if (first < Infinity) top[p.k] = first;
     });
     var host = sc && sc.closest(".pan"), y0 = host && host.getBoundingClientRect().top;
-    pans.forEach(function (pn, k) { pn.style.order = top[k] ? k - 1000 : k; });
+    var lead = Object.keys(top).sort(function (a, b) { return top[a] - top[b] || a - b; });
+    pans.forEach(function (pn, k) { var r = lead.indexOf(String(k)); pn.style.order = r >= 0 ? r - 1000 : k; });
     if (host) { var dy = host.getBoundingClientRect().top - y0; if (Math.abs(dy) > 1) window.scrollBy(0, dy); }
   }
   function extremaLabels(arr, y) {
@@ -737,9 +742,9 @@
     if (busy) return Promise.resolve(false); busy = true;
     var b = $("rbtn"); b.classList.add("spin"); $("ftxt").textContent = "Refreshing…";
     var t0 = Date.now();
-    return WXLive.load(curLoc()).then(function (d) {
-      accept(d); lastCheck = Date.now(); saveCache(d);
-      if (manual) toast("Updated from weather.gov");
+    return (TEST ? WXScenario.load(TEST, curLoc(), doc || store("wx-cache")) : WXLive.load(curLoc())).then(function (d) {
+      accept(d); lastCheck = Date.now(); if (!TEST) saveCache(d);
+      if (manual) toast(TEST ? "Test scenario regenerated" : "Updated from weather.gov");
       return true;
     }).catch(function (e) {
       console.error(e);
@@ -1092,10 +1097,14 @@
     $("lsrec").innerHTML = rec.map(row).join("");
     if ($("lsreclbl")) $("lsreclbl").hidden = !rec.length;
     renderLs.rows = rows;
+    if ($("lstest") && window.WXScenario) $("lstest").innerHTML = WXScenario.list.map(function (x) {
+      return '<div class="ls-row"><button type="button" class="ls-go" data-test="' + x.id + '"><span>' + esc(x.name) + '<span class="d">' + esc(x.desc) + "</span></span>" + (TEST === x.id ? "<small>Showing now</small>" : "") + "</button></div>";
+    }).join("");
     $("psub").textContent = (doc && doc.station && doc.station.id) || ""; $("psub").hidden = false;
   }
   function busyLs(on) { $("lsgo").disabled = on; if ($("lsgps")) $("lsgps").disabled = on; }
   function go(l) {
+    if (TEST) setTest(null);
     busyLs(true); lsStatus("Loading " + (l.label || "location") + " from weather.gov…");
     useLoc(l).then(function (ok) { busyLs(false); if (ok) lsClose(); else lsStatus("Couldn't load that location from weather.gov. Try again.", true); });
   }
@@ -1124,14 +1133,29 @@
       lsStatus(err && err.code === 1 ? "Location access is blocked. Allow it for this site in your browser or phone settings, then try again." : "Couldn't get your location. Try again.", true);
     }, { enableHighAccuracy: false, timeout: 15000, maximumAge: 300000 });
   }
+  // ---------- test scenarios: built-in sample weather (wx-scenarios.js) so every tab can be checked in any season ----------
+  var TEST = null;
+  function setTest(id) {
+    TEST = id && window.WXScenario && WXScenario.has(id) ? id : null;
+    var sc = TEST && WXScenario.list.filter(function (x) { return x.id === TEST; })[0];
+    $("testbar").hidden = !sc; $("testname").textContent = sc ? sc.name : "";
+    try { var u = new URL(location.href); if (TEST) u.searchParams.set("test", TEST); else u.searchParams.delete("test"); history.replaceState(null, "", u.pathname + u.search + u.hash); } catch (e) {}
+  }
+  $("testx").addEventListener("click", function () {
+    setTest(null); var c = store("wx-cache");
+    if (c && c.loc && same(c.loc, loc)) accept(c);
+    refresh(false);
+  });
   $("placebtn").addEventListener("click", lsOpen);
   if ($("lsgps")) $("lsgps").addEventListener("click", gps);
   $("locsheet").addEventListener("click", function (e) {
     if (e.target.closest("[data-close]")) { lsClose(); return; }
     var s = e.target.closest("[data-fav]"); if (s) { toggleFav(renderLs.rows[+s.dataset.fav]); return; }
+    var tb = e.target.closest("[data-test]");
+    if (tb) { setTest(tb.dataset.test); lsClose(); (function go2() { if (busy) return setTimeout(go2, 300); refresh(false).then(function (ok) { if (ok) toast("Showing test scenario: " + $("testname").textContent); }); })(); return; }
     var b = e.target.closest("[data-r]"); if (!b) return;
     var r = renderLs.rows[+b.dataset.r];
-    if (same(r, loc)) { lsClose(); return; }
+    if (same(r, loc) && !TEST) { lsClose(); return; }
     go(r);
   });
   $("lsform").addEventListener("submit", function (e) {
@@ -1150,7 +1174,8 @@
     var known = [loc].concat(favs, recents).filter(function (r) { return r && r.label && same(r, { lat: qLat, lon: qLon }); })[0];
     loc = { lat: qLat, lon: qLon, label: qs.get("label") || (known && known.label) || null };
   }
-  if (cached && cached.loc && same(cached.loc, loc)) doc = cached;
+  if (qs.get("test")) setTest(qs.get("test"));
+  if (cached && cached.loc && same(cached.loc, loc) && !TEST) doc = cached;
   renderAll(); showTab(startTab);
   if (qQ) {
     WXLive.geocode(qQ).then(function (hit) { if (hit) useLoc(hit); else { toast("No US location found for \"" + qQ + "\""); useLoc(loc); } }).catch(function () { useLoc(loc); });

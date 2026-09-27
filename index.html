@@ -405,6 +405,15 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
 .mfsc.z img{width:250%;max-width:none;cursor:zoom-out}
 .mfx{position:absolute;top:calc(env(safe-area-inset-top,0px) + 8px);right:10px;z-index:2;width:40px;height:40px;border-radius:50%;border:0;background:rgba(255,255,255,.9);color:#000;font-size:26px;line-height:1;cursor:pointer}
 .mfhint{color:#bbb;font-size:12px;text-align:center;padding:8px 0 calc(env(safe-area-inset-bottom,0px) + 10px)}
+/* test scenarios */
+.testbar{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12.5px;color:var(--ink2);background:color-mix(in srgb,var(--accent) 14%,var(--surface));border:1px solid color-mix(in srgb,var(--accent) 45%,var(--line));border-radius:10px;padding:5px 6px 5px 10px}
+.testbar .chip{padding:4px 10px}
+body:has(#testbar:not([hidden])) .sec{scroll-margin-top:140px}
+.ls-test summary{cursor:pointer;list-style:none}
+.ls-test summary::-webkit-details-marker{display:none}
+.ls-test summary::after{content:" ▾"}
+.ls-test[open] summary::after{content:" ▴"}
+.ls-go span.d{display:block;font-size:12px;color:var(--muted);margin-top:1px}
 #locsheet{position:fixed;inset:0;z-index:60}
 .ls-back{position:absolute;inset:0;background:rgba(0,0,0,.35)}
 .ls-card{position:absolute;left:0;right:0;top:0;background:var(--surface);border-bottom:1px solid var(--line);border-radius:0 0 16px 16px;padding:calc(env(safe-area-inset-top,0px) + 14px) 16px 16px;box-shadow:0 10px 30px rgba(0,0,0,.25);max-width:640px;margin:0 auto}
@@ -449,6 +458,7 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
     <nav class="nav" id="nav">
       <button type="button" class="chip on" data-tab="now">Now</button><button type="button" class="chip" data-tab="daily">Daily</button><button type="button" class="chip" data-tab="hourly">Hourly</button><button type="button" class="chip" data-tab="maps">Maps</button><button type="button" class="chip" data-tab="totals">Totals &amp; Observations</button>
     </nav>
+    <div class="testbar" id="testbar" hidden><span>Test: <b id="testname"></b> · sample data, not a real forecast</span><button type="button" class="chip" id="testx">Exit</button></div>
   </header>
 
   <section id="now" class="sec" data-tab="now">
@@ -519,11 +529,13 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
     <div id="lsfavwrap" hidden><div class="ls-lbl">Favorites</div><div id="lsfav" class="ls-rec"></div></div>
     <div class="ls-lbl" id="lsreclbl">Recent</div>
     <div id="lsrec" class="ls-rec"></div>
+    <details class="ls-test"><summary class="ls-lbl">Test scenarios</summary><div id="lstest" class="ls-rec"></div></details>
   </div>
 </div>
 
-<script src="wx-normalize.js?v=9"></script>
-<script src="wx-live.js?v=9"></script>
-<script src="app.js?v=9"></script>
+<script src="wx-normalize.js?v=10"></script>
+<script src="wx-live.js?v=10"></script>
+<script src="wx-scenarios.js?v=10"></script>
+<script src="app.js?v=10"></script>
 </body>
 </html>
