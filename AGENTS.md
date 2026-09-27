@@ -20,7 +20,7 @@ Optimize for a simple loop: request, implement, review, publish, verify.
 
 ## How the site works
 
-- `index.html` holds the markup and all CSS; `app.js` renders everything (Now, Daily, Hourly graphs, Maps with storm totals, Observations, location picker, pull-to-refresh).
+- `index.html` holds the markup and all CSS; `app.js` renders everything (Now, Daily, Hourly graphs, Maps with storm totals, Observations, location picker, refresh button).
 - Maps shows public-domain NWS/NOAA images by URL (no API): graphical.weather.gov NDFD sector PNGs (`images/{office|conus}/{Element}{N}_{sector}.png` for SnowAmt, IceAccum, QPF, MaxT, MinT, T, ApparentT, local = the location's forecast office), WPC winter/QPF GIFs, and CPC outlooks. Add products in `MCATS` in `app.js`.
 - `wx-live.js` fetches live data in the browser on every open/refresh: api.weather.gov (points, forecast, gridpoint data, alerts, observations, AFD/HWO products), forecast.weather.gov MapClick JSON (for the site's exact period wording and precip-trend percentages), EPA Envirofacts UV (daily + hourly), and the ArcGIS World Geocoder for location search. All allow cross-origin requests.
 - `wx-normalize.js` turns those responses into the one data document `app.js` renders. Change data shape there, not in `app.js`.

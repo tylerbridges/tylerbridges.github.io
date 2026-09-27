@@ -77,9 +77,6 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
 .chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:5px 11px;font-size:12.5px;white-space:nowrap;cursor:pointer;color:var(--ink2);text-decoration:none}
 .chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
 
-/* pull to refresh */
-#ptr{position:fixed;left:0;right:0;top:env(safe-area-inset-top,0px);z-index:30;display:flex;justify-content:center;pointer-events:none;transform:translateY(-48px);transition:transform .2s}
-#ptr div{margin-top:8px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:12px;color:var(--ink2);box-shadow:0 2px 10px rgba(0,0,0,.08)}
 #toast{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:30;background:var(--ink);color:var(--surface);border-radius:999px;padding:8px 14px;font-size:12.5px;max-width:calc(100% - 32px);text-align:center}
 
 /* alerts */
@@ -446,7 +443,6 @@ body:has(#testbar:not([hidden])) .sec{scroll-margin-top:140px}
 
 </head>
 <body>
-<div id="ptr"><div id="ptrtxt">Pull to refresh</div></div>
 <div class="wrap">
   <header class="top">
     <div class="top-row">
@@ -528,9 +524,9 @@ body:has(#testbar:not([hidden])) .sec{scroll-margin-top:140px}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=12"></script>
-<script src="wx-live.js?v=12"></script>
-<script src="wx-scenarios.js?v=12"></script>
-<script src="app.js?v=12"></script>
+<script src="wx-normalize.js?v=13"></script>
+<script src="wx-live.js?v=13"></script>
+<script src="wx-scenarios.js?v=13"></script>
+<script src="app.js?v=13"></script>
 </body>
 </html>

@@ -757,7 +757,7 @@
       return true;
     }).catch(function (e) {
       console.error(e);
-      toast(doc ? "Couldn't reach weather.gov · showing the last loaded data" : "Couldn't reach weather.gov · pull down to try again");
+      toast(doc ? "Couldn't reach weather.gov · showing the last loaded data" : "Couldn't reach weather.gov · tap refresh to try again");
       return false;
     }).then(function (ok) {
       setTimeout(function () { busy = false; b.classList.remove("spin"); renderFresh(); }, Math.max(0, 400 - (Date.now() - t0)));
@@ -868,39 +868,6 @@
   window.addEventListener("mousemove", function (e) { if (sc0) scrubMove(e.clientX, e.clientY, e); });
   window.addEventListener("mouseup", function () { if (sc0 || scrubbing) scrubEnd(); });
   gin.addEventListener("contextmenu", function (e) { if (e.target.closest(".gsc")) e.preventDefault(); });
-
-  // pull to refresh
-  var y0 = null, dy = 0, ptr = $("ptr"), ptrArmed = false;
-  // haptics: Android uses the Vibration API; iOS Safari (18+) has none, but toggling a native switch control plays its system tick
-  var hsw = document.createElement("label"); hsw.setAttribute("aria-hidden", "true");
-  hsw.style.cssText = "position:fixed;left:-9999px;top:0;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none";
-  hsw.innerHTML = '<input type="checkbox" switch tabindex="-1">'; document.body.appendChild(hsw);
-  function haptic(release) {
-    try { if (navigator.vibrate) { if (!release) navigator.vibrate(12); return; } } catch (e) {}
-    // iOS: a fresh, in-DOM switch label clicked inside the gesture handler (the ios-haptics technique)
-    try {
-      var l = document.createElement("label"), i = document.createElement("input");
-      i.type = "checkbox"; i.setAttribute("switch", ""); l.appendChild(i);
-      l.style.cssText = "position:fixed;left:0;top:0;width:1px;height:1px;opacity:0.01;overflow:hidden;pointer-events:none";
-      document.body.appendChild(l); l.click(); setTimeout(function () { l.remove(); }, 50);
-    } catch (e) {}
-  }
-  window.addEventListener("touchstart", function (e) { y0 = (window.scrollY <= 0 && !busy) ? e.touches[0].clientY : null; dy = 0; }, { passive: true });
-  window.addEventListener("touchmove", function (e) {
-    if (y0 == null) return; dy = e.touches[0].clientY - y0;
-    if (dy > 0 && window.scrollY <= 0) {
-      ptr.style.transition = "none";
-      ptr.style.transform = "translateY(" + (Math.min(dy * 0.5, 56) - 48) + "px)";
-      $("ptrtxt").textContent = dy > 90 ? "Release to refresh" : "Pull to refresh";
-      // one tap of haptic feedback the moment the pull crosses the refresh point
-      if (dy > 90 && !ptrArmed) { ptrArmed = true; haptic(); } else if (dy <= 90) ptrArmed = false;
-    }
-  }, { passive: true });
-  window.addEventListener("touchend", function () {
-    if (y0 == null) return; ptr.style.transition = ""; ptr.style.transform = "";
-    // iOS only lets a page trigger the switch tick from a "real" gesture event like touchend (not touchmove), so tick again on release
-    if (dy > 90) { haptic(true); refresh(true); } y0 = null; dy = 0; ptrArmed = false;
-  });
 
   document.addEventListener("visibilitychange", function () { if (!document.hidden && Date.now() - lastCheck > 5 * 60000) refresh(false); });
   setInterval(renderFresh, 30000);
