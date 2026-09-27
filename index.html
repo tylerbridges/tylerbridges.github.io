@@ -375,25 +375,14 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
 .place b{display:inline-flex;align-items:center;gap:4px}
 .pchev{color:var(--muted);flex:none}
 /* forecast maps */
-.mtot{display:grid;grid-template-columns:auto repeat(3,1fr);gap:6px 10px;padding:12px 14px;align-items:baseline}
-.mtot .h{font:600 11px var(--sans);letter-spacing:.05em;text-transform:uppercase;color:var(--muted);text-align:right}
-.mtot .h:first-child{text-align:left}
-.mtot .k{font-size:14px;color:var(--ink2)}
-.mtot .v{font:600 17px var(--sans);text-align:right;color:var(--ink)}
-.mtot .v.z{color:var(--muted);font-weight:400}
-.mtot .note{grid-column:1/-1;font-size:11.5px;color:var(--muted)}
 .mcats{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin-inline:-16px;padding-inline:16px}
 .mprods{display:flex;flex-direction:column;gap:6px}
 .mgrp{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
-.mgl{flex:0 0 100%;font:600 10.5px var(--sans);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-top:2px}
-.mprods .chip{background:var(--sunk)}
-.mprods .chip.on{background:var(--ink);border-color:var(--ink);color:var(--surface)}
-.mview{padding:12px 0 12px;overflow:hidden}
+.mgl{flex:0 0 100%;font:600 11px var(--sans);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-top:2px}
+.mview{padding:12px 0 10px;overflow:hidden}
 .mhead{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 12px 10px;flex-wrap:wrap}
-.mhead b{font:600 16px/1.25 var(--sans);color:var(--ink)}
-.marea{display:flex;border:1px solid var(--line);border-radius:999px;overflow:hidden}
-.marea button{border:0;background:none;padding:5px 11px;font:12.5px var(--sans);color:var(--ink2);cursor:pointer}
-.marea button.on{background:var(--accent);color:#fff}
+.mhead .gt{padding:0}
+.marea{display:flex;gap:6px}
 .mimg{position:relative;background:#fff;min-height:220px;display:flex;align-items:center;justify-content:center;cursor:zoom-in}
 .mimg img{display:block;width:100%;height:auto}
 .mimg img.ld{opacity:.55}
@@ -401,10 +390,9 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
 .mhint{position:absolute;right:6px;bottom:6px;font-size:10.5px;background:rgba(0,0,0,.55);color:#fff;border-radius:6px;padding:2px 6px;pointer-events:none}
 .mctl{display:flex;align-items:center;gap:8px;padding:10px 12px 4px}
 .mctl input{flex:1;min-width:0;accent-color:var(--accent)}
-.mbtn{flex:0 0 auto;width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--ink);font-size:18px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center}
-.mbtn:disabled{opacity:.35}
+.mctl .rbtn svg{width:16px;height:16px;stroke:var(--ink2);fill:none}
+.mctl .rbtn svg.fill{fill:var(--ink2);stroke:none}
 .mframes{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:6px 12px 2px}
-.mframes .chip{font-size:12px;padding:4px 9px}
 .msrc{padding:8px 12px 0;font-size:11.5px;color:var(--muted);line-height:1.45}
 .msrc a{color:var(--accent)}
 #mfull{position:fixed;inset:0;z-index:70;background:#000;display:flex;flex-direction:column}
@@ -483,17 +471,19 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
   </section>
 
   <section id="maps" class="sec" data-tab="maps" hidden>
-    <div class="card mtot" id="mtot"></div>
+    <div class="sec-h"><h2>Precipitation totals</h2><span class="meta" id="mtotloc"></span></div>
+    <div class="card tot" id="mtot"></div>
+    <div class="sec-h"><h2>Forecast maps</h2></div>
     <div class="mcats" id="mcats"></div>
     <div class="mprods" id="mprods"></div>
     <div class="card mview">
-      <div class="mhead"><b id="mtitle"></b><div class="marea" id="marea"></div></div>
+      <div class="mhead"><div class="gt" id="mtitle"></div><div class="marea" id="marea"></div></div>
       <div class="mimg" id="mimgbox"><img id="mimg" alt="" decoding="async"><div class="mmsg" id="mmsg" hidden></div><span class="mhint">Tap to enlarge</span></div>
       <div class="mctl" id="mctl">
-        <button type="button" class="mbtn" id="mprev" aria-label="Previous">&#8249;</button>
-        <button type="button" class="mbtn" id="mplay" aria-label="Play">&#9654;</button>
+        <button type="button" class="rbtn" id="mprev" aria-label="Previous"><svg viewBox="0 0 24 24" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button>
+        <button type="button" class="rbtn" id="mplay" aria-label="Play"></button>
         <input type="range" id="mrange" min="0" max="0" value="0" aria-label="Forecast time">
-        <button type="button" class="mbtn" id="mnext" aria-label="Next">&#8250;</button>
+        <button type="button" class="rbtn" id="mnext" aria-label="Next"><svg viewBox="0 0 24 24" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button>
       </div>
       <div class="mframes" id="mframes"></div>
       <div class="msrc" id="msrc"></div>
@@ -533,8 +523,8 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
   </div>
 </div>
 
-<script src="wx-normalize.js?v=6"></script>
-<script src="wx-live.js?v=6"></script>
-<script src="app.js?v=6"></script>
+<script src="wx-normalize.js?v=7"></script>
+<script src="wx-live.js?v=7"></script>
+<script src="app.js?v=7"></script>
 </body>
 </html>

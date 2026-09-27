@@ -949,23 +949,23 @@
     if (p.el) { var s = mSector(p); return "https://graphical.weather.gov/images/" + s + "/" + fr.u + "_" + s + ".png" + bust; }
     return fr.u + bust;
   }
-  function mStop() { clearInterval(mTimer); mTimer = null; if ($("mplay")) { $("mplay").innerHTML = "&#9654;"; $("mplay").setAttribute("aria-label", "Play"); } }
+  var PLAY = '<svg class="fill" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z"/></svg>', PAUSE = '<svg class="fill" viewBox="0 0 24 24"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg>';
+  function mStop() { clearInterval(mTimer); mTimer = null; if ($("mplay")) { $("mplay").innerHTML = PLAY; $("mplay").setAttribute("aria-label", "Play"); } }
   function mSave() { store("wx-map", { cat: M.cat, id: M.id, area: M.area }); }
+  // same table as the Totals tab, always showing all three rows so "0 in" of snow is visible too
   function mTotals() {
-    var g = doc && doc.grid, el = $("mtot"); if (!g) { el.innerHTML = '<div class="note">Local totals load with the forecast.</div>'; return; }
+    var g = doc && doc.grid, el = $("mtot");
+    $("mtotloc").textContent = (doc && doc.loc && doc.loc.label) || "";
+    if (!g) { el.innerHTML = '<div class="empty" style="padding:2px 0">Totals load with the forecast.</div>'; return; }
     var now = Math.max(Date.now(), g.start), hrs = [24, 48, 72];
-    var rows = [["Snow", "snow", 1, "\""], ["Ice", "ice", 2, "\""], ["Precip", "qpf", 2, "\""]];
-    var o = '<div class="h">' + esc((doc.loc && doc.loc.label) || "Here") + '</div>' + hrs.map(function (h) { return '<div class="h">' + h + " hr</div>"; }).join("");
-    rows.forEach(function (r) {
-      o += '<div class="k">' + r[0] + "</div>" + hrs.map(function (h) {
-        var v = sumRange(g[r[1]] || [], now, now + h * H), z = !(v >= Math.pow(10, -r[2]) / 2);
-        return '<div class="v' + (z ? " z" : "") + '">' + (z ? "0" : v.toFixed(r[2])) + r[3] + "</div>";
-      }).join("");
-    });
-    el.innerHTML = o + '<div class="note">NWS forecast totals for this location. Precip is liquid equivalent (rain plus melted snow/ice).</div>';
+    var rows = [["Rain", "qpf"], ["Snow", "snow"], ["Ice", "ice"]];
+    el.innerHTML = '<table class="tt num"><thead><tr><th></th>' + hrs.map(function (h, k) { return "<th>" + (k ? "" : "Next ") + h + " hr</th>"; }).join("") + "</tr></thead><tbody>" +
+      rows.map(function (r) { return "<tr><td>" + r[0] + "</td>" + hrs.map(function (h) { return "<td>" + sumRange(g[r[1]] || [], now, now + h * H).toFixed(2) + " in</td>"; }).join("") + "</tr>"; }).join("") +
+      '</tbody></table><div class="empty" style="padding:0;font-size:11.5px">NWS forecast for this location. Rain is liquid equivalent, including melted snow and ice.</div>';
   }
   function renderMaps() {
     if (!$("maps")) return;
+    if (!mTimer) $("mplay").innerHTML = PLAY;
     mTotals();
     var c = mCat(), p = mProd(); M.id = p.id;
     if (M.f >= p.frames.length) M.f = 0;
@@ -977,8 +977,8 @@
     }).join("");
     var off = mOffice();
     $("marea").hidden = !p.area || !off;
-    $("marea").innerHTML = p.area && off ? '<button type="button" data-marea="local" class="' + (M.area === "local" ? "on" : "") + '">Local (' + off.toUpperCase() + ")</button>" +
-      '<button type="button" data-marea="conus" class="' + (M.area !== "local" ? "on" : "") + '">National</button>' : "";
+    $("marea").innerHTML = p.area && off ? '<button type="button" data-marea="local" class="chip' + (M.area === "local" ? " on" : "") + '">Local (' + off.toUpperCase() + ")</button>" +
+      '<button type="button" data-marea="conus" class="chip' + (M.area !== "local" ? " on" : "") + '">National</button>' : "";
     $("mtitle").textContent = p.name;
     $("mframes").innerHTML = p.frames.map(function (fr, i) { return '<button type="button" class="chip' + (i === M.f ? " on" : "") + '" data-mf="' + i + '">' + fr.l + "</button>"; }).join("");
     $("mctl").hidden = p.frames.length < 2; $("mframes").hidden = p.frames.length < 2;
@@ -1011,7 +1011,7 @@
     if (e.target.closest("#mnext")) { mStop(); mStep(1); return; }
     if (e.target.closest("#mplay")) {
       if (mTimer) { mStop(); mShow(); return; }
-      $("mplay").innerHTML = "&#10074;&#10074;"; $("mplay").setAttribute("aria-label", "Pause");
+      $("mplay").innerHTML = PAUSE; $("mplay").setAttribute("aria-label", "Pause");
       mTimer = setInterval(function () { mStep(1); }, 900); mShow(); return;
     }
     if (e.target.closest("#mimgbox") && $("mmsg").hidden) { $("mfimg").src = $("mimg").src; $("mfimg").alt = $("mimg").alt; $("mfsc").classList.remove("z"); $("mfull").hidden = false; }
