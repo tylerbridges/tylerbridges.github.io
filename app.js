@@ -459,17 +459,17 @@
     var TYP = [["rain", "Rain", "qpf", 2], ["thunder", "Thunder"], ["snow", "Snow", "snow", 2], ["fzra", "Freezing rain", "ice", 2], ["sleet", "Sleet"], ["fog", "Fog"]];
     var LV = ["SChc", "Chc", "Lkly", "Ocnl"], ph = 118, top0 = 22, labTop = top0 - 18, // time label sits above the Ocnl line
       lvH = 17, base = top0 + lvH * 4, boxY = base + 6;
-    var PRECIP = [];
+    // Weather-type cards (rain, thunder, snow, freezing rain, sleet, fog) always come first, in this order, and a card
+    //   only appears when it has some activity (a chance or an amount) anywhere in the hourly period.
+    //   Rain's amounts are total liquid (melted snow/ice too), so they only count for blocks with no snow or ice.
+    var WXK = [];
     TYP.forEach(function (ty) {
       var arr = s[ty[0]], any = arr.some(function (v) { return v; }), amts = ty[2] ? (g[ty[2]] || []) : [];
-      var anyAmt = amts.some(function (b) { return b[2] > 0; });
-      if (!any && !anyAmt) return; // only show types with some chance or amount anywhere in the forecast
-      // every weather-type card (rain, thunder, snow, freezing rain, sleet, fog) moves up when it has activity on screen.
-      //   Rain's amounts are total liquid (melted snow/ice too), so they only count for blocks with no snow or ice.
       var own = ty[0] !== "rain" ? amts : amts.filter(function (b) {
         return !(g.snow || []).concat(g.ice || []).some(function (x) { return x[2] > 0 && x[0] < b[0] + b[1] * H && x[0] + x[1] * H > b[0]; });
       });
-      PRECIP.push({ k: out.length, arr: arr, amts: own });
+      if (!any && !own.some(function (b) { return b[2] > 0; })) return;
+      WXK.push(out.length);
       var grid = "", body = "";
       LV.forEach(function (l, k) { var y = base - lvH * (k + 1); grid += '<line x1="0" x2="' + W + '" y1="' + y + '" y2="' + y + '" stroke="var(--grid)"/>'; });
       grid += '<line x1="0" x2="' + W + '" y1="' + base + '" y2="' + base + '" stroke="var(--line)"/>';
@@ -496,16 +496,17 @@
 
     gin.innerHTML = out.join("");
     // the cards scroll sideways together
-    var scs = gin.querySelectorAll(".gsc"), syncing = false, pt;
+    // weather cards first (CSS order, so the DOM order that MARKS is indexed by stays put)
+    gin.querySelectorAll(".pan").forEach(function (pn, k) { var r = WXK.indexOf(k); pn.style.order = r >= 0 ? r - 100 : k; });
+    var scs = gin.querySelectorAll(".gsc"), syncing = false;
     scs.forEach(function (sc) {
       sc.addEventListener("scroll", function () {
-        clearTimeout(pt); pt = setTimeout(function () { precipFirst(sc); }, 150);
         if (syncing) return; syncing = true;
         scs.forEach(function (o) { if (o !== sc) o.scrollLeft = sc.scrollLeft; });
         requestAnimationFrame(function () { syncing = false; });
       }, { passive: true });
     });
-    G = { start: start, n: n, nowI: nowI, mids: mids, marks: MARKS, W: W, precip: PRECIP };
+    G = { start: start, n: n, nowI: nowI, mids: mids, marks: MARKS, W: W };
 
     // day chips
     var dh = '<button type="button" class="chip on" data-x="' + Math.max(0, nowI - 6) + '">Now</button>';
@@ -513,31 +514,9 @@
     $("days").innerHTML = dh;
     if (selIdx == null || selIdx >= n) selIdx = nowI;
     select(selIdx, null, false);
-    requestAnimationFrame(function () { scrollAll(Math.max(0, GL + ((Date.now() - start) / H) * PX - firstSc().clientWidth * 0.3)); precipFirst(); });
+    requestAnimationFrame(function () { scrollAll(Math.max(0, GL + ((Date.now() - start) / H) * PX - firstSc().clientWidth * 0.3)); });
   }
-  // weather-type cards (rain, thunder, snow, freezing rain, sleet, fog) with any activity move to the top (CSS order,
-  //   so the DOM order that G.marks is indexed by stays put); the card being scrolled stays where it is on the page
-  function precipFirst(sc) {
-    if (!G || !G.precip) return;
-    var pans = $("gin").querySelectorAll(".pan"), f = firstSc(); if (!pans.length || !f.clientWidth) return;
-    var i0 = Math.floor((f.scrollLeft + 34 - GL) / PX), i1 = Math.ceil((f.scrollLeft + f.clientWidth - GL) / PX) - 1;
-    var t0 = G.start + i0 * H, t1 = G.start + (i1 + 1) * H, now = Date.now(), rank = {};
-    // Every weather-type card with activity goes above Temperature/Wind/Cloud. Cards active in the hours on screen lead
-    //   (earliest first); the rest follow by when their activity next starts (from now, else from the start of the graph).
-    G.precip.forEach(function (p) {
-      var times = [];
-      for (var i = 0; i < G.n; i++) if (p.arr[i]) times.push(G.start + i * H);
-      p.amts.forEach(function (b) { if (b[2] > 0) times.push(b[0]); });
-      if (!times.length) return;
-      var onScreen = times.filter(function (t) { return t >= t0 - H && t < t1; }).concat(p.amts.filter(function (b) { return b[2] > 0 && b[0] < t1 && b[0] + b[1] * H > t0; }).map(function (b) { return Math.max(b[0], t0); }));
-      var next = times.filter(function (t) { return t >= now - H; });
-      rank[p.k] = onScreen.length ? Math.min.apply(null, onScreen) - 1e13 : (next.length ? Math.min.apply(null, next) : Math.min.apply(null, times) + 1e13);
-    });
-    var host = sc && sc.closest(".pan"), y0 = host && host.getBoundingClientRect().top;
-    var lead = Object.keys(rank).sort(function (a, b) { return rank[a] - rank[b] || a - b; });
-    pans.forEach(function (pn, k) { var r = lead.indexOf(String(k)); pn.style.order = r >= 0 ? r - 1000 : k; });
-    if (host) { var dy = host.getBoundingClientRect().top - y0; if (Math.abs(dy) > 1) window.scrollBy(0, dy); }
-  }
+
 
   function extremaLabels(arr, y) {
     // daily high and low right on the temperature line, with a halo so they read over the other lines
