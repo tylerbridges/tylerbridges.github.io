@@ -451,62 +451,75 @@
       '<path d="' + path(s.ws, y2) + '" fill="none" stroke="var(--wind)" stroke-width="2.25"/>',
       [{ a: s.ws, y: y2, c: "var(--wind)", u: " mph", n: "Sustained" }, { a: s.wg, y: y2, c: "var(--gust)", u: " mph", n: "Gusts" }]));
 
-    // 3 sky / pop / rh
-    var pt = [0, 25, 50, 75, 100], h3 = 110, y3 = scale(pt, h3, 6);
-    var sky = path(s.sky, y3); var skyA = sky ? sky + "L" + X(n - 1) + " " + y3(0) + "L" + X(0) + " " + y3(0) + "Z" : "";
-    var CLOUDK = out.length; // this card sits right under the weather cards, above Temperature
-    out.push(panel("Cloud Cover &amp; Precipitation (%)", li("var(--sky)", "blk", "Sky cover (cloud %)") + li("var(--pop)", "", "Precip chance"), h3, pt, y3, "",
-      '<path d="' + skyA + '" fill="var(--sky)" fill-opacity=".28" stroke="var(--sky)" stroke-width="1"/>' +
-      '<path d="' + path(s.pop, y3) + '" fill="none" stroke="var(--pop)" stroke-width="2.25"/>',
-      [{ a: s.sky, y: y3, c: "var(--sky)", u: "%", area: true, n: "Sky cover" }, { a: s.pop, y: y3, c: "var(--pop)", u: "%", n: "Precip chance" }]));
-
-    // 4 one panel per weather type, laid out like weather.gov's graph: SChc/Chc/Lkly/Ocnl axis with hourly bars,
-    //   and the forecast amount for each NWS time block shown as a labeled box along the bottom
+    // 3 Precipitation: one card for how likely (chance line on a 0-100% scale with the NWS wording bands), what kind
+    //   (hourly bars coloured by type, split when types mix; thunder/fog as marks along the top) and how much (amount
+    //   boxes per NWS time block, one row each for liquid, snow and ice).
     var COVW = { SChc: "slight chance", Chc: "chance", Lkly: "likely", Ocnl: "occasional", Iso: "isolated", Patchy: "patchy", Sct: "scattered", Areas: "areas",
       Num: "numerous", Wide: "widespread", Pds: "periods", Inter: "intermittent", Brf: "brief", Def: "definite", Frq: "frequent" };
-    var TYP = [["rain", "Rain", "qpf", 2], ["thunder", "Thunder"], ["snow", "Snow", "snow", 2], ["fzra", "Freezing rain", "ice", 2], ["sleet", "Sleet"], ["fog", "Fog"]];
-    var LV = ["SChc", "Chc", "Lkly", "Ocnl"], ph = 118, top0 = 22, labTop = top0 - 18, // time label sits above the Ocnl line
-      lvH = 17, base = top0 + lvH * 4, boxY = base + 6;
-    // Weather-type cards (rain, thunder, snow, freezing rain, sleet, fog) always come first, in this order, and a card
-    //   only appears when it has some activity (a chance or an amount) anywhere in the hourly period.
-    //   Rain's amounts are total liquid (melted snow/ice too), so they only count for blocks with no snow or ice.
-    var WXK = [];
-    TYP.forEach(function (ty) {
-      var arr = s[ty[0]], any = arr.some(function (v) { return v; }), amts = ty[2] ? (g[ty[2]] || []) : [];
-      var own = ty[0] !== "rain" ? amts : amts.filter(function (b) {
-        return !(g.snow || []).concat(g.ice || []).some(function (x) { return x[2] > 0 && x[0] < b[0] + b[1] * H && x[0] + x[1] * H > b[0]; });
+    var PT = [["rain", "Rain"], ["snow", "Snow"], ["fzra", "Freezing rain"], ["sleet", "Sleet"]], MKT = [["thunder", "Thunder"], ["fog", "Fog"]];
+    var AMT = [["qpf", "Liquid", "rain", 2], ["snow", "Snow", "snow", 1], ["ice", "Ice", "fzra", 2]].filter(function (a) { return (g[a[0]] || []).some(function (b) { return b[2] > 0; }); });
+    var LVP = [20, 50, 70, 100]; // top of each NWS wording band: slight chance 10-20%, chance 30-50%, likely 60-70%, definite/occasional 80-100%
+    var pTop = 34, pH = 108, pBase = pTop + pH, yP = function (v) { return pBase - pH * v / 100; };
+    var rowY = function (k) { return pBase + 6 + k * 20; }, pHH = pBase + (AMT.length ? 6 + AMT.length * 20 : 6);
+    var pg = "", pb = "";
+    // wording bands (the SChc/Chc/Lkly/Ocnl scale) behind everything
+    [[10, 20], [30, 50], [60, 70], [80, 100]].forEach(function (r) { pg += '<rect x="0" y="' + yP(r[1]) + '" width="' + W + '" height="' + (yP(r[0]) - yP(r[1])) + '" fill="var(--grid)" fill-opacity=".55"/>'; });
+    pg += '<line x1="0" x2="' + W + '" y1="' + pBase + '" y2="' + pBase + '" stroke="var(--line)"/>';
+    var used = {};
+    for (i = 0; i < n; i++) {
+      var here = PT.filter(function (t) { return s[t[0]][i]; });
+      here.forEach(function (t, k) {
+        var v = s[t[0]][i], top = yP(LVP[Math.min(4, v[0]) - 1]), w = (PX - 4) / here.length; used[t[0]] = 1;
+        pb += '<rect x="' + (i * PX + 2 + k * w).toFixed(1) + '" y="' + top.toFixed(1) + '" width="' + w.toFixed(1) + '" height="' + (pBase - top).toFixed(1) + '" fill="var(--' + t[0] + ')" fill-opacity=".85"/>';
       });
-      if (!any && !own.some(function (b) { return b[2] > 0; })) return;
-      WXK.push(out.length);
-      var grid = "", body = "";
-      LV.forEach(function (l, k) { var y = base - lvH * (k + 1); grid += '<line x1="0" x2="' + W + '" y1="' + y + '" y2="' + y + '" stroke="var(--grid)"/>'; });
-      grid += '<line x1="0" x2="' + W + '" y1="' + base + '" y2="' + base + '" stroke="var(--line)"/>';
-      for (i = 0; i < n; i++) {
-        var v = arr[i]; if (!v) continue;
-        var hgt = lvH * Math.min(4, v[0]);
-        body += '<rect x="' + (i * PX + 2) + '" y="' + (base - hgt) + '" width="' + (PX - 4) + '" height="' + hgt + '" fill="var(--' + ty[0] + ')"/>';
-      }
-      amts.forEach(function (b) {
+      MKT.forEach(function (t, k) {
+        var v = s[t[0]][i]; if (!v) return; used[t[0]] = 1;
+        pb += '<rect x="' + (i * PX + 1) + '" y="' + (18 + k * 7) + '" width="' + (PX - 2) + '" height="5" rx="1.5" fill="var(--' + t[0] + ')" fill-opacity="' + (0.35 + 0.16 * Math.min(4, v[0])) + '"/>';
+      });
+    }
+    // exact chance of precipitation on top of the bars
+    pb += '<path d="' + path(s.pop, yP) + '" fill="none" stroke="var(--ink2)" stroke-width="2"/>';
+    AMT.forEach(function (a, k) {
+      (g[a[0]] || []).forEach(function (b) {
         if (!(b[2] > 0)) return;
         var x0 = Math.max(0, (b[0] - start) / H) * PX, x1 = Math.min(n, (b[0] - start) / H + b[1]) * PX; if (x1 - x0 < 8) return;
-        body += '<rect x="' + (x0 + 1) + '" y="' + boxY + '" width="' + (x1 - x0 - 2) + '" height="16" rx="3" fill="var(--surface)" stroke="var(--' + ty[0] + ')" stroke-width="1.25"/>' +
-          '<text x="' + ((x0 + x1) / 2) + '" y="' + (boxY + 12) + '" text-anchor="middle" font-size="10.5" font-weight="700" fill="var(--ink)">' + b[2].toFixed(ty[3]) + ' in</text>';
+        pb += '<rect x="' + (x0 + 1) + '" y="' + rowY(k) + '" width="' + (x1 - x0 - 2) + '" height="16" rx="3" fill="var(--surface)" stroke="var(--' + a[2] + ')" stroke-width="1.25"/>' +
+          '<text x="' + ((x0 + x1) / 2) + '" y="' + (rowY(k) + 12) + '" text-anchor="middle" font-size="10.5" font-weight="700" fill="var(--ink)">' + b[2].toFixed(a[3]) + ' in</text>';
       });
-      var hh = ty[2] ? ph : base + 6;
-      var axis = '<div class="yax" style="height:' + hh + "px;margin-bottom:-" + hh + 'px">' + LV.map(function (l, k) { return '<span style="top:' + (base - lvH * (k + 1)) + 'px">' + l + "</span>"; }).join("") + "</div>";
-      var legend = li("var(--" + ty[0] + ")", "blk", ty[1] + " chance") + (ty[2] ? li("var(--" + ty[0] + ")", "box", "Amount per NWS time block (in)") : "");
-      out.push(wrap(ty[1], legend, axis, '<svg class="gsvg plot" width="' + W + '" height="' + hh + '">' + (function (v) { return grid + v[0] + body + v[1]; })(vlines(hh, labTop, base - lvH * 4)) + "</svg>",
-        [{ txt: (function (key, akey, dec, NAME) { return function (i) {
-          var o = [], v = s[key][i]; o.push(NAME + ": " + (v ? (COVW[v[1]] || v[1].toLowerCase()) : "none"));
-          if (akey) { var b = blockAt(g[akey] || [], start + i * H); if (b && b[2]) o.push("Amount: " + b[2].toFixed(dec) + " in"); }
-          return o; }; })(ty[0], ty[2], ty[3], ty[1]) }], labTop));
     });
+    var pAxis = '<div class="yax" style="height:' + pHH + "px;margin-bottom:-" + pHH + 'px">' +
+      [["SChc", 15], ["Chc", 40], ["Lkly", 65], ["Ocnl", 90]].map(function (l) { return '<span style="top:' + yP(l[1]) + 'px">' + l[0] + "</span>"; }).join("") +
+      AMT.map(function (a, k) { return '<span style="top:' + (rowY(k) + 8) + 'px">' + (a[1] === "Liquid" ? "Liq" : a[1]) + "</span>"; }).join("") + "</div>";
+    var pLegend = li("var(--ink2)", "", "Precip chance") + PT.concat(MKT).filter(function (t) { return used[t[0]]; }).map(function (t) { return li("var(--" + t[0] + ")", "blk", t[1]); }).join("") +
+      (AMT.length ? li("var(--line)", "box", "Amount per NWS time block") : "") + '<span style="white-space:nowrap;color:var(--muted)">Bands: slight chance · chance · likely · definite</span>';
+    var pMarks = [{ a: s.pop, y: yP, c: "var(--ink2)", u: "%", n: "Precip chance" }];
+    var PK = out.length; // this card leads the Hourly tab
+    out.push(wrap("Precipitation", pLegend, pAxis, '<svg class="gsvg plot" width="' + W + '" height="' + pHH + '">' +
+      (function (v) { return pg + v[0] + pb + v[1] + nowVals(pMarks, 0, 0, pHH); })(vlines(pHH, 0, pTop)) + "</svg>",
+      // holding: a compact stack under the time (chance, then the types with their wording, then this block's amounts)
+      [{ txt: function (i) {
+        var o = [s.pop[i] == null ? "Chance: –" : s.pop[i] + "% chance"];
+        var ty = PT.concat(MKT).filter(function (t) { return s[t[0]][i]; }).map(function (t, k) { var w = COVW[s[t[0]][i][1]] || s[t[0]][i][1].toLowerCase(); return (k ? t[1].toLowerCase() : t[1]) + " " + w; });
+        for (var q = 0; q < ty.length; q += 2) o.push(ty.slice(q, q + 2).join(", "));
+        var am = AMT.map(function (a) { var b = blockAt(g[a[0]] || [], start + i * H); return b && b[2] ? (a[1] === "Liquid" ? "Liquid " : a[1] + " ") + b[2].toFixed(a[3]) + '"' : null; }).filter(Boolean);
+        return o.concat(am);
+        return o;
+      } }], 0));
+    var WXK = [PK];
+
+    // 4 cloud cover
+    var pt = [0, 25, 50, 75, 100], h3 = 90, y3 = scale(pt, h3, 6);
+    var sky = path(s.sky, y3); var skyA = sky ? sky + "L" + X(n - 1) + " " + y3(0) + "L" + X(0) + " " + y3(0) + "Z" : "";
+    var CLOUDK = out.length; // right under Precipitation, above Temperature
+    out.push(panel("Cloud Cover (%)", li("var(--sky)", "blk", "Sky cover (cloud %)"), h3, pt, y3, "",
+      '<path d="' + skyA + '" fill="var(--sky)" fill-opacity=".28" stroke="var(--sky)" stroke-width="1"/>',
+      [{ a: s.sky, y: y3, c: "var(--sky)", u: "%", area: true, n: "Sky cover" }]));
 
     // All cards share ONE native horizontal scroller (.gall), so sideways scrolling runs on the browser's compositor at the
     //   display's full refresh rate with no script keeping cards in step. Card backgrounds sit in a fixed layer behind it
     //   (.gbg); titles, legends and y-axes stay put with position:sticky.
     gin.innerHTML = '<div class="gbg"></div><div class="gall"><div class="gwide" style="width:' + (W + GL) + 'px">' + out.join("") + "</div></div>";
-    // order: weather cards, then Cloud Cover & Precipitation, then Temperature and Wind (CSS order, so the DOM order that MARKS is indexed by stays put)
+    // order: Precipitation, Cloud Cover, then Temperature and Wind (CSS order, so the DOM order that MARKS is indexed by stays put)
     gin.querySelectorAll(".pan").forEach(function (pn, k) { var r = WXK.indexOf(k); pn.style.order = r >= 0 ? r - 100 : k === CLOUDK ? -50 : k; });
     gLayout();
     G = { start: start, n: n, nowI: nowI, mids: mids, marks: MARKS, W: W };
@@ -561,13 +574,14 @@
       cur.push([c, sv.offsetTop, sv.getAttribute("height")]);
     });
     cur.forEach(function (x) { var c = x[0]; c.hidden = !show; c.style.left = (GL + i * PX + PX / 2) + "px"; c.style.top = x[1] + "px"; c.style.height = x[2] + "px"; });
+    var scv = firstSc(), sFlip = GL + i * PX + PX / 2 - scv.scrollLeft > scv.clientWidth * 0.55 || i * PX + PX / 2 > G.W - 70;
     $("gin").querySelectorAll(".pan").forEach(function (pn, k) {
       var mk = pn.querySelector("svg.mk"), sv = pn.querySelector("svg.plot"); if (!mk) return;
       var mm = (G.marks && G.marks[k]) || { list: [], top: 8 }, ms = mm.list;
       if (!show) { mk.setAttribute("hidden", ""); return; }
       mk.setAttribute("height", sv.getAttribute("height"));
       var x = i * PX + PX / 2, o = "", pts = [], TX = 'font-weight="700" fill="var(--nowtxt)" stroke="var(--surface)" stroke-width="3" paint-order="stroke" stroke-linejoin="round"';
-      var flip = x > G.W - 70; // labels go left near the right edge
+      var flip = sFlip; // labels go to the left of the cursor once it's past the middle of the screen
       var tl = fmt(t, { hour: "numeric", minute: "2-digit" }).replace(" AM", "a").replace(" PM", "p");
       // time of the scrubbed hour, same spot and style as the current-time label
       o += '<text x="' + (flip ? x - 5 : x + 5) + '" y="' + (mm.top + 13) + '"' + (flip ? ' text-anchor="end"' : "") + ' font-size="11" ' + TX + ">" + (i === G.nowI ? "Now · " : "") + fmt(t, { weekday: "short" }) + " " + tl + "</text>";
