@@ -25,8 +25,10 @@
   --sans:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
   --cond:"IBM Plex Sans Condensed","IBM Plex Sans",-apple-system,"Arial Narrow",sans-serif;
   --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
-  overscroll-behavior-y:contain;
+  overscroll-behavior-y:none;
 }
+/* no browser pull-to-refresh or rubber-band at the top; refresh is the header button */
+html,body{overscroll-behavior-y:none}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   color-scheme:dark;
   --ground:#0D1319; --surface:#151D25; --sunk:#111820; --ink:#E4EAF0; --ink2:#B4C0CB; --muted:#8696A6; --line:#26323D; --grid:#1E2832;
@@ -524,9 +526,9 @@ body:has(#testbar:not([hidden])) .sec{scroll-margin-top:140px}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=15"></script>
-<script src="wx-live.js?v=15"></script>
-<script src="wx-scenarios.js?v=15"></script>
-<script src="app.js?v=15"></script>
+<script src="wx-normalize.js?v=16"></script>
+<script src="wx-live.js?v=16"></script>
+<script src="wx-scenarios.js?v=16"></script>
+<script src="app.js?v=16"></script>
 </body>
 </html>

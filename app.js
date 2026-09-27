@@ -867,6 +867,18 @@
   window.addEventListener("mouseup", function () { if (sc0 || scrubbing) scrubEnd(); });
   gin.addEventListener("contextmenu", function (e) { if (e.target.closest(".gsc")) e.preventDefault(); });
 
+  // Block the browser's own pull-to-refresh (iOS Safari ignores overscroll-behavior for it): a downward drag that
+  //   starts with the page already at the top is cancelled. Sideways drags (graphs, maps) and scrollable panels are left alone.
+  var pt0 = null;
+  window.addEventListener("touchstart", function (e) { pt0 = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null; }, { passive: true });
+  window.addEventListener("touchmove", function (e) {
+    if (!pt0 || e.touches.length !== 1 || window.scrollY > 0) return;
+    var dx = e.touches[0].clientX - pt0.x, dy = e.touches[0].clientY - pt0.y;
+    if (dy <= 0 || Math.abs(dy) < Math.abs(dx)) return;
+    for (var el = e.target; el && el !== document.body; el = el.parentElement) if (el.scrollTop > 0) return; // an inner panel scrolling back up
+    if (e.cancelable) e.preventDefault();
+  }, { passive: false });
+
   document.addEventListener("visibilitychange", function () { if (!document.hidden && Date.now() - lastCheck > 5 * 60000) refresh(false); });
   setInterval(renderFresh, 30000);
   var rw; window.addEventListener("resize", function () { clearTimeout(rw); rw = setTimeout(function () { if (doc && tab === "hourly") renderGraph(); }, 200); });
