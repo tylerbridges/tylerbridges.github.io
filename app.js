@@ -85,7 +85,9 @@
       if (h.days27 && !/^No hazardous/i.test(h.days27)) parts.push(["Next 7 days", h.days27]);
       out.push('<details class="haz hwo" style="--sev:var(--sev-min)"><summary><div class="hz-t">Hazardous Weather Outlook<span class="hz-when">NWS ' + esc(doc.loc.office || "") + " · " + esc(dtm(h.issued)) + '</span></div>' +
         '<div class="hz-b">' + esc(firstSent(parts[0][1], 170)) + '</div><span class="hz-more"><span class="hz-o">Details ▾</span><span class="hz-c">Hide details ▴</span></span></summary>' +
-        '<div class="hz-body">' + parts.map(function (p) { return "<b>" + p[0] + "</b>\n" + esc(p[1]); }).join("\n\n") + "</div></details>");
+        // expanded: the outlook verbatim (section headers like ".DAY ONE..." in bold); older cached data falls back to its two sections
+        '<div class="hz-body">' + (h.text ? reflow(h.text).split("\n\n").map(function (p) { return /^\.[A-Z]/.test(p) ? p.replace(/^(\.[A-Z][^.]*(?:\.\.\.)?)(.*)$/, function (m, hd, rest) { return "<b>" + esc(hd) + "</b>" + esc(rest); }) : esc(p); }).join("\n\n")
+          : parts.map(function (p) { return "<b>" + p[0] + "</b>\n" + esc(p[1]); }).join("\n\n")) + "</div></details>");
     }
     return out.length ? '<div class="hazs">' + out.join("") + "</div>" : "";
   }

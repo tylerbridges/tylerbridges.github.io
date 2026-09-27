@@ -222,7 +222,10 @@
         var sect = function (re) { var m = re.exec(seg); return m ? m[1].replace(/\s+/g, " ").trim() : ""; };
         var d1 = sect(/\.DAY ONE\.\.\.[^\n]*\n([\s\S]*?)(?=\n\.[A-Z]|$)/), d27 = sect(/\.DAYS TWO THROUGH SEVEN\.\.\.[^\n]*\n([\s\S]*?)(?=\n\.[A-Z]|$)/);
         var none = function (t) { return !t || /^No hazardous weather is expected/i.test(t); };
-        hwo = { id: raw.hwo.id, issued: Date.parse(raw.hwo.issuanceTime), day1: d1, days27: d27, hazard: !(none(d1) && none(d27)) };
+        // full segment text verbatim, from "This hazardous weather outlook is for..." on (skips the zone/UGC header)
+        var body = /\n(This hazardous weather outlook[\s\S]*)$/i.exec(seg);
+        hwo = { id: raw.hwo.id, issued: Date.parse(raw.hwo.issuanceTime), day1: d1, days27: d27, hazard: !(none(d1) && none(d27)),
+          text: (body ? body[1] : "").trim() };
       }
     }
 
