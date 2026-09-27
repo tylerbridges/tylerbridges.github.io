@@ -372,9 +372,10 @@
       function clear(top, bot) { return spans.every(function (r) { return r[1] < top - 1 || r[0] > bot + 1; }); }
       var placed = [], o = "", minTop = topY + 20;
       pts.forEach(function (q) {
-        var own = spans.length ? null : null, lo = Infinity, hi = -Infinity;
+        var lo = Infinity, hi = -Infinity;
         for (var k = k0; k <= k1; k++) { var v = q.m.a[k]; if (v == null) continue; var yy = q.m.y(v) + off; lo = Math.min(lo, yy); hi = Math.max(hi, yy); }
         if (!isFinite(lo)) { lo = hi = q.yy; }
+        q.lo = lo;
         // try just above its own line, then just below, then step outward until the box is clear of every line and label
         var cands = [];
         for (var d = 0; d < 60; d += 4) { cands.push(lo - 4 - d); cands.push(hi + 13 + d); }
@@ -386,8 +387,19 @@
           if (placed.some(function (b) { return !(bot < b[0] - 1 || top > b[1] + 1); })) continue;
           ly = base; break;
         }
-        if (ly == null) ly = Math.max(minTop + 10, Math.min(h - 3, q.yy - 5));
-        placed.push([ly - 10, ly + 2]);
+        q.ly = ly; if (ly != null) placed.push([ly - 10, ly + 2]);
+      });
+      // A label must sit next to its own line (within ~22px) and keep the lines' top-to-bottom order. If any doesn't (two
+      //   lines close together near the top or bottom, e.g. heat index just above temp), stack them at their own points instead.
+      var byY = pts.slice().sort(function (a, b) { return a.yy - b.yy; });
+      var ok = byY.every(function (q, k) { return q.ly != null && Math.abs(q.ly - 4 - q.yy) <= 22 && (!k || q.ly > byY[k - 1].ly); });
+      if (!ok) {
+        var last = -Infinity;
+        byY.forEach(function (q) { q.ly = Math.max(q.yy + 4, minTop + 10, last + 13); last = q.ly; });
+        var over = last - (h - 3); if (over > 0) byY.forEach(function (q) { q.ly -= over; });
+      }
+      pts.forEach(function (q) {
+        var ly = q.ly, lo = q.lo;
         o += '<circle cx="' + nx.toFixed(1) + '" cy="' + q.yy.toFixed(1) + '" r="3.2" fill="' + q.m.c + '" stroke="var(--surface)" stroke-width="1.5"/>' +
           // a label that lands inside a shaded area (e.g. under the cloud-cover line) turns white with a grey outline so it stays readable
           (q.m.area && ly - 5 > lo ? '<text x="' + (nx + 7).toFixed(1) + '" y="' + ly.toFixed(1) + '" font-size="11.5" font-weight="700" fill="#FFFFFF">'
