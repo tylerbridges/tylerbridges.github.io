@@ -244,12 +244,16 @@ body.subpage-open{overflow:hidden}
 .lg-now,.lg-sel{position:absolute;top:0;bottom:0;left:0;z-index:1;pointer-events:none;will-change:transform}
 .lg-now{width:0;border-left:2px dashed var(--orange)}
 .lg-sel{background:color-mix(in srgb,var(--blue) 22%,transparent);border-left:1px solid var(--blue)}
-.lg-readout{min-height:5.2rem;margin-top:.6rem}
-.lg-when{margin:0 0 .35rem;font-size:.85rem}
-.lg-legend{margin:.5rem 0 0;display:grid;gap:.25rem}
-.lg-legend .legend{margin:0;gap:.2rem .8rem;font-size:.75rem}
-.lg-legend b{min-width:3.6rem;color:var(--text);font-weight:650}
+.lg-panels{display:grid;gap:1.1rem}
+.lg-panel{margin:0;min-width:0}
+.lg-panel figcaption{margin-bottom:.4rem}
+.lg-panel h3{font-size:.95rem}
+.lg-readout{min-height:1.9rem;margin-top:.45rem;display:flex;flex-wrap:wrap;gap:.3rem;align-items:center}
+.lg-when{font-size:.75rem;font-weight:700;color:var(--blue);margin-right:.15rem;white-space:nowrap}
+.lg-legend{margin:.2rem 0 0;gap:.15rem .8rem;font-size:.75rem}
 .lg-legend .swatch{height:.3rem;border-radius:2px}
+.lg-legend .g-arrow-sw{width:0;height:0;border-radius:0;border:4px solid transparent;border-bottom:8px solid var(--muted);border-top:0;background:none}
+.lg-legend .cat-scale{display:none}
 .lg-legend .s-gust{background:repeating-linear-gradient(90deg,var(--orange) 0 3px,transparent 3px 5px)}
 .lg-svg text,.lg-axis-svg text{font-family:inherit}
 .g-v{stroke:var(--line);stroke-dasharray:1 3}

@@ -116,11 +116,13 @@ window.WXLive = (function(){
     return {windows,rows,events};
   }
   // ---- Graph rendering -----------------------------------------------------
-  // Global x coordinates (hour i starts at i*pph). The track is split into
-  // day-long SVG chunks that are drawn only when scrolled near, so the
-  // graph never builds more than it shows.
-  const L={head:30,temp:[36,116],wind:[174,70],arrows:256,pct:[276,86],cats:[374,15],amt:[472,20],height:540};
-  const CAT_TOP=L.cats[0],AMT_ROWS=[{key:'qpf',label:'QPF',axis:'QPF″',cls:'a-qpf',digits:2},{key:'snow',label:'Snow',axis:'Snow″',cls:'a-snow',digits:1},{key:'ice',label:'Ice',axis:'Ice″',cls:'a-ice',digits:2}];
+  // Five separate graphs, like weather.gov's graphical forecast: temperature,
+  // wind, percentages, precipitation types and amounts. Each has its own
+  // title, legend, axis and time labels, and all of them scroll together.
+  // Global x coordinates (hour i starts at i*pph); each graph's track is
+  // split into day-long SVG chunks drawn only when scrolled near.
+  const HEAD=26,TOP=HEAD+6,PAD=8,CAT_ROW=16,AMT_ROW=22;
+  const AMT_ROWS=[{key:'qpf',label:'Liquid',axis:'QPF',cls:'a-qpf',digits:2},{key:'snow',label:'Snow',axis:'Snow',cls:'a-snow',digits:1},{key:'ice',label:'Ice',axis:'Ice',cls:'a-ice',digits:2}];
   function niceDomain(values,minSpan,step){
     const vals=values.filter(v=>v!=null);
     if(!vals.length)return [0,minSpan];
@@ -132,11 +134,11 @@ window.WXLive = (function(){
     const t=[];g.hours.forEach(h=>['temp','dew','chill','heat'].forEach(k=>{if(h[k]!=null)t.push(tempValue(h[k]))}));
     const w=[];g.hours.forEach(h=>['wind','gust'].forEach(k=>{if(h[k]!=null)w.push(windValue(h[k]))}));
     const amtMax={};AMT_ROWS.forEach(r=>{amtMax[r.key]=Math.max(0,...g.amounts[r.key].map(p=>p.total))});
-    return {temp:niceDomain(t,20,10),wind:[0,Math.max(windValue(20),Math.ceil(Math.max(0,...w)/10)*10)],amtMax};
+    return {temp:niceDomain(t,20,10),wind:[0,Math.max(windValue(20),Math.ceil(Math.max(0,...w)/10)*10)],pct:[0,100],amtMax};
   }
-  // Round-number gridlines: every 10° or 20°, every 5 or 10 mph.
-  const tickCount=([lo,hi])=>{const span=hi-lo;return span/10>6?span/20:span/10<3?span/5:span/10};
-  const yOf=([top,h],[lo,hi])=>v=>top+(hi-v)*h/(hi-lo);
+  // Round-number gridlines: every 10° or 20°, every 5 or 10 mph, every 25%.
+  const tickCount=([lo,hi])=>{const span=hi-lo;return span===100?4:span/10>6?span/20:span/10<3?span/5:span/10};
+  const yOf=(top,h,[lo,hi])=>v=>top+(hi-v)*h/(hi-lo);
   function linePath(g,key,convert,y,pph,i0,i1){
     let d='',on=false;
     for(let i=Math.max(0,i0-1);i<=Math.min(g.count-1,i1+1);i++){
@@ -146,91 +148,114 @@ window.WXLive = (function(){
     }
     return d;
   }
-  function chunkSVG(g,sc,pph,c){
-    const i0=c*24,i1=Math.min(g.count,i0+24),x0=i0*pph,w=(i1-i0)*pph,tz=g.tz,out=[];
-    const yT=yOf(L.temp,sc.temp),yW=yOf(L.wind,sc.wind),yP=yOf(L.pct,[0,100]);
-    // Gridlines and time labels.
+  const T=v=>tempValue(v),W=v=>windValue(v),P=v=>v;
+  const hline=(out,x0,w,y)=>out.push(`<line class="g-h" x1="${x0}" x2="${x0+w}" y1="${y}" y2="${y}"/>`);
+  const axisTicks=(out,dom,n,y,suffix)=>{for(let j=0;j<=n;j++){const v=dom[0]+(dom[1]-dom[0])*j/n;out.push(`<text class="g-ax" x="40" y="${(y(v)+3.5).toFixed(1)}" text-anchor="end">${Math.round(v)}${suffix}</text>`)}};
+  // A line graph panel: gridlines at its round-number ticks, then its series.
+  function linePanel({key,title,plot,extra=0,series,unit,suffix,legend,readout}){
+    return {key,title,height:TOP+plot+extra+PAD,legend,readout,
+      axis(out,sc){axisTicks(out,sc[key],tickCount(sc[key]),yOf(TOP,plot,sc[key]),suffix);out.push(`<text class="g-unit" x="2" y="${TOP-4}">${esc(unit())}</text>`);if(this.axisExtra)this.axisExtra(out)},
+      draw(out,g,sc,pph,i0,i1,x0,w){
+        const dom=sc[key],y=yOf(TOP,plot,dom),n=tickCount(dom);
+        for(let j=0;j<=n;j++)hline(out,x0,w,TOP+plot*j/n);
+        series.forEach(([k,cls,convert])=>{const d=linePath(g,k,convert,y,pph,i0,i1);if(d)out.push(`<path class="${cls}" d="${d}"/>`)});
+        if(this.drawExtra)this.drawExtra(out,g,pph,i0,i1);
+      }};
+  }
+  const deg=()=>`°${tempUnitLabel()}`;
+  const tempText=v=>v==null?'—':`${tempValue(v)}${deg()}`,pctText=v=>v==null?'—':`${Math.round(v)}%`,windText=v=>v==null?'—':`${windValue(v)} ${windUnitLabel()}`;
+  const WIND_PLOT=76;
+  const PANELS=[
+    linePanel({key:'temp',title:'Temperature',plot:120,unit:deg,suffix:'°',
+      series:[['dew','s-dew',T],['chill','s-chill',T],['heat','s-heat',T],['temp','s-temp',T]],
+      legend:[['s-temp','Temperature'],['s-dew','Dew point'],['s-chill','Wind chill'],['s-heat','Heat index']],
+      readout:h=>[['Temp',tempText(h.temp)],['Dew pt',tempText(h.dew)],...(h.chill!=null?[['Wind chill',tempText(h.chill)]]:[]),...(h.heat!=null?[['Heat index',tempText(h.heat)]]:[])]}),
+    Object.assign(linePanel({key:'wind',title:'Surface wind',plot:WIND_PLOT,extra:18,unit:windUnitLabel,suffix:'',
+      series:[['gust','s-gust',W],['wind','s-wind',W]],
+      legend:[['s-wind','Sustained'],['s-gust','Gust'],['g-arrow-sw','Direction (arrows point downwind)']],
+      readout:h=>[['Wind',h.wind==null?'—':`${compass(h.dir)} ${windText(h.wind)}`.trim()],['Gust',windText(h.gust)]]}),{
+      axisExtra(out){out.push(`<text class="g-unit" x="2" y="${TOP+WIND_PLOT+15}">Dir</text>`)},
+      // Direction arrows every three hours, pointing downwind.
+      drawExtra(out,g,pph,i0,i1){for(let i=i0;i<i1;i++){const h=g.hours[i];if(h.lh%3||h.dir==null)continue;out.push(`<path class="g-arrow" d="M0 -5L3.2 3L0 1.2L-3.2 3Z" transform="translate(${(i*pph).toFixed(1)} ${TOP+WIND_PLOT+11}) rotate(${(h.dir+180)%360})"/>`)}}}),
+    linePanel({key:'pct',title:'Sky cover, humidity & precipitation potential',plot:90,unit:()=>'%',suffix:'%',
+      series:[['sky','s-sky',P],['rh','s-rh',P],['pop','s-pop',P]],
+      legend:[['s-sky','Sky cover'],['s-rh','Relative humidity'],['s-pop','Precipitation potential']],
+      readout:h=>[['Sky',pctText(h.sky)],['Humidity',pctText(h.rh)],['Precip',pctText(h.pop)]]}),
+    {key:'wx',title:'Chance of precipitation type',height:TOP+WX_TYPES.length*CAT_ROW+PAD,
+      legend:[['cat-scale','Bar height: SChc · Chc · Lkly · Ocnl · Def']],
+      readout:h=>{const pills=WX_TYPES.filter(t=>h.wx[t.key]).map(t=>{const v=h.wx[t.key];return [t.label,`${CATEGORY_NAMES[v.cat]}${v.raw.toLowerCase()!==CATEGORY_NAMES[v.cat].toLowerCase()?` (${v.raw})`:''}`]});return pills},
+      empty:'No rain, snow, thunder, ice or fog this hour',
+      axis(out){WX_TYPES.forEach((type,r)=>out.push(`<text class="g-row" x="2" y="${TOP+r*CAT_ROW+12}">${esc(type.label)}</text>`))},
+      // A bar per run of the same category, its height the category, and the
+      // category label once per run where there's room for it.
+      draw(out,g,sc,pph,i0,i1,x0,w){
+        for(let r=0;r<=WX_TYPES.length;r++)hline(out,x0,w,TOP+r*CAT_ROW);
+        WX_TYPES.forEach((type,r)=>{
+          const top=TOP+r*CAT_ROW;
+          let runStart=0,run=null;
+          const flush=end=>{
+            if(!run)return;
+            const a=Math.max(runStart,i0),b=Math.min(end,i1),bh=(CAT_ROW-2)*run.level/5;
+            if(b>a)out.push(`<rect class="c-${type.key}" x="${(a*pph).toFixed(1)}" y="${(top+CAT_ROW-1-bh).toFixed(1)}" width="${((b-a)*pph).toFixed(1)}" height="${bh.toFixed(1)}"/>`);
+            // One label per run, drawn by the chunk holding its middle.
+            const mid=(runStart+end)/2;
+            if((end-runStart)*pph>=24&&mid>=i0&&mid<i1)out.push(`<text class="g-cat" x="${(mid*pph).toFixed(1)}" y="${top+CAT_ROW-4}" text-anchor="middle">${run.cat}</text>`);
+          };
+          for(let i=0;i<=g.count;i++){
+            const v=i<g.count?g.hours[i].wx[type.key]||null:null;
+            if(v?.cat!==run?.cat){flush(i);runStart=i;run=v}
+          }
+        });
+      }},
+    {key:'amt',title:'Precipitation amounts (in)',height:TOP+AMT_ROWS.length*AMT_ROW+PAD,
+      legend:[['a-qpf','Liquid (QPF)'],['a-snow','Snowfall'],['a-ice','Ice accumulation']],
+      readout:(h,g)=>{const pills=[];AMT_ROWS.forEach(row=>{const p=g.amounts[row.key].find(p=>h.t>=p.start&&h.t<p.end);if(p&&p.total>0)pills.push([row.label,`${p.total.toFixed(row.digits)} in / ${p.hours} h`])});return pills},
+      empty:'No measurable amount this hour',
+      axis(out){AMT_ROWS.forEach((row,r)=>out.push(`<text class="g-row" x="2" y="${TOP+r*AMT_ROW+14}">${esc(row.axis)}</text>`))},
+      // One bar per forecast interval, labelled when wide enough.
+      draw(out,g,sc,pph,i0,i1,x0,w){
+        for(let r=0;r<=AMT_ROWS.length;r++)hline(out,x0,w,TOP+r*AMT_ROW);
+        AMT_ROWS.forEach((row,r)=>{
+          const top=TOP+r*AMT_ROW,max=sc.amtMax[row.key]||1;
+          for(const p of g.amounts[row.key]){
+            if(!(p.total>0))continue;
+            const a=Math.max(p.start,g.start),b=Math.min(p.end,g.start+g.count*HOUR);
+            const xa=(a-g.start)/HOUR*pph,xb=(b-g.start)/HOUR*pph;
+            if(xb<=x0||xa>=x0+w)continue;
+            const bh=Math.max(2,(AMT_ROW-8)*p.total/max);
+            out.push(`<rect class="${row.cls}" x="${(xa+.5).toFixed(1)}" y="${(top+AMT_ROW-1-bh).toFixed(1)}" width="${Math.max(1,xb-xa-1).toFixed(1)}" height="${bh.toFixed(1)}"/>`);
+            const label=p.total.toFixed(row.digits);
+            if(+label>0&&xb-xa>=label.length*5.6+4)out.push(`<text class="g-amt" x="${((xa+xb)/2).toFixed(1)}" y="${top+9}" text-anchor="middle">${label}</text>`);
+          }
+        });
+      }}
+  ];
+  function chunkSVG(panel,g,sc,pph,c){
+    const i0=c*24,i1=Math.min(g.count,i0+24),x0=i0*pph,w=(i1-i0)*pph,tz=g.tz,out=[],H=panel.height;
+    // Time labels and gridlines, repeated on every graph.
     for(let i=i0;i<i1;i++){
       const h=g.hours[i],x=i*pph;
-      if(h.lh%6===0)out.push(`<line class="g-v${h.lh===0?' g-day':''}" x1="${x}" x2="${x}" y1="${L.head-4}" y2="${L.height}"/>`,`<text class="g-hr" x="${x+2}" y="${L.head-8}">${esc(hourText(h.t,tz))}</text>`);
-      if(h.lh===0||i===0&&(24-h.lh)*pph>=72)out.push(`<text class="g-dayl" x="${x+2}" y="11">${esc(i===0?'Today':dayText(h.t,tz))}</text>`);
+      if(h.lh%6===0)out.push(`<line class="g-v${h.lh===0?' g-day':''}" x1="${x}" x2="${x}" y1="${HEAD-4}" y2="${H-PAD}"/>`,`<text class="g-hr" x="${x+2}" y="${HEAD-6}">${esc(hourText(h.t,tz))}</text>`);
+      if(h.lh===0||i===0&&(24-h.lh)*pph>=72)out.push(`<text class="g-dayl" x="${x+2}" y="10">${esc(i===0?'Today':dayText(h.t,tz))}</text>`);
     }
-    [[L.temp,sc.temp,tickCount(sc.temp)],[L.wind,sc.wind,tickCount(sc.wind)],[L.pct,[0,100],4]].forEach(([panel,dom,n])=>{
-      for(let j=0;j<=n;j++){const y=panel[0]+panel[1]*j/n;out.push(`<line class="g-h" x1="${x0}" x2="${x0+w}" y1="${y}" y2="${y}"/>`)}
-    });
-    for(let r=0;r<=WX_TYPES.length;r++){const y=CAT_TOP+r*L.cats[1];out.push(`<line class="g-h" x1="${x0}" x2="${x0+w}" y1="${y}" y2="${y}"/>`)}
-    for(let r=0;r<=AMT_ROWS.length;r++){const y=L.amt[0]+r*L.amt[1];out.push(`<line class="g-h" x1="${x0}" x2="${x0+w}" y1="${y}" y2="${y}"/>`)}
-    // Weather categories: a bar per hour whose height is the category, and
-    // the category label once per run where there's room for it.
-    WX_TYPES.forEach((type,r)=>{
-      const top=CAT_TOP+r*L.cats[1],rowH=L.cats[1];
-      let runStart=0,run=null;
-      const flush=end=>{
-        if(!run)return;
-        const a=Math.max(runStart,i0),b=Math.min(end,i1),bh=(rowH-2)*run.level/5;
-        if(b>a)out.push(`<rect class="c-${type.key}" x="${(a*pph).toFixed(1)}" y="${(top+rowH-1-bh).toFixed(1)}" width="${((b-a)*pph).toFixed(1)}" height="${bh.toFixed(1)}"/>`);
-        // One label per run, drawn by the chunk holding its middle.
-        const mid=(runStart+end)/2;
-        if((end-runStart)*pph>=24&&mid>=i0&&mid<i1)out.push(`<text class="g-cat" x="${(mid*pph).toFixed(1)}" y="${top+rowH-4}" text-anchor="middle">${run.cat}</text>`);
-      };
-      for(let i=0;i<=g.count;i++){
-        const v=i<g.count?g.hours[i].wx[type.key]||null:null;
-        if(v?.cat!==run?.cat){flush(i);runStart=i;run=v}
-      }
-    });
-    // Amount periods: one bar per forecast interval, labelled when wide enough.
-    AMT_ROWS.forEach((row,r)=>{
-      const top=L.amt[0]+r*L.amt[1],rowH=L.amt[1],max=sc.amtMax[row.key]||1;
-      for(const p of g.amounts[row.key]){
-        if(!(p.total>0))continue;
-        const a=Math.max(p.start,g.start),b=Math.min(p.end,g.start+g.count*HOUR);
-        const xa=(a-g.start)/HOUR*pph,xb=(b-g.start)/HOUR*pph;
-        if(xb<=x0||xa>=x0+w)continue;
-        const bh=Math.max(2,(rowH-8)*p.total/max);
-        out.push(`<rect class="${row.cls}" x="${(xa+.5).toFixed(1)}" y="${(top+rowH-1-bh).toFixed(1)}" width="${Math.max(1,xb-xa-1).toFixed(1)}" height="${bh.toFixed(1)}"/>`);
-        const label=p.total.toFixed(row.digits);
-        if(+label>0&&xb-xa>=label.length*5.6+4)out.push(`<text class="g-amt" x="${((xa+xb)/2).toFixed(1)}" y="${top+9}" text-anchor="middle">${label}</text>`);
-      }
-    });
-    // Lines.
-    const T=v=>tempValue(v),W=v=>windValue(v),P=v=>v;
-    [['sky','s-sky',P,yP],['rh','s-rh',P,yP],['pop','s-pop',P,yP],['dew','s-dew',T,yT],['chill','s-chill',T,yT],['heat','s-heat',T,yT],['temp','s-temp',T,yT],['gust','s-gust',W,yW],['wind','s-wind',W,yW]].forEach(([key,cls,convert,y])=>{
-      const d=linePath(g,key,convert,y,pph,i0,i1);if(d)out.push(`<path class="${cls}" d="${d}"/>`);
-    });
-    // Wind direction arrows every three hours, pointing downwind.
-    for(let i=i0;i<i1;i++){const h=g.hours[i];if(h.lh%3||h.dir==null)continue;out.push(`<path class="g-arrow" d="M0 -5L3.2 3L0 1.2L-3.2 3Z" transform="translate(${(i*pph).toFixed(1)} ${L.arrows}) rotate(${(h.dir+180)%360})"/>`)}
-    return `<svg class="lg-svg" viewBox="${x0} 0 ${w} ${L.height}" width="${w}" height="${L.height}" aria-hidden="true" focusable="false">${out.join('')}</svg>`;
+    panel.draw(out,g,sc,pph,i0,i1,x0,w);
+    return `<svg class="lg-svg" viewBox="${x0} 0 ${w} ${H}" width="${w}" height="${H}" aria-hidden="true" focusable="false">${out.join('')}</svg>`;
   }
-  function axisSVG(sc){
-    const out=[],yT=yOf(L.temp,sc.temp),yW=yOf(L.wind,sc.wind),yP=yOf(L.pct,[0,100]);
-    const ticks=(dom,n,y,suffix)=>{for(let j=0;j<=n;j++){const v=dom[0]+(dom[1]-dom[0])*j/n;out.push(`<text class="g-ax" x="40" y="${(y(v)+3.5).toFixed(1)}" text-anchor="end">${Math.round(v)}${suffix}</text>`)}};
-    ticks(sc.temp,tickCount(sc.temp),yT,'°');ticks(sc.wind,tickCount(sc.wind),yW,'');ticks([0,100],4,yP,'%');
-    out.push(`<text class="g-unit" x="2" y="${L.temp[0]-2}">°${esc(tempUnitLabel())}</text>`,`<text class="g-unit" x="2" y="${L.wind[0]-2}">${esc(windUnitLabel())}</text>`,`<text class="g-unit" x="2" y="${L.arrows+3}">Dir</text>`,`<text class="g-unit" x="2" y="${L.pct[0]-2}">%</text>`);
-    WX_TYPES.forEach((type,r)=>out.push(`<text class="g-row" x="2" y="${CAT_TOP+r*L.cats[1]+11}">${esc(type.label)}</text>`));
-    AMT_ROWS.forEach((row,r)=>out.push(`<text class="g-row" x="2" y="${L.amt[0]+r*L.amt[1]+13}">${esc(row.axis)}</text>`));
-    return `<svg class="lg-axis-svg" viewBox="0 0 44 ${L.height}" width="44" height="${L.height}" aria-hidden="true" focusable="false">${out.join('')}</svg>`;
+  function axisSVG(panel,sc){
+    const out=[];panel.axis(out,sc);
+    return `<svg class="lg-axis-svg" viewBox="0 0 44 ${panel.height}" width="44" height="${panel.height}" aria-hidden="true" focusable="false">${out.join('')}</svg>`;
   }
-  const LEGEND=[['Temps',[['s-temp','Temp'],['s-dew','Dew pt'],['s-chill','Wind chill'],['s-heat','Heat index']]],['Wind',[['s-wind','Sustained'],['s-gust','Gust']]],['Percent',[['s-sky','Sky cover'],['s-rh','Humidity'],['s-pop','Precip potential']]]];
-  function readoutHTML(g,i){
-    const h=g.hours[i],tz=g.tz,deg=`°${tempUnitLabel()}`,wu=windUnitLabel();
-    const T=v=>v==null?'—':`${tempValue(v)}${deg}`,W=v=>v==null?'—':`${windValue(v)}`,P=v=>v==null?'—':`${Math.round(v)}%`;
-    const now=Date.now()>=h.t&&Date.now()<h.t+HOUR;
-    const pills=[['Temp',T(h.temp)],['Dew pt',T(h.dew)]];
-    if(h.chill!=null)pills.push(['Wind chill',T(h.chill)]);
-    if(h.heat!=null)pills.push(['Heat index',T(h.heat)]);
-    pills.push(['Wind',`${compass(h.dir)} ${W(h.wind)} ${wu}`.trim()],['Gust',h.gust==null?'—':`${W(h.gust)} ${wu}`],['Sky',P(h.sky)],['Humidity',P(h.rh)],['Precip',P(h.pop)]);
-    WX_TYPES.forEach(type=>{const v=h.wx[type.key];if(v)pills.push([type.label,`${CATEGORY_NAMES[v.cat]}${v.raw.toLowerCase()!==CATEGORY_NAMES[v.cat].toLowerCase()?` (${v.raw})`:''}`])});
-    AMT_ROWS.forEach(row=>{
-      const p=g.amounts[row.key].find(p=>h.t>=p.start&&h.t<p.end);
-      if(p&&p.total>0)pills.push([row.key==='qpf'?'Liquid':row.label,`${p.total.toFixed(row.digits)} in / ${p.hours} h`]);
-    });
-    return `<p class="lg-when"><strong>${esc(now?'Now':i===0?'Today':'')}${now?' · ':''}${esc(fmt(tz,{weekday:'short',month:'short',day:'numeric'}).format(h.t))} · ${esc(hourText(h.t,tz))}</strong></p><div class="metric-row">${pills.map(([k,v])=>`<span class="metric"><b>${esc(k)}:</b> ${esc(v)}</span>`).join('')}</div>`;
+  function readoutHTML(panel,g,i){
+    const h=g.hours[i],tz=g.tz,now=Date.now()>=h.t&&Date.now()<h.t+HOUR;
+    const when=`${now?'Now · ':''}${fmt(tz,{weekday:'short'}).format(h.t)} ${hourText(h.t,tz)}`;
+    const pills=panel.readout(h,g);
+    return `<span class="lg-when">${esc(when)}</span>${pills.length?pills.map(([k,v])=>`<span class="metric"><b>${esc(k)}:</b> ${esc(v)}</span>`).join(''):`<span class="note">${esc(panel.empty)}</span>`}`;
   }
   // ---- State ---------------------------------------------------------------
   const blank=()=>({data:null,sig:null,error:null,retry:null,attempt:0});
   const state={ctx:null,locKey:null,forecastTime:null,lastRefresh:0,inflight:null,sources:{alerts:blank(),grid:blank(),obs:blank(),afd:blank()}};
   const pphFor=width=>Math.max(5,width/48); // 48 hours fill the visible width
-  let graph=null; // {g,sc,pph,selected,observer,…}
+  let graph=null; // {g,sc,pph,panels:[{panel,scroller,track,observer,readout}],selected,selectedT}
   // ---- Fetchers ------------------------------------------------------------
   const fetchers={
     alerts:ctx=>activeAlerts(ctx.loc),
@@ -265,7 +290,7 @@ window.WXLive = (function(){
     const sections=el('live-sections');
     if(!sections)return api;
     sections.innerHTML=`
-      <section class="live-section" aria-labelledby="lg-title"><div class="live-head"><h2 id="lg-title">Hourly graph · 7 days</h2><p class="last-updated" id="lg-time"></p></div><p class="live-note hidden" id="lg-note" role="status"></p><div id="lg-body"><p class="note">Loading grid forecast…</p></div></section>
+      <section class="live-section" aria-labelledby="lg-title"><div class="live-head"><h2 id="lg-title">Hourly graphs · 7 days</h2><p class="last-updated" id="lg-time"></p></div><p class="live-note hidden" id="lg-note" role="status"></p><div class="lg-panels" id="lg-body"><p class="note">Loading grid forecast…</p></div></section>
       <section class="live-section" aria-labelledby="st-title"><div class="live-head"><h2 id="st-title">Storm totals</h2></div><p class="live-note hidden" id="st-note" role="status"></p><div id="st-body"><p class="note">Loading…</p></div></section>
       <section class="live-section" aria-labelledby="ob-title"><div class="live-head"><h2 id="ob-title">Recent observations</h2><p class="last-updated" id="ob-time"></p></div><p class="live-note hidden" id="ob-note" role="status"></p><div id="ob-body"><p class="note">Loading observations…</p></div></section>
       <section class="live-section" aria-labelledby="afd-title"><div class="live-head"><h2 id="afd-title">Forecast discussion</h2><p class="last-updated" id="afd-time"></p></div><p class="live-note hidden" id="afd-note" role="status"></p><div id="afd-body"><p class="note">Loading discussion…</p></div></section>`;
@@ -273,7 +298,7 @@ window.WXLive = (function(){
     setInterval(tick,60000);
     document.addEventListener('unitschange',rerenderAll);
     document.addEventListener('timezonechange',()=>{if(state.ctx)state.ctx={...state.ctx,tz:WX.getTimeZone()};rerenderAll()});
-    new ResizeObserver(()=>{if(graph&&graph.scroller.clientWidth&&Math.abs(pphFor(graph.scroller.clientWidth)-graph.pph)>.05)renderGraph()}).observe(sections);
+    new ResizeObserver(()=>{const width=graph?.panels[0].scroller.clientWidth;if(width&&Math.abs(pphFor(width)-graph.pph)>.05)renderGraph()}).observe(sections);
     return api;
   }
   function tick(){
@@ -371,64 +396,86 @@ window.WXLive = (function(){
     if(!body||!data)return;
     const g=buildGraph(data,state.ctx.tz);
     if(!g.count||!g.hours.some(h=>h.temp!=null)){body.innerHTML='<p class="note">No grid forecast data for this location.</p>';graph=null;return}
-    const prevScroll=graph?.scroller?.scrollLeft||0,prevPph=graph?.pph||0,prevSelected=graph?.selectedT??null;
-    graph?.observer?.disconnect();
-    body.innerHTML=`<div class="lg-wrap"><div class="lg-axis"></div><div class="lg-scroll" tabindex="0" role="group" aria-roledescription="graph" aria-label="Hourly forecast graph for the next ${Math.round(g.count/24)} days. Use the left and right arrow keys to step through hours; tap or hover an hour for all of its values." aria-describedby="lg-readout"><div class="lg-track"><div class="lg-now" aria-hidden="true"></div><div class="lg-sel" aria-hidden="true"></div></div></div></div><div class="lg-readout" id="lg-readout" aria-live="polite"></div><div class="lg-legend" aria-hidden="true">${LEGEND.map(([group,items])=>`<div class="legend"><b>${group}</b>${items.map(([cls,label])=>`<span><i class="swatch ${cls}"></i>${label}</span>`).join('')}</div>`).join('')}</div>`;
-    const scroller=body.querySelector('.lg-scroll'),track=body.querySelector('.lg-track'),sc=scales(g);
-    const pph=pphFor(scroller.clientWidth||320);
-    body.querySelector('.lg-axis').innerHTML=axisSVG(sc);
-    track.style.width=`${g.count*pph}px`;track.style.height=`${L.height}px`;
-    const chunks=Math.ceil(g.count/24),rendered=new Set();
-    const observer=new IntersectionObserver(entries=>entries.forEach(e=>{
-      if(!e.isIntersecting)return;
-      const c=+e.target.dataset.c;if(rendered.has(c))return;rendered.add(c);
-      e.target.innerHTML=chunkSVG(g,sc,pph,c);observer.unobserve(e.target);
-    }),{root:scroller,rootMargin:'0px 100% 0px 100%'});
-    for(let c=0;c<chunks;c++){
-      const box=document.createElement('div');box.className='lg-chunk';box.dataset.c=c;
-      const i0=c*24,i1=Math.min(g.count,i0+24);box.style.left=`${i0*pph}px`;box.style.width=`${(i1-i0)*pph}px`;
-      track.appendChild(box);observer.observe(box);
-    }
-    graph={g,sc,pph,scroller,track,observer,selectedT:prevSelected};
+    const prevScroll=graph?.panels?.[0]?.scroller?.scrollLeft||0,prevPph=graph?.pph||0,prevSelected=graph?.selectedT??null;
+    graph?.panels?.forEach(p=>p.observer.disconnect());
+    const days=Math.round(g.count/24);
+    body.innerHTML=PANELS.map(panel=>`<figure class="lg-panel" data-panel="${panel.key}"><figcaption><h3 id="lg-${panel.key}-title">${esc(panel.title)}</h3><div class="legend lg-legend" aria-hidden="true">${panel.legend.map(([cls,label])=>`<span><i class="swatch ${cls}"></i>${esc(label)}</span>`).join('')}</div></figcaption><div class="lg-wrap"><div class="lg-axis"></div><div class="lg-scroll" tabindex="0" role="group" aria-roledescription="graph" aria-labelledby="lg-${panel.key}-title" aria-describedby="lg-${panel.key}-readout lg-help"><div class="lg-track"><div class="lg-now" aria-hidden="true"></div><div class="lg-sel" aria-hidden="true"></div></div></div></div><div class="metric-row lg-readout" id="lg-${panel.key}-readout" aria-live="off"></div></figure>`).join('')+`<p class="sr-only" id="lg-help">Next ${days} days by hour. Use the left and right arrow keys to step through hours; tap or hover an hour to read its values. All graphs scroll together.</p>`;
+    const sc=scales(g),first=body.querySelector('.lg-scroll'),pph=pphFor(first.clientWidth||320);
+    const panels=PANELS.map(panel=>{
+      const fig=body.querySelector(`[data-panel="${panel.key}"]`),scroller=fig.querySelector('.lg-scroll'),track=fig.querySelector('.lg-track');
+      fig.querySelector('.lg-axis').innerHTML=axisSVG(panel,sc);
+      track.style.width=`${g.count*pph}px`;track.style.height=`${panel.height}px`;
+      const observer=new IntersectionObserver(entries=>entries.forEach(e=>{
+        if(!e.isIntersecting)return;
+        e.target.innerHTML=chunkSVG(panel,g,sc,pph,+e.target.dataset.c);observer.unobserve(e.target);
+      }),{root:scroller,rootMargin:'0px 100% 0px 100%'});
+      for(let c=0;c<Math.ceil(g.count/24);c++){
+        const box=document.createElement('div');box.className='lg-chunk';box.dataset.c=c;
+        const i0=c*24,i1=Math.min(g.count,i0+24);box.style.left=`${i0*pph}px`;box.style.width=`${(i1-i0)*pph}px`;
+        track.appendChild(box);observer.observe(box);
+      }
+      return {panel,scroller,track,observer,readout:fig.querySelector('.lg-readout')};
+    });
+    graph={g,sc,pph,panels,selectedT:prevSelected};
     placeNow();
     const keep=prevSelected!=null&&prevSelected>=g.start&&prevSelected<g.start+g.count*HOUR;
-    select(keep?(prevSelected-g.start)/HOUR:0,false);
-    if(prevScroll)scroller.scrollLeft=prevPph?prevScroll*pph/prevPph:prevScroll;
-    wireGraph(scroller,track);
+    select(keep?(prevSelected-g.start)/HOUR:0);
+    if(prevScroll)scrollAll(prevPph?prevScroll*pph/prevPph:prevScroll);
+    panels.forEach(p=>wireGraph(p));
+    syncScroll(panels.map(p=>p.scroller));
+  }
+  function scrollAll(x){graph?.panels.forEach(p=>{if(p.scroller.scrollLeft!==x)p.scroller.scrollLeft=x})}
+  // The graphs share one time axis: whichever one is being scrolled leads,
+  // and the others follow. Only the leader's scroll events are mirrored, so
+  // the followers' own scroll events can't feed back into it.
+  function syncScroll(scrollers){
+    let lead=null,idle=0;
+    const claim=s=>()=>{lead=s};
+    scrollers.forEach(s=>{
+      ['pointerdown','touchstart','wheel','focus'].forEach(type=>s.addEventListener(type,claim(s),{passive:true}));
+      s.addEventListener('scroll',()=>{
+        if(lead&&lead!==s)return;
+        lead=s;
+        const x=s.scrollLeft;
+        scrollers.forEach(o=>{if(o!==s&&o.scrollLeft!==x)o.scrollLeft=x});
+        clearTimeout(idle);idle=setTimeout(()=>{lead=null},180);
+      },{passive:true});
+    });
   }
   function placeNow(){
     if(!graph)return;
-    const {g,pph,track}=graph,offset=(Date.now()-g.start)/HOUR,now=track.querySelector('.lg-now');
-    if(!now)return;
-    if(offset<0||offset>g.count){now.style.display='none';return}
-    now.style.display='';now.style.transform=`translateX(${(offset*pph).toFixed(1)}px)`;
+    const {g,pph}=graph,offset=(Date.now()-g.start)/HOUR,show=offset>=0&&offset<=g.count;
+    graph.panels.forEach(p=>{const now=p.track.querySelector('.lg-now');now.style.display=show?'':'none';if(show)now.style.transform=`translateX(${(offset*pph).toFixed(1)}px)`});
   }
-  function select(i,announce=true){
+  // One selected hour across every graph; each graph reads out its own values.
+  function select(i,source=null){
     if(!graph)return;
-    const {g,pph,track}=graph;
+    const {g,pph}=graph;
     i=Math.max(0,Math.min(g.count-1,Math.round(i)));
     graph.selected=i;graph.selectedT=g.hours[i].t;
-    const line=track.querySelector('.lg-sel');line.style.transform=`translateX(${(i*pph).toFixed(1)}px)`;line.style.width=`${pph.toFixed(2)}px`;
-    const readout=el('lg-readout');
-    readout.setAttribute('aria-live',announce?'polite':'off');
-    readout.innerHTML=readoutHTML(g,i);
+    graph.panels.forEach(p=>{
+      const line=p.track.querySelector('.lg-sel');line.style.transform=`translateX(${(i*pph).toFixed(1)}px)`;line.style.width=`${pph.toFixed(2)}px`;
+      p.readout.setAttribute('aria-live',p===source?'polite':'off');
+      p.readout.innerHTML=readoutHTML(p.panel,g,i);
+    });
   }
-  function wireGraph(scroller,track){
+  function wireGraph(p){
+    const {scroller,track}=p;
     let frame=0;
     const indexAt=clientX=>(clientX-track.getBoundingClientRect().left)/graph.pph;
     scroller.addEventListener('pointermove',e=>{
       if(e.pointerType==='touch')return;
-      const x=e.clientX;cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>select(Math.floor(indexAt(x)),false));
+      const x=e.clientX;cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>select(Math.floor(indexAt(x))));
     });
     // Touch drags scroll natively; a tap picks the hour.
-    scroller.addEventListener('click',e=>select(Math.floor(indexAt(e.clientX))));
+    scroller.addEventListener('click',e=>select(Math.floor(indexAt(e.clientX)),p));
     scroller.addEventListener('keydown',e=>{
       const step={ArrowRight:1,ArrowLeft:-1,PageDown:6,PageUp:-6}[e.key];
       let i=graph.selected??0;
       if(e.key==='Home')i=0;else if(e.key==='End')i=graph.g.count-1;else if(step)i+=step;else return;
-      e.preventDefault();select(i);
+      e.preventDefault();select(i,p);
       const x=graph.selected*graph.pph,view=scroller.clientWidth;
-      if(x<scroller.scrollLeft+graph.pph*2||x>scroller.scrollLeft+view-graph.pph*2)scroller.scrollLeft=x-view/2;
+      if(x<scroller.scrollLeft+graph.pph*2||x>scroller.scrollLeft+view-graph.pph*2)scrollAll(Math.max(0,x-view/2));
     });
   }
   function renderTotals(){
