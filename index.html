@@ -302,6 +302,8 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
 .trow{background:transparent}
 /* warnings / outlooks inside the Now card */
 .hazs{grid-column:1/-1;display:flex;flex-direction:column;gap:8px;min-width:0}
+/* same space above the alerts (under the conditions line) as below them (to the divider) */
+.now-line + .hazs{margin-top:14px}
 .haz{border:1px solid var(--line);border-left:5px solid var(--sev,var(--sev-mod));border-radius:10px;background:color-mix(in srgb,var(--sev,var(--sev-mod)) 9%,var(--surface));overflow:hidden}
 .haz summary{list-style:none;cursor:pointer;padding:9px 11px;display:flex;flex-direction:column;gap:3px}
 .haz summary::-webkit-details-marker{display:none}
@@ -526,9 +528,9 @@ body:has(#testbar:not([hidden])) .sec{scroll-margin-top:140px}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=19"></script>
-<script src="wx-live.js?v=19"></script>
-<script src="wx-scenarios.js?v=19"></script>
-<script src="app.js?v=19"></script>
+<script src="wx-normalize.js?v=20"></script>
+<script src="wx-live.js?v=20"></script>
+<script src="wx-scenarios.js?v=20"></script>
+<script src="app.js?v=20"></script>
 </body>
 </html>
