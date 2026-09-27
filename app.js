@@ -905,16 +905,21 @@
     var f = []; for (var d = n0; d <= n1; d++) f.push({ l: (pre || "Day ") + d, u: pat.replace("{d}", d) });
     return { id: pat, name: name, frames: f, src: src, link: link };
   }
+  function grp(g, p, chip) { p.g = g; p.chip = chip; return p; }
   var MCATS = [
-    { id: "winter", name: "Snow & Ice", prods: [
-      ndfd("SnowAmt", "Snowfall forecast", "Each frame is 6 hours of snow; the valid time is printed on the map."),
-      ndfd("IceAccum", "Ice accumulation forecast", "Each frame is 6 hours of freezing rain ice; the valid time is printed on the map."),
-      days("Chance of 4\"+ snow", WPC + "wwd/day{d}_psnow_gt_04_conus.gif", 1, 3, "NWS Weather Prediction Center (24-hour periods)", WPC + "wwd/winter_wx.shtml"),
-      days("Chance of 8\"+ snow", WPC + "wwd/day{d}_psnow_gt_08_conus.gif", 1, 3, "NWS Weather Prediction Center (24-hour periods)", WPC + "wwd/winter_wx.shtml"),
-      days("Chance of 12\"+ snow", WPC + "wwd/day{d}_psnow_gt_12_conus.gif", 1, 3, "NWS Weather Prediction Center (24-hour periods)", WPC + "wwd/winter_wx.shtml"),
-      days("Chance of 0.25\"+ ice", WPC + "wwd/day{d}_pice_gt_25_conus.gif", 1, 3, "NWS Weather Prediction Center (24-hour periods)", WPC + "wwd/winter_wx.shtml"),
-      days("Winter composite", WPC + "wwd/day{d}_composite_conus.gif", 1, 3, "NWS Weather Prediction Center: 4/8/12\" snow and 0.25\" ice chances", WPC + "wwd/winter_wx.shtml"),
-      days("Days 4–7 snow outlook", WPC + "wwd/pwpf_d47/gif/prbww_sn25_DAY{d}.gif", 4, 7, "NWS Weather Prediction Center: chance of 0.25\"+ liquid as snow/sleet", WPC + "wwd/pwpf_d47/pwpf_medr.php")
+    { id: "precip", name: "Precipitation", prods: [
+      grp("Totals", { id: "wpc-qpf", name: "Precip totals", src: "NWS Weather Prediction Center (liquid equivalent, rain + melted snow)", link: WPC + "qpf/qpf2.shtml",
+        frames: [{ l: "Day 1 (24 hr)", u: WPC + "qpf/fill_94qwbg.gif" }, { l: "Day 2 (24 hr)", u: WPC + "qpf/fill_98qwbg.gif" }, { l: "Day 3 (24 hr)", u: WPC + "qpf/fill_99qwbg.gif" },
+          { l: "Days 1–2 (48 hr)", u: WPC + "qpf/d12_fill.gif" }, { l: "5 days", u: WPC + "qpf/p120i.gif" }, { l: "7 days", u: WPC + "qpf/p168i.gif" }] }, "Daily & multi-day totals"),
+      grp("Totals", ndfd("QPF", "Precip forecast (6-hr)", "Each frame is 6 hours of liquid precipitation; the valid time is printed on the map."), "6-hr precip"),
+      grp("Snow", ndfd("SnowAmt", "Snowfall forecast", "Each frame is 6 hours of snow; the valid time is printed on the map."), "6-hr snowfall"),
+      grp("Snow", days("Chance of 4\"+ snow", WPC + "wwd/day{d}_psnow_gt_04_conus.gif", 1, 3, "NWS Weather Prediction Center (24-hour periods)", WPC + "wwd/winter_wx.shtml"), "Chance of 4\"+"),
+      grp("Snow", days("Chance of 8\"+ snow", WPC + "wwd/day{d}_psnow_gt_08_conus.gif", 1, 3, "NWS Weather Prediction Center (24-hour periods)", WPC + "wwd/winter_wx.shtml"), "Chance of 8\"+"),
+      grp("Snow", days("Chance of 12\"+ snow", WPC + "wwd/day{d}_psnow_gt_12_conus.gif", 1, 3, "NWS Weather Prediction Center (24-hour periods)", WPC + "wwd/winter_wx.shtml"), "Chance of 12\"+"),
+      grp("Snow", days("Days 4–7 snow outlook", WPC + "wwd/pwpf_d47/gif/prbww_sn25_DAY{d}.gif", 4, 7, "NWS Weather Prediction Center: chance of 0.25\"+ liquid as snow/sleet", WPC + "wwd/pwpf_d47/pwpf_medr.php"), "Days 4–7 outlook"),
+      grp("Ice", ndfd("IceAccum", "Ice accumulation forecast", "Each frame is 6 hours of freezing rain ice; the valid time is printed on the map."), "6-hr ice"),
+      grp("Ice", days("Chance of 0.25\"+ ice", WPC + "wwd/day{d}_pice_gt_25_conus.gif", 1, 3, "NWS Weather Prediction Center (24-hour periods)", WPC + "wwd/winter_wx.shtml"), "Chance of 0.25\"+"),
+      grp("Snow & ice", days("Winter composite", WPC + "wwd/day{d}_composite_conus.gif", 1, 3, "NWS Weather Prediction Center: 4/8/12\" snow and 0.25\" ice chances", WPC + "wwd/winter_wx.shtml"), "Snow & ice odds, days 1–3")
     ] },
     { id: "temp", name: "Temperature", prods: [
       ndfd("MaxT", "Daytime highs", "The date is printed on the map.", 7, function (i) { return "Day " + i; }, "NWS National Digital Forecast Database (official forecast)"),
@@ -924,12 +929,6 @@
       { id: "cpc-t", name: "6–14 day outlook", src: "NOAA Climate Prediction Center: chance of above/below normal", link: "https://www.cpc.ncep.noaa.gov/",
         frames: [{ l: "6–10 days", u: CPC + "610day/610temp.new.gif" }, { l: "8–14 days", u: CPC + "814day/814temp.new.gif" }] }
     ] },
-    { id: "precip", name: "Precipitation", prods: [
-      { id: "wpc-qpf", name: "Precip totals", src: "NWS Weather Prediction Center (liquid equivalent, rain + melted snow)", link: WPC + "qpf/qpf2.shtml",
-        frames: [{ l: "Day 1 (24 hr)", u: WPC + "qpf/fill_94qwbg.gif" }, { l: "Day 2 (24 hr)", u: WPC + "qpf/fill_98qwbg.gif" }, { l: "Day 3 (24 hr)", u: WPC + "qpf/fill_99qwbg.gif" },
-          { l: "Days 1–2 (48 hr)", u: WPC + "qpf/d12_fill.gif" }, { l: "5 days", u: WPC + "qpf/p120i.gif" }, { l: "7 days", u: WPC + "qpf/p168i.gif" }] },
-      ndfd("QPF", "Precip forecast (6-hr)", "Each frame is 6 hours of liquid precipitation; the valid time is printed on the map.")
-    ] },
     { id: "outlook", name: "Outlooks", prods: [
       { id: "cpc-p", name: "6–14 day precip outlook", src: "NOAA Climate Prediction Center", link: "https://www.cpc.ncep.noaa.gov/",
         frames: [{ l: "6–10 days", u: CPC + "610day/610prcp.new.gif" }, { l: "8–14 days", u: CPC + "814day/814prcp.new.gif" }] },
@@ -938,7 +937,8 @@
     ] }
   ];
   var winterNow = [10, 11, 0, 1, 2, 3].indexOf(new Date().getMonth()) >= 0;
-  var M = store("wx-map") || { cat: winterNow ? "winter" : "precip", id: winterNow ? "ndfd-SnowAmt" : "wpc-qpf", area: "local" };
+  var M = store("wx-map") || { cat: "precip", id: winterNow ? "ndfd-SnowAmt" : "wpc-qpf", area: "local" };
+  if (M.cat === "winter") M.cat = "precip";
   M.f = 0; var mTimer = null;
   function mCat() { return MCATS.filter(function (c) { return c.id === M.cat; })[0] || MCATS[0]; }
   function mProd() { var c = mCat(); return c.prods.filter(function (p) { return p.id === M.id; })[0] || c.prods[0]; }
@@ -970,7 +970,11 @@
     var c = mCat(), p = mProd(); M.id = p.id;
     if (M.f >= p.frames.length) M.f = 0;
     $("mcats").innerHTML = MCATS.map(function (x) { return '<button type="button" class="chip' + (x.id === c.id ? " on" : "") + '" data-mcat="' + x.id + '">' + x.name + "</button>"; }).join("");
-    $("mprods").innerHTML = c.prods.map(function (x) { return '<button type="button" class="chip' + (x.id === p.id ? " on" : "") + '" data-mprod="' + esc(x.id) + '">' + esc(x.name) + "</button>"; }).join("");
+    // products grouped under small headings, like Pivotal Weather's parameter menu
+    var gs = []; c.prods.forEach(function (x) { var k = x.g || ""; if (!gs.length || gs[gs.length - 1].k !== k) gs.push({ k: k, l: [] }); gs[gs.length - 1].l.push(x); });
+    $("mprods").innerHTML = gs.map(function (gr) {
+      return '<div class="mgrp">' + (gr.k ? '<span class="mgl">' + esc(gr.k) + "</span>" : "") + gr.l.map(function (x) { return '<button type="button" class="chip' + (x.id === p.id ? " on" : "") + '" data-mprod="' + esc(x.id) + '">' + esc(x.chip || x.name) + "</button>"; }).join("") + "</div>";
+    }).join("");
     var off = mOffice();
     $("marea").hidden = !p.area || !off;
     $("marea").innerHTML = p.area && off ? '<button type="button" data-marea="local" class="' + (M.area === "local" ? "on" : "") + '">Local (' + off.toUpperCase() + ")</button>" +

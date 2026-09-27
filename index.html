@@ -382,7 +382,10 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
 .mtot .v{font:600 17px var(--sans);text-align:right;color:var(--ink)}
 .mtot .v.z{color:var(--muted);font-weight:400}
 .mtot .note{grid-column:1/-1;font-size:11.5px;color:var(--muted)}
-.mcats,.mprods{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin-inline:-16px;padding-inline:16px}
+.mcats{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin-inline:-16px;padding-inline:16px}
+.mprods{display:flex;flex-direction:column;gap:6px}
+.mgrp{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.mgl{flex:0 0 100%;font:600 10.5px var(--sans);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-top:2px}
 .mprods .chip{background:var(--sunk)}
 .mprods .chip.on{background:var(--ink);border-color:var(--ink);color:var(--surface)}
 .mview{padding:12px 0 12px;overflow:hidden}
@@ -530,8 +533,8 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
   </div>
 </div>
 
-<script src="wx-normalize.js?v=5"></script>
-<script src="wx-live.js?v=5"></script>
-<script src="app.js?v=5"></script>
+<script src="wx-normalize.js?v=6"></script>
+<script src="wx-live.js?v=6"></script>
+<script src="app.js?v=6"></script>
 </body>
 </html>
