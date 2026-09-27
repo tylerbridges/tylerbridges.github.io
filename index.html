@@ -376,25 +376,27 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
 .pchev{color:var(--muted);flex:none}
 /* forecast maps */
 .mcats{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin-inline:-16px;padding-inline:16px}
-.mprods{display:flex;flex-direction:column;gap:6px}
-.mgrp{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
-.mgl{flex:0 0 100%;font:600 11px var(--sans);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-top:2px}
-.mview{padding:12px 0 10px;overflow:hidden}
-.mhead{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 12px 10px;flex-wrap:wrap}
-.mhead .gt{padding:0}
-.marea{display:flex;gap:6px}
-.mimg{position:relative;background:#fff;min-height:220px;display:flex;align-items:center;justify-content:center;cursor:zoom-in}
+.mview{padding:10px 0 8px;overflow:hidden}
+.mhead{display:flex;align-items:center;gap:8px;padding:0 10px 8px}
+.msel{flex:1;min-width:0;appearance:none;-webkit-appearance:none;border:1px solid var(--line);border-radius:999px;background:var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 10px center/14px;padding:6px 30px 6px 12px;font:600 15px var(--sans);color:var(--ink);text-overflow:ellipsis;cursor:pointer}
+.marea{display:flex;gap:4px;flex:none}
+.marea .chip{padding:5px 9px}
+.mimg{position:relative;background:#fff;min-height:200px;display:flex;align-items:center;justify-content:center;cursor:zoom-in}
 .mimg img{display:block;width:100%;height:auto}
 .mimg img.ld{opacity:.55}
 .mmsg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px;font-size:13px;color:#555;background:#fff}
+.mfr{position:absolute;left:6px;top:6px;font:600 12px var(--sans);background:rgba(0,0,0,.62);color:#fff;border-radius:6px;padding:3px 7px;pointer-events:none}
 .mhint{position:absolute;right:6px;bottom:6px;font-size:10.5px;background:rgba(0,0,0,.55);color:#fff;border-radius:6px;padding:2px 6px;pointer-events:none}
-.mctl{display:flex;align-items:center;gap:8px;padding:10px 12px 4px}
+.mctl{display:flex;align-items:center;gap:8px;padding:8px 10px 2px}
 .mctl input{flex:1;min-width:0;accent-color:var(--accent)}
+.mctl .rbtn{width:32px;height:32px}
 .mctl .rbtn svg{width:16px;height:16px;stroke:var(--ink2);fill:none}
 .mctl .rbtn svg.fill{fill:var(--ink2);stroke:none}
-.mframes{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:6px 12px 2px}
-.msrc{padding:8px 12px 0;font-size:11.5px;color:var(--muted);line-height:1.45}
+.msrc{padding:6px 12px 0;font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .msrc a{color:var(--accent)}
+.mtot{padding:6px 12px}
+.mtot .tt td,.mtot .tt th{padding:5px 4px}
+.mtot .tt tr:last-child td{border-bottom:0}
 #mfull{position:fixed;inset:0;z-index:70;background:#000;display:flex;flex-direction:column}
 #mfull[hidden]{display:none}
 .mfsc{flex:1;overflow:auto;display:flex;align-items:center;-webkit-overflow-scrolling:touch}
@@ -471,23 +473,20 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
   </section>
 
   <section id="maps" class="sec" data-tab="maps" hidden>
-    <div class="sec-h"><h2>Precipitation totals</h2><span class="meta" id="mtotloc"></span></div>
-    <div class="card tot" id="mtot"></div>
-    <div class="sec-h"><h2>Forecast maps</h2></div>
     <div class="mcats" id="mcats"></div>
-    <div class="mprods" id="mprods"></div>
     <div class="card mview">
-      <div class="mhead"><div class="gt" id="mtitle"></div><div class="marea" id="marea"></div></div>
-      <div class="mimg" id="mimgbox"><img id="mimg" alt="" decoding="async"><div class="mmsg" id="mmsg" hidden></div><span class="mhint">Tap to enlarge</span></div>
+      <div class="mhead"><select id="msel" class="msel" aria-label="Map"></select><div class="marea" id="marea"></div></div>
+      <div class="mimg" id="mimgbox"><img id="mimg" alt="" decoding="async"><div class="mmsg" id="mmsg" hidden></div><span class="mfr num" id="mfr"></span><span class="mhint">Tap to enlarge</span></div>
       <div class="mctl" id="mctl">
         <button type="button" class="rbtn" id="mprev" aria-label="Previous"><svg viewBox="0 0 24 24" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button>
         <button type="button" class="rbtn" id="mplay" aria-label="Play"></button>
         <input type="range" id="mrange" min="0" max="0" value="0" aria-label="Forecast time">
         <button type="button" class="rbtn" id="mnext" aria-label="Next"><svg viewBox="0 0 24 24" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button>
       </div>
-      <div class="mframes" id="mframes"></div>
       <div class="msrc" id="msrc"></div>
     </div>
+    <div class="sec-h"><h2>Precip totals</h2><span class="meta" id="mtotloc"></span></div>
+    <div class="card tot mtot" id="mtot"></div>
   </section>
 
   <section id="totals" class="sec" data-tab="totals" hidden>
@@ -523,8 +522,8 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
   </div>
 </div>
 
-<script src="wx-normalize.js?v=7"></script>
-<script src="wx-live.js?v=7"></script>
-<script src="app.js?v=7"></script>
+<script src="wx-normalize.js?v=8"></script>
+<script src="wx-live.js?v=8"></script>
+<script src="app.js?v=8"></script>
 </body>
 </html>

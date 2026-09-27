@@ -905,21 +905,21 @@
     var f = []; for (var d = n0; d <= n1; d++) f.push({ l: (pre || "Day ") + d, u: pat.replace("{d}", d) });
     return { id: pat, name: name, frames: f, src: src, link: link };
   }
-  function grp(g, p, chip) { p.g = g; p.chip = chip; return p; }
+  function grp(g, p) { p.g = g; return p; }
   var MCATS = [
     { id: "precip", name: "Precipitation", prods: [
-      grp("Totals", { id: "wpc-qpf", name: "Precip totals", src: "NWS Weather Prediction Center (liquid equivalent, rain + melted snow)", link: WPC + "qpf/qpf2.shtml",
+      grp("Totals", { id: "wpc-qpf", name: "Precip totals, 1–7 days", src: "NWS Weather Prediction Center (liquid equivalent, rain + melted snow)", link: WPC + "qpf/qpf2.shtml",
         frames: [{ l: "Day 1 (24 hr)", u: WPC + "qpf/fill_94qwbg.gif" }, { l: "Day 2 (24 hr)", u: WPC + "qpf/fill_98qwbg.gif" }, { l: "Day 3 (24 hr)", u: WPC + "qpf/fill_99qwbg.gif" },
-          { l: "Days 1–2 (48 hr)", u: WPC + "qpf/d12_fill.gif" }, { l: "5 days", u: WPC + "qpf/p120i.gif" }, { l: "7 days", u: WPC + "qpf/p168i.gif" }] }, "Daily & multi-day totals"),
-      grp("Totals", ndfd("QPF", "Precip forecast (6-hr)", "Each frame is 6 hours of liquid precipitation; the valid time is printed on the map."), "6-hr precip"),
-      grp("Snow", ndfd("SnowAmt", "Snowfall forecast", "Each frame is 6 hours of snow; the valid time is printed on the map."), "6-hr snowfall"),
-      grp("Snow", days("Chance of 4\"+ snow", WPC + "wwd/day{d}_psnow_gt_04_conus.gif", 1, 3, "NWS Weather Prediction Center (24-hour periods)", WPC + "wwd/winter_wx.shtml"), "Chance of 4\"+"),
-      grp("Snow", days("Chance of 8\"+ snow", WPC + "wwd/day{d}_psnow_gt_08_conus.gif", 1, 3, "NWS Weather Prediction Center (24-hour periods)", WPC + "wwd/winter_wx.shtml"), "Chance of 8\"+"),
-      grp("Snow", days("Chance of 12\"+ snow", WPC + "wwd/day{d}_psnow_gt_12_conus.gif", 1, 3, "NWS Weather Prediction Center (24-hour periods)", WPC + "wwd/winter_wx.shtml"), "Chance of 12\"+"),
-      grp("Snow", days("Days 4–7 snow outlook", WPC + "wwd/pwpf_d47/gif/prbww_sn25_DAY{d}.gif", 4, 7, "NWS Weather Prediction Center: chance of 0.25\"+ liquid as snow/sleet", WPC + "wwd/pwpf_d47/pwpf_medr.php"), "Days 4–7 outlook"),
-      grp("Ice", ndfd("IceAccum", "Ice accumulation forecast", "Each frame is 6 hours of freezing rain ice; the valid time is printed on the map."), "6-hr ice"),
-      grp("Ice", days("Chance of 0.25\"+ ice", WPC + "wwd/day{d}_pice_gt_25_conus.gif", 1, 3, "NWS Weather Prediction Center (24-hour periods)", WPC + "wwd/winter_wx.shtml"), "Chance of 0.25\"+"),
-      grp("Snow & ice", days("Winter composite", WPC + "wwd/day{d}_composite_conus.gif", 1, 3, "NWS Weather Prediction Center: 4/8/12\" snow and 0.25\" ice chances", WPC + "wwd/winter_wx.shtml"), "Snow & ice odds, days 1–3")
+          { l: "Days 1–2 (48 hr)", u: WPC + "qpf/d12_fill.gif" }, { l: "5 days", u: WPC + "qpf/p120i.gif" }, { l: "7 days", u: WPC + "qpf/p168i.gif" }] }),
+      grp("Totals", ndfd("QPF", "6-hr precip forecast", "Each frame is 6 hours of liquid precipitation; the valid time is printed on the map.")),
+      grp("Snow", ndfd("SnowAmt", "6-hr snowfall forecast", "Each frame is 6 hours of snow; the valid time is printed on the map.")),
+      grp("Snow", days("Chance of 4\"+ snow", WPC + "wwd/day{d}_psnow_gt_04_conus.gif", 1, 3, "NWS Weather Prediction Center (24-hour periods)", WPC + "wwd/winter_wx.shtml")),
+      grp("Snow", days("Chance of 8\"+ snow", WPC + "wwd/day{d}_psnow_gt_08_conus.gif", 1, 3, "NWS Weather Prediction Center (24-hour periods)", WPC + "wwd/winter_wx.shtml")),
+      grp("Snow", days("Chance of 12\"+ snow", WPC + "wwd/day{d}_psnow_gt_12_conus.gif", 1, 3, "NWS Weather Prediction Center (24-hour periods)", WPC + "wwd/winter_wx.shtml")),
+      grp("Snow", days("Days 4–7 snow outlook", WPC + "wwd/pwpf_d47/gif/prbww_sn25_DAY{d}.gif", 4, 7, "NWS Weather Prediction Center: chance of 0.25\"+ liquid as snow/sleet", WPC + "wwd/pwpf_d47/pwpf_medr.php")),
+      grp("Ice", ndfd("IceAccum", "6-hr ice forecast", "Each frame is 6 hours of freezing rain ice; the valid time is printed on the map.")),
+      grp("Ice", days("Chance of 0.25\"+ ice", WPC + "wwd/day{d}_pice_gt_25_conus.gif", 1, 3, "NWS Weather Prediction Center (24-hour periods)", WPC + "wwd/winter_wx.shtml")),
+      grp("Snow & ice", days("Snow & ice odds, days 1–3", WPC + "wwd/day{d}_composite_conus.gif", 1, 3, "NWS Weather Prediction Center: 4/8/12\" snow and 0.25\" ice chances", WPC + "wwd/winter_wx.shtml"))
     ] },
     { id: "temp", name: "Temperature", prods: [
       ndfd("MaxT", "Daytime highs", "The date is printed on the map.", 7, function (i) { return "Day " + i; }, "NWS National Digital Forecast Database (official forecast)"),
@@ -960,8 +960,7 @@
     var now = Math.max(Date.now(), g.start), hrs = [24, 48, 72];
     var rows = [["Rain", "qpf"], ["Snow", "snow"], ["Ice", "ice"]];
     el.innerHTML = '<table class="tt num"><thead><tr><th></th>' + hrs.map(function (h, k) { return "<th>" + (k ? "" : "Next ") + h + " hr</th>"; }).join("") + "</tr></thead><tbody>" +
-      rows.map(function (r) { return "<tr><td>" + r[0] + "</td>" + hrs.map(function (h) { return "<td>" + sumRange(g[r[1]] || [], now, now + h * H).toFixed(2) + " in</td>"; }).join("") + "</tr>"; }).join("") +
-      '</tbody></table><div class="empty" style="padding:0;font-size:11.5px">NWS forecast for this location. Rain is liquid equivalent, including melted snow and ice.</div>';
+      rows.map(function (r) { return "<tr><td>" + r[0] + "</td>" + hrs.map(function (h) { return "<td>" + sumRange(g[r[1]] || [], now, now + h * H).toFixed(2) + " in</td>"; }).join("") + "</tr>"; }).join("") + "</tbody></table>";
   }
   function renderMaps() {
     if (!$("maps")) return;
@@ -970,21 +969,20 @@
     var c = mCat(), p = mProd(); M.id = p.id;
     if (M.f >= p.frames.length) M.f = 0;
     $("mcats").innerHTML = MCATS.map(function (x) { return '<button type="button" class="chip' + (x.id === c.id ? " on" : "") + '" data-mcat="' + x.id + '">' + x.name + "</button>"; }).join("");
-    // products grouped under small headings, like Pivotal Weather's parameter menu
+    // one dropdown of maps, grouped like Pivotal Weather's parameter menu
     var gs = []; c.prods.forEach(function (x) { var k = x.g || ""; if (!gs.length || gs[gs.length - 1].k !== k) gs.push({ k: k, l: [] }); gs[gs.length - 1].l.push(x); });
-    $("mprods").innerHTML = gs.map(function (gr) {
-      return '<div class="mgrp">' + (gr.k ? '<span class="mgl">' + esc(gr.k) + "</span>" : "") + gr.l.map(function (x) { return '<button type="button" class="chip' + (x.id === p.id ? " on" : "") + '" data-mprod="' + esc(x.id) + '">' + esc(x.chip || x.name) + "</button>"; }).join("") + "</div>";
-    }).join("");
+    var opt = function (x) { return '<option value="' + esc(x.id) + '"' + (x.id === p.id ? " selected" : "") + ">" + esc(x.name) + "</option>"; };
+    $("msel").innerHTML = gs.map(function (gr) { return gr.k ? '<optgroup label="' + esc(gr.k) + '">' + gr.l.map(opt).join("") + "</optgroup>" : gr.l.map(opt).join(""); }).join("");
     var off = mOffice();
     $("marea").hidden = !p.area || !off;
-    $("marea").innerHTML = p.area && off ? '<button type="button" data-marea="local" class="chip' + (M.area === "local" ? " on" : "") + '">Local (' + off.toUpperCase() + ")</button>" +
-      '<button type="button" data-marea="conus" class="chip' + (M.area !== "local" ? " on" : "") + '">National</button>' : "";
-    $("mtitle").textContent = p.name;
-    $("mframes").innerHTML = p.frames.map(function (fr, i) { return '<button type="button" class="chip' + (i === M.f ? " on" : "") + '" data-mf="' + i + '">' + fr.l + "</button>"; }).join("");
-    $("mctl").hidden = p.frames.length < 2; $("mframes").hidden = p.frames.length < 2;
+    $("marea").innerHTML = p.area && off ? '<button type="button" data-marea="local" class="chip' + (M.area === "local" ? " on" : "") + '" title="NWS ' + off.toUpperCase() + ' forecast office area">Local</button>' +
+      '<button type="button" data-marea="conus" class="chip' + (M.area !== "local" ? " on" : "") + '">US</button>' : "";
+    $("mctl").hidden = p.frames.length < 2;
     $("mrange").max = p.frames.length - 1;
     var lk = typeof p.link === "function" ? p.link(mSector(p)) : p.link;
-    $("msrc").innerHTML = esc(p.src) + (p.note ? "<br>" + esc(p.note) : "") + ' · <a href="' + esc(lk) + '" target="_blank" rel="noopener">Source</a>';
+    var who = p.el ? "NWS official forecast" : /wpc\./.test(lk) ? "NWS Weather Prediction Center" : "NOAA Climate Prediction Center";
+    $("msrc").title = p.src + (p.note ? ". " + p.note : "");
+    $("msrc").innerHTML = esc(who) + ' · <a href="' + esc(lk) + '" target="_blank" rel="noopener">Source</a>';
     // preload every frame so stepping and playback don't flash
     p.frames.forEach(function (fr) { var im = new Image(); im.src = mUrl(p, fr); });
     mShow();
@@ -992,7 +990,7 @@
   function mShow() {
     var p = mProd(), fr = p.frames[M.f], img = $("mimg"), url = mUrl(p, fr);
     $("mrange").value = M.f;
-    $("mframes").querySelectorAll("[data-mf]").forEach(function (b) { var on = +b.dataset.mf === M.f; b.classList.toggle("on", on); if (on && b.scrollIntoView && !mTimer) b.scrollIntoView({ block: "nearest", inline: "nearest" }); });
+    $("mfr").textContent = fr.l;
     img.alt = p.name + ", " + fr.l;
     if (img.getAttribute("src") === url) return;
     $("mmsg").hidden = true; img.classList.add("ld");
@@ -1004,9 +1002,7 @@
   $("maps").addEventListener("click", function (e) {
     var b;
     if ((b = e.target.closest("[data-mcat]"))) { mStop(); M.cat = b.dataset.mcat; M.id = null; M.f = 0; renderMaps(); mSave(); return; }
-    if ((b = e.target.closest("[data-mprod]"))) { mStop(); M.id = b.dataset.mprod; M.f = 0; mSave(); renderMaps(); return; }
     if ((b = e.target.closest("[data-marea]"))) { M.area = b.dataset.marea; mSave(); renderMaps(); return; }
-    if ((b = e.target.closest("[data-mf]"))) { mStop(); M.f = +b.dataset.mf; mShow(); return; }
     if (e.target.closest("#mprev")) { mStop(); mStep(-1); return; }
     if (e.target.closest("#mnext")) { mStop(); mStep(1); return; }
     if (e.target.closest("#mplay")) {
@@ -1016,6 +1012,7 @@
     }
     if (e.target.closest("#mimgbox") && $("mmsg").hidden) { $("mfimg").src = $("mimg").src; $("mfimg").alt = $("mimg").alt; $("mfsc").classList.remove("z"); $("mfull").hidden = false; }
   });
+  $("msel").addEventListener("change", function () { mStop(); M.id = this.value; M.f = 0; mSave(); renderMaps(); });
   $("mrange").addEventListener("input", function () { mStop(); M.f = +this.value; mShow(); });
   // full-screen viewer: tap zooms to 2.5x centred on where you tapped (local maps are centred on the forecast office)
   $("mfimg").addEventListener("click", function (e) {
