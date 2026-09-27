@@ -809,7 +809,7 @@
   function setTopH() { document.documentElement.style.setProperty("--toph", document.querySelector(".top").offsetHeight + "px"); }
   setTopH(); window.addEventListener("resize", setTopH);
   function showTab(t) {
-    if (t === "obs") t = "totals";
+    if (t === "totals") t = "obs"; // old tab name
     if (!$("nav").querySelector('[data-tab="' + t + '"]')) t = "now";
     var changed = t !== tab; tab = t;
     document.querySelectorAll("#nav .chip").forEach(function (c) { c.classList.toggle("on", c.dataset.tab === t); });
@@ -977,20 +977,10 @@
   var PLAY = '<svg class="fill" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z"/></svg>', PAUSE = '<svg class="fill" viewBox="0 0 24 24"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg>';
   function mStop() { clearInterval(mTimer); mTimer = null; if ($("mplay")) { $("mplay").innerHTML = PLAY; $("mplay").setAttribute("aria-label", "Play"); } }
   function mSave() { store("wx-map", { cat: M.cat, id: M.id, area: M.area }); }
-  // same table as the Totals tab, always showing all three rows so "0 in" of snow is visible too
-  function mTotals() {
-    var g = doc && doc.grid, el = $("mtot");
-    $("mtotloc").textContent = (doc && doc.loc && doc.loc.label) || "";
-    if (!g) { el.innerHTML = '<div class="empty" style="padding:2px 0">Totals load with the forecast.</div>'; return; }
-    var now = Math.max(Date.now(), g.start), hrs = [24, 48, 72];
-    var rows = [["Rain", "qpf"], ["Snow", "snow"], ["Ice", "ice"]];
-    el.innerHTML = '<table class="tt num"><thead><tr><th></th>' + hrs.map(function (h, k) { return "<th>" + (k ? "" : "Next ") + h + " hr</th>"; }).join("") + "</tr></thead><tbody>" +
-      rows.map(function (r) { return "<tr><td>" + r[0] + "</td>" + hrs.map(function (h) { return "<td>" + sumRange(g[r[1]] || [], now, now + h * H).toFixed(2) + " in</td>"; }).join("") + "</tr>"; }).join("") + "</tbody></table>";
-  }
   function renderMaps() {
     if (!$("maps")) return;
     if (!mTimer) $("mplay").innerHTML = PLAY;
-    mTotals();
+    $("mtotloc").textContent = (doc && doc.loc && doc.loc.label) || "";
     var c = mCat(), p = mProd(); M.id = p.id;
     if (M.f >= p.frames.length) M.f = 0;
     $("mcats").innerHTML = MCATS.map(function (x) { return '<button type="button" class="chip' + (x.id === c.id ? " on" : "") + '" data-mcat="' + x.id + '">' + x.name + "</button>"; }).join("");

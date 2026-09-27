@@ -394,9 +394,6 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
 .mctl .rbtn svg.fill{fill:var(--ink2);stroke:none}
 .msrc{padding:6px 12px 0;font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .msrc a{color:var(--accent)}
-.mtot{padding:6px 12px}
-.mtot .tt td,.mtot .tt th{padding:5px 4px}
-.mtot .tt tr:last-child td{border-bottom:0}
 #mfull{position:fixed;inset:0;z-index:70;background:#000;display:flex;flex-direction:column}
 #mfull[hidden]{display:none}
 .mfsc{flex:1;overflow:auto;display:flex;align-items:center;-webkit-overflow-scrolling:touch}
@@ -456,7 +453,7 @@ body:has(#testbar:not([hidden])) .sec{scroll-margin-top:140px}
       <button class="rbtn" id="rbtn" type="button" aria-label="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button>
     </div>
     <nav class="nav" id="nav">
-      <button type="button" class="chip on" data-tab="now">Now</button><button type="button" class="chip" data-tab="daily">Daily</button><button type="button" class="chip" data-tab="hourly">Hourly</button><button type="button" class="chip" data-tab="maps">Maps</button><button type="button" class="chip" data-tab="totals">Totals &amp; Observations</button>
+      <button type="button" class="chip on" data-tab="now">Now</button><button type="button" class="chip" data-tab="daily">Daily</button><button type="button" class="chip" data-tab="hourly">Hourly</button><button type="button" class="chip" data-tab="maps">Maps</button><button type="button" class="chip" data-tab="obs">Observations</button>
     </nav>
     <div class="testbar" id="testbar" hidden><span>Test: <b id="testname"></b> · sample data, not a real forecast</span><button type="button" class="chip" id="testx">Exit</button></div>
   </header>
@@ -495,21 +492,17 @@ body:has(#testbar:not([hidden])) .sec{scroll-margin-top:140px}
       </div>
       <div class="msrc" id="msrc"></div>
     </div>
-    <div class="sec-h"><h2>Precip totals</h2><span class="meta" id="mtotloc"></span></div>
-    <div class="card tot mtot" id="mtot"></div>
-  </section>
-
-  <section id="totals" class="sec" data-tab="totals" hidden>
-    <div class="sec-h"><h2>Storm totals</h2></div>
+    <div class="sec-h"><h2>Storm totals</h2><span class="meta" id="mtotloc"></span></div>
     <div class="card tot" id="tot"></div>
   </section>
+
 
   <section id="detail" class="sec" data-tab="daily" hidden>
     <div class="sec-h"><h2>Detailed forecast</h2></div>
     <div class="dstack" id="det"></div>
   </section>
 
-  <section id="obs" class="sec" data-tab="totals" hidden>
+  <section id="obs" class="sec" data-tab="obs" hidden>
     <div class="sec-h"><h2>Recent observations</h2><span class="meta" id="obsstn"></span></div>
     <div class="card obs" id="obscard"></div>
   </section>
@@ -533,9 +526,9 @@ body:has(#testbar:not([hidden])) .sec{scroll-margin-top:140px}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=10"></script>
-<script src="wx-live.js?v=10"></script>
-<script src="wx-scenarios.js?v=10"></script>
-<script src="app.js?v=10"></script>
+<script src="wx-normalize.js?v=11"></script>
+<script src="wx-live.js?v=11"></script>
+<script src="wx-scenarios.js?v=11"></script>
+<script src="app.js?v=11"></script>
 </body>
 </html>
