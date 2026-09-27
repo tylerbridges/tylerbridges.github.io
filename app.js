@@ -515,25 +515,30 @@
     select(selIdx, null, false);
     requestAnimationFrame(function () { scrollAll(Math.max(0, GL + ((Date.now() - start) / H) * PX - firstSc().clientWidth * 0.3)); precipFirst(); });
   }
-  // weather-type cards (rain, thunder, snow, freezing rain, sleet, fog) with any chance or amount in the hours on screen move to the top (CSS order,
+  // weather-type cards (rain, thunder, snow, freezing rain, sleet, fog) with any activity move to the top (CSS order,
   //   so the DOM order that G.marks is indexed by stays put); the card being scrolled stays where it is on the page
   function precipFirst(sc) {
     if (!G || !G.precip) return;
     var pans = $("gin").querySelectorAll(".pan"), f = firstSc(); if (!pans.length || !f.clientWidth) return;
     var i0 = Math.floor((f.scrollLeft + 34 - GL) / PX), i1 = Math.ceil((f.scrollLeft + f.clientWidth - GL) / PX) - 1;
-    var t0 = G.start + i0 * H, t1 = G.start + (i1 + 1) * H, top = {};
-    // value = when that type first shows up on screen, so the earliest one leads
+    var t0 = G.start + i0 * H, t1 = G.start + (i1 + 1) * H, now = Date.now(), rank = {};
+    // Every weather-type card with activity goes above Temperature/Wind/Cloud. Cards active in the hours on screen lead
+    //   (earliest first); the rest follow by when their activity next starts (from now, else from the start of the graph).
     G.precip.forEach(function (p) {
-      var first = Infinity;
-      for (var i = Math.max(0, i0); i <= Math.min(G.n - 1, i1); i++) if (p.arr[i]) { first = G.start + i * H; break; }
-      p.amts.forEach(function (b) { if (b[2] > 0 && b[0] < t1 && b[0] + b[1] * H > t0) first = Math.min(first, Math.max(b[0], t0)); });
-      if (first < Infinity) top[p.k] = first;
+      var times = [];
+      for (var i = 0; i < G.n; i++) if (p.arr[i]) times.push(G.start + i * H);
+      p.amts.forEach(function (b) { if (b[2] > 0) times.push(b[0]); });
+      if (!times.length) return;
+      var onScreen = times.filter(function (t) { return t >= t0 - H && t < t1; }).concat(p.amts.filter(function (b) { return b[2] > 0 && b[0] < t1 && b[0] + b[1] * H > t0; }).map(function (b) { return Math.max(b[0], t0); }));
+      var next = times.filter(function (t) { return t >= now - H; });
+      rank[p.k] = onScreen.length ? Math.min.apply(null, onScreen) - 1e13 : (next.length ? Math.min.apply(null, next) : Math.min.apply(null, times) + 1e13);
     });
     var host = sc && sc.closest(".pan"), y0 = host && host.getBoundingClientRect().top;
-    var lead = Object.keys(top).sort(function (a, b) { return top[a] - top[b] || a - b; });
+    var lead = Object.keys(rank).sort(function (a, b) { return rank[a] - rank[b] || a - b; });
     pans.forEach(function (pn, k) { var r = lead.indexOf(String(k)); pn.style.order = r >= 0 ? r - 1000 : k; });
     if (host) { var dy = host.getBoundingClientRect().top - y0; if (Math.abs(dy) > 1) window.scrollBy(0, dy); }
   }
+
   function extremaLabels(arr, y) {
     // daily high and low right on the temperature line, with a halo so they read over the other lines
     var o = "", n = arr.length, day = {};
