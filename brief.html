@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'sha256-iaGyl+MesImCrVNj4kQ20S4RvzBpRSK0LS5TGRYQTug=' 'sha256-M66d17I5aX0byiSLPe+kDi4dZQC1kr7VSAs/DtYnegc='; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob: https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org; connect-src 'self' https://api.weather.gov https://photon.komoot.io https://api.open-meteo.com https://air-quality-api.open-meteo.com https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org; worker-src 'self' blob:; child-src 'self' blob:; font-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'sha256-iaGyl+MesImCrVNj4kQ20S4RvzBpRSK0LS5TGRYQTug=' 'sha256-Wz1Tj6Jj8dkg8XH7YhkwMhNZL1zZVhhYteLWSV68wXU='; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob: https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org; connect-src 'self' https://api.weather.gov https://photon.komoot.io https://api.open-meteo.com https://air-quality-api.open-meteo.com https://nowcoast.noaa.gov https://mesonet.agron.iastate.edu https://mapservices.weather.noaa.gov https://tiles.openfreemap.org; worker-src 'self' blob:; child-src 'self' blob:; font-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
   <script>try{var t=localStorage.getItem('weather-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);else if(t!=='system')document.documentElement.setAttribute('data-theme','dark')}catch{}</script>
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -35,10 +35,12 @@
 <body>
   <main class="shell">
     <header id="site-header"></header>
+    <div id="live-alerts"></div>
     <div class="page-head">
       <p class="kicker" id="kicker" style="display:none"></p>
       <h1 id="headline">Locating…</h1>
       <p class="last-updated hidden" id="updated" aria-live="polite"></p>
+      <p class="last-updated hidden" id="source-times"></p>
     </div>
     <div id="loading" class="loading" role="status" aria-live="polite">Refreshing from weather.gov…</div>
     <div id="error" class="error hidden" role="alert"></div>
@@ -50,9 +52,11 @@
       <p class="see-more"><a href="/forecast.html">See the full 7-day forecast →</a></p>
       <section aria-labelledby="charts-title"><h2 id="charts-title">Next 48 hours</h2><p class="sr-only" id="chart-readout" aria-live="polite"></p><div class="charts"><figure class="chart"><h3>Temperature</h3><svg id="temp-chart" role="img" aria-label="Hourly temperature in degrees Fahrenheit"></svg></figure><figure class="chart"><h3>Precipitation probability</h3><svg id="pop-chart" role="img" aria-label="Hourly precipitation probability in percent"></svg></figure><figure class="chart"><h3>Wind and gusts</h3><svg id="wind-chart" role="img" aria-label="Hourly sustained wind and gusts in miles per hour"></svg><div class="legend"><span><i class="swatch" style="background:var(--green)"></i>Sustained</span><span><i class="swatch" style="background:var(--orange)"></i>Gust</span></div></figure></div></section>
     </div>
+    <div class="live-sections" id="live-sections"></div>
     <footer class="site-footer" id="site-footer"></footer>
   </main>
   <script src="/assets/weather-core.js"></script>
+  <script src="/assets/sky-live.js"></script>
   <script>
   (()=>{
     const {el,resolveLocation,resolvePoint,json,observationHistory,emoji,local,maxWind,gridValues,kphToMph,cToF,
@@ -64,6 +68,7 @@
     mountFooter();
     mountLocationSwitcher(()=>load());
     const status=mountStatus(()=>load());
+    const live=WXLive.mount();
     // METARs land a few minutes either side of the hour, so each reading is
     // filed under the hour it sits closest to, and the closest one wins.
     // The chart’s own hour marks carry a sub-second offset (startOfDay keeps
@@ -166,11 +171,15 @@
     async function load(){if(busy)return;busy=true;lastLoad=Date.now();let loc=null;if(!hasLoaded){el('loading').classList.remove('hidden');el('error').classList.add('hidden');el('content').classList.add('hidden')}else{el('content').classList.add('refreshing')}try{
       loc=await resolveLocation();currentLoc=loc;
       const {point,label,tz,officeId}=await resolvePoint(loc);
+      // The live sections fetch and fail independently of the forecast below.
+      const gridRequest=json(point.properties.forecastGridData,{ttl:CACHE_TTL.forecast});
+      live.update({loc,point,tz,officeId,gridRequest});
       header.setKicker('');el('headline').textContent=label;
       const windowStart=startOfDay(tz);
-      const results=await Promise.allSettled([json(point.properties.forecast,{ttl:CACHE_TTL.forecast}),json(point.properties.forecastHourly,{ttl:CACHE_TTL.forecast}),json(point.properties.forecastGridData,{ttl:CACHE_TTL.forecast}),observationHistory(point,windowStart)]);
+      const results=await Promise.allSettled([json(point.properties.forecast,{ttl:CACHE_TTL.forecast}),json(point.properties.forecastHourly,{ttl:CACHE_TTL.forecast}),gridRequest,observationHistory(point,windowStart)]);
       if(results[0].status!=='fulfilled')throw results[0].reason;
       const forecast=results[0].value,hourly=results[1].value,grid=results[2].value||{properties:{}},observed=results[3].value||null;
+      live.setForecastTime(forecast.properties.updateTime);
       const now=new Date(),periods=forecast.properties.periods.filter(p=>new Date(p.endTime)>now);
       if(!periods.length||!forecast.properties.updateTime||now-new Date(forecast.properties.updateTime)>36*3600000)throw new Error('The NWS forecast for this location is out of date or unavailable right now. Try again shortly.');
       const hourlyFresh=hourly?.properties?.updateTime&&now-new Date(hourly.properties.updateTime)<36*3600000;

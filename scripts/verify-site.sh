@@ -22,6 +22,7 @@ if [ -z "$node_bin" ]; then
 fi
 
 "$node_bin" --check assets/weather-core.js
+"$node_bin" --check assets/sky-live.js
 "$node_bin" --check sw.js
 "$node_bin" --check scripts/csp.js
 "$node_bin" scripts/csp.js --check
