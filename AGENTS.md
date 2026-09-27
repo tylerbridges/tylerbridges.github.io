@@ -48,7 +48,9 @@ iteration loop: request, implement, review, publish, verify.
 - `index.html`, `brief.html`, and `live.html` are synchronized entry pages and
   must remain byte-identical unless the task explicitly separates them.
 - When changing a file listed in `SHELL` in `sw.js`, increment the
-  `sky-report-vNN` cache key so installed clients refresh cleanly.
+  `sky-report-vNN` cache key so installed clients refresh cleanly, and set
+  every page's `/assets/…?v=NN` references to the same number
+  (`verify-site.sh` checks this).
 - Each page carries a Content-Security-Policy `<meta>` that allows its inline
   scripts by hash. After changing any inline `<script>`, run
   `node scripts/csp.js` to refresh the hashes; `verify-site.sh` fails until

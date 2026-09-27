@@ -43,6 +43,18 @@ for (const name of fs.readdirSync('.').filter(name => name.endsWith('.html'))) {
   });
 }
 
+// Every page loads /assets/ files with ?v=<the sw.js cache number>, so a
+// deploy can't pair new scripts with CSS a browser cached from the last one.
+const cacheVersion = (fs.readFileSync('sw.js', 'utf8').match(/sky-report-v(\d+)/) || [])[1];
+for (const name of fs.readdirSync('.').filter(name => name.endsWith('.html'))) {
+  const source = fs.readFileSync(name, 'utf8');
+  for (const [, ref] of source.matchAll(/(?:href|src)="(\/assets\/[^"]*)"/g)) {
+    if (ref !== ref.replace(/\?.*$/, '') + `?v=${cacheVersion}`) {
+      throw new Error(`${name}: ${ref} must end with ?v=${cacheVersion} to match the sw.js cache key.`);
+    }
+  }
+}
+
 JSON.parse(fs.readFileSync('manifest.webmanifest', 'utf8'));
 NODE
 
