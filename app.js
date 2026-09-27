@@ -89,7 +89,7 @@
         '<div class="hz-body">' + (h.text ? reflow(h.text).split("\n\n").map(function (p) { return /^\.[A-Z]/.test(p) ? p.replace(/^(\.[A-Z][^.]*(?:\.\.\.)?)(.*)$/, function (m, hd, rest) { return "<b>" + esc(hd) + "</b>" + esc(rest); }) : esc(p); }).join("\n\n")
           : parts.map(function (p) { return "<b>" + p[0] + "</b>\n" + esc(p[1]); }).join("\n\n")) + "</div></details>");
     }
-    return out.length ? '<div class="hazs">' + out.join("") + "</div>" : "";
+    return out.length ? '<div class="hazs">' + out.join("") + (a.length ? '<div class="hz-note">NWS alert text as issued. Alerts can change quickly: confirm at weather.gov or NOAA Weather Radio.</div>' : "") + "</div>" : "";
   }
 
   // today's high: today's daytime forecast period if still ahead, else the highest reading observed today
@@ -712,14 +712,20 @@
     return notes;
   }
 
+  // safety / liability notice, on every tab (plain text: no outbound links)
+  var NOTICE = '<p class="notice"><b>Not an official warning source.</b> Forecasts, alerts and maps come from the National Weather Service ' +
+    "and NOAA and are shown as published, but they can be delayed, incomplete or out of date here, and this site can fail to load or update. " +
+    "Don't rely on it for decisions that affect life or property. For emergencies and the latest official warnings, use weather.gov, " +
+    "NOAA Weather Radio, Wireless Emergency Alerts on your phone and local officials. This is an independent site, not affiliated with or " +
+    "endorsed by NWS or NOAA, provided as-is without warranty of any kind; you use it at your own risk.</p>";
   function renderFoot() {
-    if (!doc) { $("foot").innerHTML = ""; return; }
+    if (!doc) { $("foot").innerHTML = NOTICE; return; }
     var l = doc.loc;
     var link = "https://forecast.weather.gov/MapClick.php?lat=" + l.lat + "&lon=" + l.lon;
     $("plabel").textContent = l.label || HOME.label;
     document.title = (l.label || HOME.label) + " Weather";
     if (false) $("psub").textContent = "NWS " + l.office + " · grid " + l.grid + " · " + l.lat.toFixed(4) + "°N " + Math.abs(l.lon).toFixed(4) + "°W" + (l.elevFt ? " · " + l.elevFt + " ft" : "");
-    $("foot").innerHTML = ""; // no outbound links
+    $("foot").innerHTML = NOTICE;
   }
 
   function renderAll() {
