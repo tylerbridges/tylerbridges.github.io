@@ -686,7 +686,7 @@
   var OBS = null;
   function renderObs() {
     var o = (doc && doc.obs) || [], st = (doc && doc.station) || {};
-    $("obsstn").textContent = st.id ? st.id + " · last 24 hr" : "";
+    $("obsstn").textContent = o.length ? "Last 24 hr" : "";
     if (!o.length) { $("obscard").innerHTML = '<div class="empty">No recent observations.</div>'; return; }
     var pts = o.slice().reverse().filter(function (x) { return x.t != null; });
     // 24-hr temperature chart with a °F axis (gridlines at round values) and a time axis, like the Hourly graphs
@@ -1217,7 +1217,7 @@
     if ($("lstest") && window.WXScenario) $("lstest").innerHTML = WXScenario.list.map(function (x) {
       return '<div class="ls-row"><button type="button" class="ls-go" data-test="' + x.id + '"><span>' + esc(x.name) + '<span class="d">' + esc(x.desc) + "</span></span>" + (TEST === x.id ? "<small>Showing now</small>" : "") + "</button></div>";
     }).join("");
-    $("psub").textContent = (doc && doc.station && doc.station.id) || ""; $("psub").hidden = false;
+    $("psub").textContent = ""; $("psub").hidden = true;
   }
   function busyLs(on) { $("lsgo").disabled = on; if ($("lsgps")) $("lsgps").disabled = on; }
   function go(l) {
