@@ -500,7 +500,9 @@
       });
     }
     // exact chance of precipitation on top of the bars
-    pb += '<path d="' + path(s.pop, yP) + '" fill="none" stroke="var(--ink2)" stroke-width="2"/>';
+    // (a background-coloured outline keeps it readable where it crosses dark bars)
+    var popD = path(s.pop, yP);
+    pb += '<path d="' + popD + '" fill="none" stroke="var(--surface)" stroke-width="5" stroke-linejoin="round" stroke-opacity=".85"/><path d="' + popD + '" fill="none" stroke="var(--ink2)" stroke-width="2" stroke-linejoin="round"/>';
     AMT.forEach(function (a, k) {
       (g[a[0]] || []).forEach(function (b) {
         if (!(b[2] > 0)) return;
