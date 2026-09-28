@@ -498,7 +498,7 @@
       });
       MU.forEach(function (t, k) {
         var v = s[t[0]][i]; if (!v) return; used[t[0]] = 1;
-        pb += '<rect x="' + (i * PX + 1) + '" y="' + (MY0 + k * MROW) + '" width="' + (PX - 2) + '" height="6" rx="1.5" fill="var(--' + t[0] + ')" fill-opacity="' + (0.35 + 0.16 * Math.min(4, v[0])) + '"/>';
+        pb += '<rect x="' + (i * PX + 1) + '" y="' + (MY0 + k * MROW) + '" width="' + (PX - 2) + '" height="6" rx="1.5" fill="var(--' + t[0] + ')" fill-opacity="' + (0.7 + 0.075 * Math.min(4, v[0])) + '"/>'; // near-solid so it matches its key
       });
     }
     // exact chance of precipitation on top of the bars
@@ -516,9 +516,9 @@
     var pAxis = '<div class="yax" style="height:' + pHH + "px;margin-bottom:-" + pHH + 'px">' +
       [["SChc", 20], ["Chc", 50], ["Lkly", 70], ["Ocnl", 100]] /* on each level's line */.map(function (l) { return '<span style="top:' + yP(l[1]) + 'px">' + l[0] + "</span>"; }).join("") +
       AMT.map(function (a, k) { return '<span style="top:' + (rowY(k) + 8) + 'px">' + (a[1] === "Liquid" ? "Liq" : a[1]) + "</span>"; }).join("") +
-      MU.map(function (t, k) { return '<span class="mkl" style="top:' + (MY0 + k * MROW + 3.5) + "px;color:var(--" + t[0] + ')">' + (t[0] === "thunder" ? "Tstm" : t[1]) + "</span>"; }).join("") + "</div>";
+      MU.map(function (t, k) { return '<span class="mkl" style="top:' + (MY0 + k * MROW + 3.5) + "px;color:var(--" + t[0] + ')">' + t[1] + "</span>"; }).join("") + "</div>";
     var pLegend = li("var(--ink2)", "", "Precip chance") + PT.filter(function (t) { return used[t[0]]; }).map(function (t) { return li("var(--" + t[0] + ")", "blk", t[1]); }).join("") +
-      MU.map(function (t) { return li("var(--" + t[0] + ")", "strip", t[1] + " (top strip)"); }).join("") +
+      MU.map(function (t) { return li("var(--" + t[0] + ")", "strip", t[1]); }).join("") +
       (AMT.length ? li("var(--line)", "box", "Amount per NWS time block") : "") + '<span style="white-space:nowrap;color:var(--muted)">Levels: slight chance · chance · likely · definite</span>';
     var pMarks = [{ a: s.pop, y: yP, c: "var(--ink2)", u: "%", n: "Precip chance" }];
     var PK = out.length; // this card leads the Hourly tab
