@@ -165,7 +165,24 @@
       // one line, all at the title's size: icon, condition, then temperature
       '<div class="now-line"><span class="now-ico">' + iconHtml(c.icon, isDay(c.ms)) + '</span><span class="now-desc">' + esc(c.desc || "—") + '</span><span class="now-t num">' + (c.t == null ? "–" : c.t) + "°F</span></div>" + hazHtml() +
       '<dl class="kv num">' + rows.map(function (r) { return "<div><dt>" + r[0] + "</dt><dd>" + (r[2] ? r[1] : esc(r[1])) + "</dd></div>"; }).join("") + "</dl>" +
+      '<div id="nowprecip" class="gstack" hidden></div>' +
       '<div id="nowday"></div>';
+    renderNowPrecip();
+  }
+  // Is it precipitating right now, going by the current observation (its wording, or its weather icon)? "… in Vicinity"
+  //   means nearby, not at the station, and "freezing fog" isn't precipitation.
+  var PRECIP_WORDS = /rain|shower|drizzle|snow|flurr|sleet|ice pellet|wintry|hail|thunder|t-?storm|blizzard/i, PRECIP_ICON = /rain|tsra|snow|sleet|fzra|blizzard|hail|drizzle/;
+  function precipNow(c) {
+    if (!c) return false;
+    var d = String(c.desc || "").replace(/freezing fog/ig, "").replace(/[\w\/-]+\s+in\s+vicinity/ig, "");
+    return PRECIP_WORDS.test(d) || (c.icon || []).some(function (x) { return PRECIP_ICON.test(x.c || ""); });
+  }
+  // While it is precipitating, show the Precipitation card from the Hourly tab (same card, same hold-to-read) on the Now
+  //   tab, between the current conditions and today/tonight.
+  function renderNowPrecip() {
+    var host = $("nowprecip"); GN = null; if (!host) return;
+    if (!doc || !precipNow(doc.cur) || !doc.grid || !doc.grid.n) { host.hidden = true; host.innerHTML = ""; return; }
+    host.hidden = false; GN = renderGraph(host, "precip");
   }
 
   // ---------- 7-day ----------
@@ -306,15 +323,17 @@
 
 
   // ---------- hourly graph ----------
-  var G = null;
+  var G = null, GN = null; // G: the Hourly graphs; GN: the Precipitation card shown on Now while it is precipitating
   function lanes() {
     return [["rain", "Rain"], ["thunder", "Thunder"], ["snow", "Snow"], ["fzra", "Freezing rain"], ["sleet", "Sleet"], ["fog", "Fog"]];
   }
   function blockAt(arr, t) { for (var i = 0; i < arr.length; i++) if (t >= arr[i][0] && t < arr[i][0] + arr[i][1] * H) return arr[i]; return null; }
 
-  function renderGraph() {
-    var g = doc && doc.grid; var gin = $("gin");
-    if (!g || !g.n) { gin.innerHTML = '<div class="empty">Hourly data not available.</div>'; return; }
+  // Draws the graph cards into `gin` and returns the state the hold-to-read code needs. only === "precip" draws just the
+  //   Precipitation card (the copy on the Now tab); it is the same card, built by the same code.
+  function renderGraph(gin, only) {
+    var g = doc && doc.grid;
+    if (!g || !g.n) { gin.innerHTML = '<div class="empty">Hourly data not available.</div>'; return null; }
 
     var s = g.s, n = g.n, W = n * PX, start = g.start;
     var X = function (i) { return i * PX + PX / 2; };
@@ -435,7 +454,7 @@
     var tv = s.t.concat(s.wc, s.hi).filter(function (v) { return v != null; });
     var tt = nice(Math.min.apply(null, tv), Math.max.apply(null, tv), 10), h1 = 150, y1 = scale(tt, h1, 8);
     var hasWc = s.wc.some(function (v) { return v != null; }), hasHi = s.hi.some(function (v) { return v != null; });
-    out.push(panel("Temperature (°F)", li("var(--t)", "", "Temp") + (hasWc ? li("var(--wc)", "", "Wind chill") : "") + (hasHi ? li("var(--hi)", "", "Heat index") : ""), h1, tt, y1, "°",
+    if (!only) out.push(panel("Temperature (°F)", li("var(--t)", "", "Temp") + (hasWc ? li("var(--wc)", "", "Wind chill") : "") + (hasHi ? li("var(--hi)", "", "Heat index") : ""), h1, tt, y1, "°",
       (hasWc ? '<path d="' + path(s.wc, y1) + '" fill="none" stroke="var(--wc)" stroke-width="2"/>' : "") +
       (hasHi ? '<path d="' + path(s.hi, y1) + '" fill="none" stroke="var(--hi)" stroke-width="2"/>' : "") +
       '<path d="' + path(s.t, y1) + '" fill="none" stroke="var(--t)" stroke-width="2.75"/>',
@@ -458,7 +477,7 @@
     // 2 wind
     var wmax = Math.max(20, Math.max.apply(null, s.wg.concat(s.ws).filter(function (v) { return v != null; })));
     var wt = nice(0, wmax, wmax > 40 ? 20 : 10), h2 = 110, y2 = scale(wt, h2, 6);
-    out.push(panel("Wind (mph)", li("var(--wind)", "", "Sustained") + li("var(--gust)", "", "Gusts"), h2, wt, y2, "",
+    if (!only) out.push(panel("Wind (mph)", li("var(--wind)", "", "Sustained") + li("var(--gust)", "", "Gusts"), h2, wt, y2, "",
       '<path d="' + path(s.wg, y2) + '" fill="none" stroke="var(--gust)" stroke-width="2.25"/>' +
       '<path d="' + path(s.ws, y2) + '" fill="none" stroke="var(--wind)" stroke-width="2.25"/>',
       [{ a: s.ws, y: y2, c: "var(--wind)", u: " mph", n: "Sustained" }, { a: s.wg, y: y2, c: "var(--gust)", u: " mph", n: "Gusts" }]));
@@ -544,7 +563,7 @@
     var pt = [0, 25, 50, 75, 100], h3 = 90, y3 = scale(pt, h3, 6);
     var sky = path(s.sky, y3); var skyA = sky ? sky + "L" + X(n - 1) + " " + y3(0) + "L" + X(0) + " " + y3(0) + "Z" : "";
     var CLOUDK = out.length; // last, after Wind
-    out.push(panel("Cloud Cover (%)", li("var(--sky)", "blk", "Sky cover (cloud %)"), h3, pt, y3, "",
+    if (!only) out.push(panel("Cloud Cover (%)", li("var(--sky)", "blk", "Sky cover (cloud %)"), h3, pt, y3, "",
       '<path d="' + skyA + '" fill="var(--sky)" fill-opacity=".28" stroke="var(--sky)" stroke-width="1"/>',
       [{ a: s.sky, y: y3, c: "var(--sky)", u: "%", area: true, n: "Sky cover" }]));
 
@@ -554,16 +573,20 @@
     gin.innerHTML = '<div class="gbg"></div><div class="gall"><div class="gwide" style="width:' + (W + GL) + 'px">' + out.join("") + "</div></div>";
     // order: Precipitation, Temperature, Wind, Cloud Cover (CSS order, so the DOM order that MARKS is indexed by stays put)
     gin.querySelectorAll(".pan").forEach(function (pn, k) { var r = WXK.indexOf(k); pn.style.order = r >= 0 ? r - 100 : k === CLOUDK ? 100 : k; });
-    gLayout();
-    G = { start: start, n: n, nowI: nowI, mids: mids, marks: MARKS, W: W };
+    gLayout(gin);
+    var I = { el: gin, start: start, n: n, nowI: nowI, mids: mids, marks: MARKS, W: W };
 
-    // day chips
+    // day chips (Hourly only)
+    if (!only) {
     var dh = '<button type="button" class="chip on" data-x="' + Math.max(0, nowI - 6) + '">Now</button>';
     mids.forEach(function (i) { dh += '<button type="button" class="chip" data-x="' + i + '">' + esc(fmt(start + i * H, { weekday: "short", day: "numeric" })) + "</button>"; });
     $("days").innerHTML = dh;
+    }
     if (selIdx == null || selIdx >= n) selIdx = nowI;
-    select(selIdx, null, false);
-    requestAnimationFrame(function () { scrollAll(Math.max(0, GL + ((Date.now() - start) / H) * PX - firstSc().clientWidth * 0.3)); });
+    select(only ? nowI : selIdx, null, false, I);
+    // put "now" about a third of the way in; if the card is hidden right now (Now tab not showing) do it once it shows
+    I.needScroll = true; scrollNow(I);
+    return I;
   }
 
 
@@ -587,37 +610,47 @@
     return o;
   }
 
-  function firstSc() { return $("gin").querySelector(".gall") || $("gin"); }
+  function scOf(I) { I = I || G; var el = I ? I.el : $("gin"); return el.querySelector(".gall") || el; }
+  function firstSc() { return scOf(G); }
   function scrollAll(x, smooth) { firstSc().scrollTo({ left: x, behavior: smooth ? "smooth" : "auto" }); }
+  function scrollNow(I) {
+    var sc = scOf(I); if (!I.needScroll || !sc.clientWidth) return; I.needScroll = false;
+    sc.scrollTo({ left: Math.max(0, GL + ((Date.now() - I.start) / H) * PX - sc.clientWidth * 0.3), behavior: "auto" });
+  }
   // size sticky titles/legends to the visible width and draw each card's box behind its panel
-  function gLayout() {
-    var gin = $("gin"), all = gin.querySelector(".gall"), bg = gin.querySelector(".gbg"); if (!all || !bg) return;
+  function gLayout(gin) {
+    var all = gin.querySelector(".gall"), bg = gin.querySelector(".gbg"); if (!all || !bg) return;
     all.style.setProperty("--vw", all.clientWidth + "px");
     var pans = gin.querySelectorAll(".pan"), boxes = [];
     for (var k = 0; k < pans.length; k++) boxes.push('<div style="top:' + pans[k].offsetTop + "px;height:" + pans[k].offsetHeight + 'px"></div>');
     bg.innerHTML = boxes.join("");
   }
-  if (window.ResizeObserver) new ResizeObserver(function () { requestAnimationFrame(gLayout); }).observe($("gin"));
-  function select(i, host, show) {
-    if (!G) return; selIdx = i;
-    var s = doc.grid.s, t = G.start + i * H;
+  // re-lay-out whenever the Hourly area or the Now card changes size (including when a hidden tab is shown)
+  function layoutAll() {
+    gLayout($("gin")); var np = $("nowprecip"); if (np) gLayout(np);
+    if (G) scrollNow(G); if (GN) scrollNow(GN);
+  }
+  if (window.ResizeObserver) { var ro = new ResizeObserver(function () { requestAnimationFrame(layoutAll); }); ro.observe($("gin")); ro.observe($("nowcard")); }
+  function select(i, host, show, I) {
+    I = I || G; if (!I) return; selIdx = i;
+    var s = doc.grid.s, t = I.start + i * H;
     var cur = [];
-    $("gin").querySelectorAll(".gin2").forEach(function (g2) {
+    I.el.querySelectorAll(".gin2").forEach(function (g2) {
       var c = g2.querySelector(".cursor"), sv = g2.querySelector("svg.plot"); if (!c || !sv) return;
       cur.push([c, sv.offsetTop, sv.getAttribute("height")]);
     });
     cur.forEach(function (x) { var c = x[0]; c.hidden = !show; c.style.left = (GL + i * PX + PX / 2) + "px"; c.style.top = x[1] + "px"; c.style.height = x[2] + "px"; });
-    var scv = firstSc(), sFlip = GL + i * PX + PX / 2 - scv.scrollLeft > scv.clientWidth * 0.55 || i * PX + PX / 2 > G.W - 70;
-    $("gin").querySelectorAll(".pan").forEach(function (pn, k) {
+    var scv = scOf(I), sFlip = GL + i * PX + PX / 2 - scv.scrollLeft > scv.clientWidth * 0.55 || i * PX + PX / 2 > I.W - 70;
+    I.el.querySelectorAll(".pan").forEach(function (pn, k) {
       var mk = pn.querySelector("svg.mk"), sv = pn.querySelector("svg.plot"); if (!mk) return;
-      var mm = (G.marks && G.marks[k]) || { list: [], top: 8 }, ms = mm.list;
+      var mm = (I.marks && I.marks[k]) || { list: [], top: 8 }, ms = mm.list;
       if (!show) { mk.setAttribute("hidden", ""); return; }
       mk.setAttribute("height", sv.getAttribute("height"));
       var x = i * PX + PX / 2, o = "", pts = [], TX = 'font-weight="700" fill="var(--nowtxt)" stroke="var(--surface)" stroke-width="3" paint-order="stroke" stroke-linejoin="round"';
       var flip = sFlip; // labels go to the left of the cursor once it's past the middle of the screen
       var tl = fmt(t, { hour: "numeric", minute: "2-digit" }).replace(" AM", "a").replace(" PM", "p");
       // time of the scrubbed hour, same spot and style as the current-time label
-      o += '<text x="' + (flip ? x - 5 : x + 5) + '" y="' + (mm.top + 13) + '"' + (flip ? ' text-anchor="end"' : "") + ' font-size="11" ' + TX + ">" + (i === G.nowI ? "Now · " : "") + fmt(t, { weekday: "short" }) + " " + tl + "</text>";
+      o += '<text x="' + (flip ? x - 5 : x + 5) + '" y="' + (mm.top + 13) + '"' + (flip ? ' text-anchor="end"' : "") + ' font-size="11" ' + TX + ">" + (i === I.nowI ? "Now · " : "") + fmt(t, { weekday: "short" }) + " " + tl + "</text>";
       var off = mm.off || 0;
       ms.forEach(function (m) {
         if (m.txt) { m.txt(i).forEach(function (line, j) { o += '<text x="' + (flip ? x - 5 : x + 5) + '" y="' + (mm.top + 28 + j * 14) + '"' + (flip ? ' text-anchor="end"' : "") + ' font-size="11.5" ' + TX + ">" + esc(line) + "</text>"; }); return; }
@@ -632,8 +665,8 @@
       });
       mk.innerHTML = o; mk.removeAttribute("hidden");
     });
-    $("gin").querySelectorAll(".gread").forEach(function (r) { r.hidden = true; });
-    $("gin").classList.toggle("scrubbing", !!show);
+    I.el.querySelectorAll(".gread").forEach(function (r) { r.hidden = true; });
+    I.el.classList.toggle("scrubbing", !!show);
     return; // values are drawn right on the graphs; no table below
     var v = function (a, suf) { return a[i] == null ? "–" : a[i] + (suf || ""); };
     var wx = lanes().filter(function (l) { return s[l[0]][i]; }).map(function (l) { return l[1] + " " + s[l[0]][i][1]; });
@@ -648,7 +681,7 @@
     if (wx.length) rows.push(["Weather", wx.join(", ")]);
     amt.forEach(function (a) { rows.push(["Amount", a]); });
     var r = host.querySelector(".gread");
-    r.innerHTML = '<div class="gr-t">' + esc(fmt(t, { weekday: "long", hour: "numeric" })) + (i === G.nowI ? " · now" : "") + '</div><dl class="num">' +
+    r.innerHTML = '<div class="gr-t">' + esc(fmt(t, { weekday: "long", hour: "numeric" })) + (i === I.nowI ? " · now" : "") + '</div><dl class="num">' +
       rows.map(function (x) { return "<div><dt>" + x[0] + "</dt><dd>" + esc(x[1]) + "</dd></div>"; }).join("") + "</dl>";
     r.hidden = false;
   }
@@ -855,7 +888,7 @@
 
   function renderAll() {
     if (doc && doc.loc && doc.loc.tz) TZ = doc.loc.tz;
-    renderFresh(); renderNow(); renderWeek(); if (tab === "hourly") renderGraph(); else G = null; renderTotals(); renderDetail(); renderObs(); renderFoot(); if (tab === "maps") renderMaps();
+    renderFresh(); renderNow(); renderWeek(); if (tab === "hourly") G = renderGraph($("gin")); else G = null; renderTotals(); renderDetail(); renderObs(); renderFoot(); if (tab === "maps") renderMaps();
     activeCard = -1; if (tab === "daily") requestAnimationFrame(syncStrip);
   }
 
@@ -947,7 +980,7 @@
     document.querySelectorAll("section[data-tab]").forEach(function (s) {
       s.hidden = s.dataset.tab !== t;
     });
-    if (t === "hourly" && doc && (!G || changed)) renderGraph();
+    if (t === "hourly" && doc && (!G || changed)) G = renderGraph($("gin"));
     if (t === "maps") renderMaps(); else mStop();
     requestAnimationFrame(equalize);
     if (changed) window.scrollTo(0, 0);
@@ -965,37 +998,44 @@
   // Scrub: press and hold ~0.3 s on a graph, then slide left/right to read each hour in real time.
   // Lifting the finger clears everything and the graphs go back to the current time.
   var sc0 = null, scrubbing = false;
-  function idxAt(sc, clientX) { var r = sc.getBoundingClientRect(); return Math.max(0, Math.min(G.n - 1, Math.floor((clientX - r.left + sc.scrollLeft - GL) / PX))); }
-  function scrubStart(target, x, y) {
-    if (!G) return; var sc = target.closest && target.closest(".gsc"); if (!sc) return;
-    clearTimeout(sc0 && sc0.t);
-    sc0 = { sc: sc, host: target.closest(".pan"), x0: x, y0: y, x: x, t: setTimeout(function () { scrubbing = true; firstSc().classList.add("scrub"); gin.addEventListener("touchmove", holdStill, { passive: false }); select(idxAt(sc0.sc, sc0.x), sc0.host, true); }, 300) };
+  var scrubI = null; // the graph instance being read (Hourly or the Now card)
+  function idxAt(sc, clientX, I) { var r = sc.getBoundingClientRect(); return Math.max(0, Math.min(I.n - 1, Math.floor((clientX - r.left + sc.scrollLeft - GL) / PX))); }
+  function scrubStart(target, x, y, I) {
+    if (!I) return; var sc = target.closest && target.closest(".gsc"); if (!sc) return;
+    clearTimeout(sc0 && sc0.t); scrubI = I;
+    sc0 = { sc: sc, I: I, host: target.closest(".pan"), x0: x, y0: y, x: x, t: setTimeout(function () { scrubbing = true; scOf(I).classList.add("scrub"); I.el.addEventListener("touchmove", holdStill, { passive: false }); select(idxAt(sc0.sc, sc0.x, I), sc0.host, true, I); }, 300) };
   }
   function scrubMove(x, y, ev) {
     if (!sc0) return;
     sc0.x = x;
     if (scrubbing) {
-      if (!scrubMove.q) { scrubMove.q = true; requestAnimationFrame(function () { scrubMove.q = false; if (!sc0 || !scrubbing) return; var i = idxAt(sc0.sc, sc0.x); if (i !== selIdx || sc0.host.querySelector(".gread").hidden) select(i, sc0.host, true); }); }
+      if (!scrubMove.q) { scrubMove.q = true; requestAnimationFrame(function () { scrubMove.q = false; if (!sc0 || !scrubbing) return; var I = sc0.I, i = idxAt(sc0.sc, sc0.x, I); if (i !== selIdx || sc0.host.querySelector(".gread").hidden) select(i, sc0.host, true, I); }); }
       return;
     }
     if (Math.hypot(x - sc0.x0, y - sc0.y0) > 8) { clearTimeout(sc0.t); sc0 = null; } // it's a swipe, let the graph scroll
   }
   function scrubEnd() {
     if (sc0) clearTimeout(sc0.t);
-    firstSc().classList.remove("scrub"); gin.removeEventListener("touchmove", holdStill, { passive: false });
-    if (scrubbing) { scrubbing = false; select(G ? G.nowI : 0, null, false); }
+    if (scrubI) { scOf(scrubI).classList.remove("scrub"); scrubI.el.removeEventListener("touchmove", holdStill, { passive: false }); }
+    if (scrubbing) { scrubbing = false; select(scrubI ? scrubI.nowI : 0, null, false, scrubI); }
     sc0 = null;
   }
-  var gin = $("gin");
-  gin.addEventListener("touchstart", function (e) { if (e.touches.length === 1) scrubStart(e.target, e.touches[0].clientX, e.touches[0].clientY); }, { passive: true });
-  gin.addEventListener("touchmove", function (e) { if (e.touches.length === 1) scrubMove(e.touches[0].clientX, e.touches[0].clientY, e); }, { passive: true });
   // while holding to read values, stop the page from scrolling (a blocking listener only for that time)
   function holdStill(e) { if (e.cancelable) e.preventDefault(); }
-  gin.addEventListener("touchend", scrubEnd); gin.addEventListener("touchcancel", scrubEnd);
-  gin.addEventListener("mousedown", function (e) { scrubStart(e.target, e.clientX, e.clientY); });
+  // the same hold-to-read is wired to the Hourly graphs and to the Precipitation card on Now (`within` limits a wider
+  //   container to its graph, since the Now card's contents are rebuilt on every refresh)
+  function wireScrub(el, getI, within) {
+    var ok = function (t) { return !within || (t.closest && t.closest(within)); };
+    el.addEventListener("touchstart", function (e) { if (e.touches.length === 1 && ok(e.target)) scrubStart(e.target, e.touches[0].clientX, e.touches[0].clientY, getI()); }, { passive: true });
+    el.addEventListener("touchmove", function (e) { if (e.touches.length === 1) scrubMove(e.touches[0].clientX, e.touches[0].clientY, e); }, { passive: true });
+    el.addEventListener("touchend", scrubEnd); el.addEventListener("touchcancel", scrubEnd);
+    el.addEventListener("mousedown", function (e) { if (ok(e.target)) scrubStart(e.target, e.clientX, e.clientY, getI()); });
+    el.addEventListener("contextmenu", function (e) { if (ok(e.target) && e.target.closest(".gsc")) e.preventDefault(); });
+  }
+  wireScrub($("gin"), function () { return G; });
+  wireScrub($("nowcard"), function () { return GN; }, "#nowprecip");
   window.addEventListener("mousemove", function (e) { if (sc0) scrubMove(e.clientX, e.clientY, e); });
   window.addEventListener("mouseup", function () { if (sc0 || scrubbing) scrubEnd(); });
-  gin.addEventListener("contextmenu", function (e) { if (e.target.closest(".gsc")) e.preventDefault(); });
 
   // Block the browser's own pull-to-refresh (iOS Safari ignores overscroll-behavior for it): a downward drag that
   //   starts with the page already at the top is cancelled. Sideways drags (graphs, maps) and scrollable panels are left alone.

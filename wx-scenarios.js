@@ -30,7 +30,7 @@
         ["Cold Weather Advisory", "Moderate", 36, 60, "Very cold wind chills as low as 30 below zero.", "Use caution while traveling outside. Wear appropriate clothing."]],
       afd: "Heavy snow develops this evening and becomes intense overnight into Monday with snowfall rates of 1 to 2 inches per hour. Northwest winds gusting 45 to 50 mph will produce whiteout conditions. Snow tapers Monday night. Bitter cold follows Tuesday with wind chills 25 to 30 below zero.",
       f: function (h, lh) {
-        var storm = h >= 6 && h < 30, heavy = h >= 10 && h < 24;
+        var storm = h >= -2 && h < 30, heavy = h >= 10 && h < 24;
         var t = h < 30 ? ramp(h, 0, 30, 30, 12) : diurnal(lh, -6, 6) + ramp(h, 72, 140, 0, 18);
         var ws = h < 8 ? 10 : h < 40 ? ramp(h, 8, 16, 12, 30) : ramp(h, 40, 60, 25, 10), wg = ws > 15 ? ws + 18 : null;
         var sn = storm ? (heavy ? 1.2 : 0.4) : 0;
@@ -45,7 +45,7 @@
         ["Winter Weather Advisory", "Moderate", 22, 32, "Mixed precipitation changing to snow. Additional snow accumulations of 1 to 3 inches.", "Slow down and use caution while traveling."]],
       afd: "Freezing rain spreads in early this evening and continues overnight with ice accumulations near a half inch. Sleet mixes in late Monday morning before a change to snow Monday afternoon. Patchy fog early this evening. Colder and dry for midweek.",
       f: function (h, lh) {
-        var zr = h >= 4 && h < 20, pl = h >= 18 && h < 23, sn = h >= 22 && h < 30;
+        var zr = h >= -1 && h < 20, pl = h >= 18 && h < 23, sn = h >= 22 && h < 30;
         var t = h < 30 ? ramp(h, 0, 30, 31, 25) : diurnal(lh, 12, 26);
         return { t: t, td: t - 1, ws: 12, wg: 22, wd: 45, sky: h < 34 ? 100 : 40, pop: zr || pl || sn ? 90 : h < 4 ? 40 : 10, thp: 0,
           wx: [].concat(zr ? [wx("freezing_rain", "definite")] : [], pl ? [wx("sleet", "chance")] : [], sn ? [wx("snow", "likely")] : [], h >= 1 && h < 5 ? [wx("fog", "patchy")] : []),
@@ -70,7 +70,7 @@
         ["Flood Watch", "Moderate", 2, 20, "Excessive rainfall of 2 to 4 inches may cause flash flooding.", "Monitor later forecasts and be alert for possible flood warnings."]],
       afd: "Storms develop this afternoon along a warm front and quickly become severe, with damaging winds and large hail the main threats. Training storms this evening could produce 2 to 3 inches of rain. Another round of storms is possible Tuesday afternoon before cooler, drier air arrives Wednesday.",
       f: function (h, lh) {
-        var r1 = h >= 2 && h < 9, r2 = h >= 48 && h < 55;
+        var r1 = h >= -1 && h < 9, r2 = h >= 48 && h < 55;
         var t = h < 60 ? diurnal(lh, 70, 88) : diurnal(lh, 58, 76), td = h < 60 ? 72 : 55;
         var ws = r1 || r2 ? 20 : 10, wg = r1 ? 60 : r2 ? 45 : 18;
         return { t: r1 || r2 ? t - 8 : t, td: td, ws: ws, wg: wg, wd: 210, sky: r1 || r2 ? 95 : 40, pop: r1 ? 90 : r2 ? 60 : 15, thp: r1 ? 80 : r2 ? 50 : 5,
