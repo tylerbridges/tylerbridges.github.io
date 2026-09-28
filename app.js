@@ -410,7 +410,7 @@
 
     function nice(lo, hi, step) { var a = Math.floor(lo / step) * step, b = Math.ceil(hi / step) * step; if (a === b) b += step; var t = []; for (var v = a; v <= b; v += step) t.push(v); return t; }
     function scale(ticks, h, pad) { var a = ticks[0], b = ticks[ticks.length - 1]; return function (v) { return pad + (h - 2 * pad) * (1 - (v - a) / (b - a)); }; }
-    var li = function (col, cls, label) { return '<span style="white-space:nowrap"><i class="' + (cls || "") + '" style="border-color:' + col + ";background:" + (cls === "blk" || cls === "dotm" ? col : "transparent") + '"></i>' + label + "</span>"; };
+    var li = function (col, cls, label) { return '<span style="white-space:nowrap"><i class="' + (cls || "") + '" style="border-color:' + col + ";background:" + (cls === "blk" || cls === "dotm" || cls === "strip" ? col : "transparent") + '"></i>' + label + "</span>"; };
 
     // time axis under every panel: 3-hour labels with hourly ticks; midnight is labeled with the day instead of "12a"
     var trow = "";
@@ -474,7 +474,9 @@
     var LVP = [20, 50, 70, 100]; // top of each NWS wording band: slight chance 10-20%, chance 30-50%, likely 60-70%, definite/occasional 80-100%
     // The four wording bands get equal height with equal gaps between them (like weather.gov's graph), so the % scale is
     //   piecewise: 0-10 gap, 10-20 SChc, 20-30 gap, 30-50 Chc, 50-60 gap, 60-70 Lkly, 70-80 gap, 80-100 Ocnl.
-    var BH = 13, GH = 7, pTop = 34, pH = 4 * (BH + GH), pBase = pTop + pH;
+    // thunder/hail/fog each get their own labelled strip along the top, only when they occur
+    var MU = MKT.filter(function (t) { return s[t[0]].some(function (v) { return v; }); }), MROW = 11, MY0 = 18;
+    var BH = 13, GH = 7, pTop = MU.length ? MY0 + MU.length * MROW + 8 : 34, pH = 4 * (BH + GH), pBase = pTop + pH;
     var PCT = [0, 10, 20, 30, 50, 60, 70, 80, 100], PY = [0, GH, GH + BH, 2 * GH + BH, 2 * (GH + BH), 3 * GH + 2 * BH, 3 * (GH + BH), 4 * GH + 3 * BH, pH];
     var yP = function (v) {
       v = Math.max(0, Math.min(100, v));
@@ -494,9 +496,9 @@
         var v = s[t[0]][i], top = yP(LVP[Math.min(4, v[0]) - 1]), w = (PX - 4) / here.length; used[t[0]] = 1;
         pb += '<rect x="' + (i * PX + 2 + k * w).toFixed(1) + '" y="' + top.toFixed(1) + '" width="' + w.toFixed(1) + '" height="' + (pBase - top).toFixed(1) + '" fill="var(--' + t[0] + ')" fill-opacity=".85"/>';
       });
-      MKT.forEach(function (t, k) {
+      MU.forEach(function (t, k) {
         var v = s[t[0]][i]; if (!v) return; used[t[0]] = 1;
-        pb += '<rect x="' + (i * PX + 1) + '" y="' + (16 + k * 6) + '" width="' + (PX - 2) + '" height="5" rx="1.5" fill="var(--' + t[0] + ')" fill-opacity="' + (0.35 + 0.16 * Math.min(4, v[0])) + '"/>';
+        pb += '<rect x="' + (i * PX + 1) + '" y="' + (MY0 + k * MROW) + '" width="' + (PX - 2) + '" height="6" rx="1.5" fill="var(--' + t[0] + ')" fill-opacity="' + (0.35 + 0.16 * Math.min(4, v[0])) + '"/>';
       });
     }
     // exact chance of precipitation on top of the bars
@@ -513,8 +515,10 @@
     });
     var pAxis = '<div class="yax" style="height:' + pHH + "px;margin-bottom:-" + pHH + 'px">' +
       [["SChc", 20], ["Chc", 50], ["Lkly", 70], ["Ocnl", 100]] /* on each level's line */.map(function (l) { return '<span style="top:' + yP(l[1]) + 'px">' + l[0] + "</span>"; }).join("") +
-      AMT.map(function (a, k) { return '<span style="top:' + (rowY(k) + 8) + 'px">' + (a[1] === "Liquid" ? "Liq" : a[1]) + "</span>"; }).join("") + "</div>";
-    var pLegend = li("var(--ink2)", "", "Precip chance") + PT.concat(MKT).filter(function (t) { return used[t[0]]; }).map(function (t) { return li("var(--" + t[0] + ")", "blk", t[1]); }).join("") +
+      AMT.map(function (a, k) { return '<span style="top:' + (rowY(k) + 8) + 'px">' + (a[1] === "Liquid" ? "Liq" : a[1]) + "</span>"; }).join("") +
+      MU.map(function (t, k) { return '<span class="mkl" style="top:' + (MY0 + k * MROW + 3.5) + "px;color:var(--" + t[0] + ')">' + (t[0] === "thunder" ? "Tstm" : t[1]) + "</span>"; }).join("") + "</div>";
+    var pLegend = li("var(--ink2)", "", "Precip chance") + PT.filter(function (t) { return used[t[0]]; }).map(function (t) { return li("var(--" + t[0] + ")", "blk", t[1]); }).join("") +
+      MU.map(function (t) { return li("var(--" + t[0] + ")", "strip", t[1] + " (top strip)"); }).join("") +
       (AMT.length ? li("var(--line)", "box", "Amount per NWS time block") : "") + '<span style="white-space:nowrap;color:var(--muted)">Levels: slight chance · chance · likely · definite</span>';
     var pMarks = [{ a: s.pop, y: yP, c: "var(--ink2)", u: "%", n: "Precip chance" }];
     var PK = out.length; // this card leads the Hourly tab
