@@ -201,6 +201,19 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
 /* obs */
 .obs{padding:10px 0}
 .spark{padding:0 12px 8px}
+/* Observations chart hold-to-read (same look as the Hourly graphs) */
+.spk{position:relative;padding-top:18px;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;cursor:crosshair}
+.spk svg{display:block}
+.spk-cur{position:absolute;top:0;bottom:0;width:0;border-left:2px solid var(--nowg);pointer-events:none}
+.spk-dot{position:absolute;width:8px;height:8px;margin:-4px 0 0 -4px;border-radius:50%;background:var(--t);box-shadow:0 0 0 2px var(--surface);pointer-events:none}
+.spk-t,.spk-v{position:absolute;white-space:nowrap;pointer-events:none;font-weight:700;text-shadow:0 0 3px var(--surface),0 0 3px var(--surface),0 0 3px var(--surface)}
+.spk-t{top:0;margin-left:6px;font-size:11px;color:var(--nowtxt)}
+.spk-v{margin:-18px 0 0 8px;font-size:11.5px;color:var(--t)}
+.spk-v small{font-size:10px;font-weight:600;margin-left:4px}
+.spk-t.flip,.spk-v.flip{transform:translateX(-100%);margin-left:-6px}
+.spk-v.flip{margin-left:-8px}
+.spk-foot{display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--muted);min-height:15px}
+.ot tr.hl td{background:color-mix(in srgb,var(--accent) 14%,transparent)}
 .tscroll{overflow-x:auto}
 .ot{border-collapse:collapse;font-size:12.5px;min-width:560px;width:100%}
 .ot th,.ot td{padding:6px 8px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--grid)}
@@ -545,9 +558,9 @@ body:has(#testbar:not([hidden])) .sec{scroll-margin-top:140px}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=35"></script>
-<script src="wx-live.js?v=35"></script>
-<script src="wx-scenarios.js?v=35"></script>
-<script src="app.js?v=35"></script>
+<script src="wx-normalize.js?v=36"></script>
+<script src="wx-live.js?v=36"></script>
+<script src="wx-scenarios.js?v=36"></script>
+<script src="app.js?v=36"></script>
 </body>
 </html>

@@ -683,6 +683,7 @@
   }
 
   // ---------- observations ----------
+  var OBS = null;
   function renderObs() {
     var o = (doc && doc.obs) || [], st = (doc && doc.station) || {};
     $("obsstn").textContent = st.id ? st.id + " · last 24 hr" : "";
@@ -694,18 +695,73 @@
     var xy = function (p) { return [((p.ms - t0) / Math.max(1, t1 - t0)) * (w - 40) + 6, 10 + (h - 22) * (1 - (p.t - mn) / (mx - mn))]; };
     var d = pts.map(function (p, i) { var c = xy(p); return (i ? "L" : "M") + c[0].toFixed(1) + " " + c[1].toFixed(1); }).join("");
     var last = xy(pts[pts.length - 1]);
-    var spark = '<div class="spark"><svg viewBox="0 0 ' + w + " " + h + '" width="100%" height="' + h + '" preserveAspectRatio="none" style="overflow:visible"><path d="' + d + 'L' + last[0] + " " + (h - 4) + "L6 " + (h - 4) + 'Z" fill="var(--t)" fill-opacity=".08"/><path d="' + d + '" fill="none" stroke="var(--t)" stroke-width="2" vector-effect="non-scaling-stroke"/><circle cx="' + last[0] + '" cy="' + last[1] + '" r="3.5" fill="var(--t)"/></svg>' +
-      '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted)" class="num"><span>' + esc(dtm(t0)) + "</span><span>24-hr range " + mn + "° – " + mx + "°F</span><span>" + esc(tm(t1)) + "</span></div></div>";
+    var spark = '<div class="spark"><div class="spk"><svg viewBox="0 0 ' + w + " " + h + '" width="100%" height="' + h + '" preserveAspectRatio="none" style="overflow:visible"><path d="' + d + 'L' + last[0] + " " + (h - 4) + "L6 " + (h - 4) + 'Z" fill="var(--t)" fill-opacity=".08"/><path d="' + d + '" fill="none" stroke="var(--t)" stroke-width="2" vector-effect="non-scaling-stroke"/><circle cx="' + last[0] + '" cy="' + last[1] + '" r="3.5" fill="var(--t)"/></svg><div class="spk-cur" hidden></div><div class="spk-dot" hidden></div><div class="spk-t" hidden></div><div class="spk-v" hidden></div></div>' +
+      '<div class="spk-foot num"><span>' + esc(dtm(t0)) + "</span><span>24-hr range " + mn + "° – " + mx + "°F</span><span>" + esc(tm(t1)) + "</span></div></div>";
     // compact rows so everything fits on one line: short time, with a day row whenever the date changes
     var lastDay = null;
     var rows = o.map(function (x) {
       var dname = fmt(x.ms, { weekday: "long", month: "short", day: "numeric" }), sep = "";
       if (dname !== lastDay) { sep = '<tr class="oday"><td colspan="5">' + esc(dname) + "</td></tr>"; lastDay = dname; }
-      return sep + "<tr><td>" + esc(tm(x.ms).replace(" AM", "a").replace(" PM", "p")) + "</td><td>" + esc(x.desc) + "</td><td>" + (x.t == null ? "–" : x.t + "°") + 
+      return sep + '<tr data-ms="' + x.ms + '"><td>' + esc(tm(x.ms).replace(" AM", "a").replace(" PM", "p")) + "</td><td>" + esc(x.desc) + "</td><td>" + (x.t == null ? "–" : x.t + "°") + 
         "</td><td>" + (x.ws == null ? "–" : x.ws === 0 ? "Calm" : (x.wd || "") + " " + x.ws + (x.wg ? " G" + x.wg : "")) + "</td><td>" + (x.vis == null ? "–" : x.vis) + "</td></tr>";
     }).join("");
+    OBS = { pts: pts, xy: xy, w: w };
     $("obscard").innerHTML = spark + '<div class="tscroll"><table class="ot num"><thead><tr><th>Time</th><th>Weather</th><th>Temp</th><th>Wind</th><th>Vis</th></tr></thead><tbody>' + rows + "</tbody></table></div>";
   }
+
+  // Observations: press and hold ~0.3 s on the temperature chart, then slide to read each observation (time at the top,
+  //   value by its dot, the rest of that reading under the chart, and its table row highlighted); lifting clears it.
+  (function () {
+    var box = $("obscard"), hold = null, on = false, lastX = 0, q = false, foot = null;
+    function spk() { return box.querySelector(".spk"); }
+    function show(x) {
+      var k = spk(); if (!k || !OBS) return;
+      var svg = k.querySelector("svg"), r = svg.getBoundingClientRect(), fx = (x - r.left) / r.width * OBS.w;
+      var best = OBS.pts[0], bd = Infinity;
+      OBS.pts.forEach(function (p) { var d = Math.abs(OBS.xy(p)[0] - fx); if (d < bd) { bd = d; best = p; } });
+      var kr = k.getBoundingClientRect(); // (SVG elements have no offsetLeft/Top, so position from screen rects)
+      var c = OBS.xy(best), px = c[0] / OBS.w * r.width + (r.left - kr.left), py = c[1] + (r.top - kr.top), flip = px > k.clientWidth * 0.55;
+      var cur = k.querySelector(".spk-cur"), dot = k.querySelector(".spk-dot"), tl = k.querySelector(".spk-t"), vl = k.querySelector(".spk-v");
+      cur.style.left = px + "px"; dot.style.left = px + "px"; dot.style.top = py + "px";
+      tl.textContent = fmt(best.ms, { weekday: "short" }) + " " + tm(best.ms).replace(" AM", "a").replace(" PM", "p");
+      vl.innerHTML = best.t + '°<small>Temp</small>';
+      [tl, vl].forEach(function (e) { e.classList.toggle("flip", flip); e.style.left = px + "px"; });
+      vl.style.top = py + "px";
+      [cur, dot, tl, vl].forEach(function (e) { e.hidden = false; });
+      // the rest of this reading replaces the chart's footer while holding
+      var f = k.parentNode.querySelector(".spk-foot"); if (f) { if (foot == null) foot = f.innerHTML;
+        f.innerHTML = "<span>" + esc([best.td != null ? "Dew " + best.td + "°" : null, best.ws == null ? null : best.ws === 0 ? "Calm" : "Wind " + (best.wd || "") + " " + best.ws + (best.wg ? " G" + best.wg : "") + " mph",
+          best.vis != null ? "Vis " + best.vis + " mi" : null, best.desc || null].filter(Boolean).join(" · ")) + "</span>"; }
+      box.querySelectorAll("tr.hl").forEach(function (t) { t.classList.remove("hl"); });
+      var row = box.querySelector('tr[data-ms="' + best.ms + '"]'); if (row) row.classList.add("hl");
+    }
+    function block(e) { if (e.cancelable) e.preventDefault(); }
+    function start(x) { on = true; box.addEventListener("touchmove", block, { passive: false }); show(x); }
+    function end() {
+      clearTimeout(hold); hold = null; if (!on) return; on = false; box.removeEventListener("touchmove", block, { passive: false });
+      var k = spk(); if (k) k.querySelectorAll(".spk-cur,.spk-dot,.spk-t,.spk-v").forEach(function (e) { e.hidden = true; });
+      var f = box.querySelector(".spk-foot"); if (f && foot != null) f.innerHTML = foot; foot = null;
+      box.querySelectorAll("tr.hl").forEach(function (t) { t.classList.remove("hl"); });
+    }
+    function down(target, x, y) {
+      if (!target.closest || !target.closest(".spk")) return;
+      lastX = x; var x0 = x, y0 = y; clearTimeout(hold);
+      hold = setTimeout(function () { hold = null; start(lastX); }, 300);
+      down.x0 = x0; down.y0 = y0;
+    }
+    function move(x, y) {
+      lastX = x;
+      if (on) { if (!q) { q = true; requestAnimationFrame(function () { q = false; if (on) show(lastX); }); } return; }
+      if (hold && Math.hypot(x - down.x0, y - down.y0) > 8) { clearTimeout(hold); hold = null; } // a scroll, not a hold
+    }
+    box.addEventListener("touchstart", function (e) { if (e.touches.length === 1) down(e.target, e.touches[0].clientX, e.touches[0].clientY); }, { passive: true });
+    box.addEventListener("touchmove", function (e) { if (e.touches.length === 1) move(e.touches[0].clientX, e.touches[0].clientY); }, { passive: true });
+    box.addEventListener("touchend", end); box.addEventListener("touchcancel", end);
+    box.addEventListener("mousedown", function (e) { down(e.target, e.clientX, e.clientY); });
+    window.addEventListener("mousemove", function (e) { if (hold || on) move(e.clientX, e.clientY); });
+    window.addEventListener("mouseup", end);
+    box.addEventListener("contextmenu", function (e) { if (e.target.closest && e.target.closest(".spk")) e.preventDefault(); });
+  })();
 
   // ---------- forecaster notes: plain-language lines from the Area Forecast Discussion, pinned to the day they mention ----------
   var DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
