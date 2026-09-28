@@ -689,14 +689,30 @@
     $("obsstn").textContent = st.id ? st.id + " · last 24 hr" : "";
     if (!o.length) { $("obscard").innerHTML = '<div class="empty">No recent observations.</div>'; return; }
     var pts = o.slice().reverse().filter(function (x) { return x.t != null; });
-    var w = 600, h = 64, mn = Math.min.apply(null, pts.map(function (p) { return p.t; })), mx = Math.max.apply(null, pts.map(function (p) { return p.t; }));
-    if (mx === mn) mx = mn + 1;
+    // 24-hr temperature chart with a °F axis (gridlines at round values) and a time axis, like the Hourly graphs
+    var w = 600, h = 84, mn = Math.min.apply(null, pts.map(function (p) { return p.t; })), mx = Math.max.apply(null, pts.map(function (p) { return p.t; }));
+    var rg = Math.max(1, mx - mn), stp = rg <= 8 ? 2 : rg <= 20 ? 5 : 10, lo = Math.floor(mn / stp) * stp, hi = Math.ceil(mx / stp) * stp; if (hi === lo) hi += stp;
+    var ticks = []; for (var tv = lo; tv <= hi; tv += stp) ticks.push(tv);
     var t0 = pts[0].ms, t1 = pts[pts.length - 1].ms || t0 + 1;
-    var xy = function (p) { return [((p.ms - t0) / Math.max(1, t1 - t0)) * (w - 40) + 6, 10 + (h - 22) * (1 - (p.t - mn) / (mx - mn))]; };
+    var yT = function (t) { return 8 + (h - 16) * (1 - (t - lo) / (hi - lo)); };
+    var xT = function (ms) { return ((ms - t0) / Math.max(1, t1 - t0)) * (w - 12) + 6; };
+    var xy = function (p) { return [xT(p.ms), yT(p.t)]; };
     var d = pts.map(function (p, i) { var c = xy(p); return (i ? "L" : "M") + c[0].toFixed(1) + " " + c[1].toFixed(1); }).join("");
     var last = xy(pts[pts.length - 1]);
-    var spark = '<div class="spark"><div class="spk"><svg viewBox="0 0 ' + w + " " + h + '" width="100%" height="' + h + '" preserveAspectRatio="none" style="overflow:visible"><path d="' + d + 'L' + last[0] + " " + (h - 4) + "L6 " + (h - 4) + 'Z" fill="var(--t)" fill-opacity=".08"/><path d="' + d + '" fill="none" stroke="var(--t)" stroke-width="2" vector-effect="non-scaling-stroke"/><circle cx="' + last[0] + '" cy="' + last[1] + '" r="3.5" fill="var(--t)"/></svg><div class="spk-cur" hidden></div><div class="spk-dot" hidden></div><div class="spk-t" hidden></div><div class="spk-v" hidden></div></div>' +
-      '<div class="spk-foot num"><span>' + esc(dtm(t0)) + "</span><span>24-hr range " + mn + "° – " + mx + "°F</span><span>" + esc(tm(t1)) + "</span></div></div>";
+    var grid = ticks.map(function (tv) { return '<line x1="0" x2="' + w + '" y1="' + yT(tv).toFixed(1) + '" y2="' + yT(tv).toFixed(1) + '" stroke="var(--grid)" stroke-width="1" vector-effect="non-scaling-stroke"/>'; }).join("");
+    // time axis: every 3 hours, the day name at midnight
+    var xl = "", xt = "";
+    for (var tt = Math.ceil(t0 / H) * H; tt <= t1; tt += H) {
+      var hn = hourNum(tt), pc = (xT(tt) / w * 100).toFixed(2);
+      xt += '<i style="left:' + pc + '%"' + (hn % 3 ? "" : ' class="m"') + "></i>";
+      if (hn % 3 === 0) xl += '<span style="left:' + pc + '%">' + (hn === 0 ? esc(fmt(tt, { weekday: "short" })) : hr(tt)) + "</span>";
+    }
+    var yax = '<div class="spk-y">' + ticks.map(function (tv) { return '<span style="top:' + yT(tv).toFixed(1) + 'px">' + tv + "°</span>"; }).join("") + "</div>";
+    var spark = '<div class="spark"><div class="spk-h">Temperature (°F)</div><div class="spk">' + yax + '<svg viewBox="0 0 ' + w + " " + h + '" width="100%" height="' + h + '" preserveAspectRatio="none" style="overflow:visible">' + grid +
+      '<path d="' + d + "L" + last[0] + " " + h + "L" + xy(pts[0])[0] + " " + h + 'Z" fill="var(--t)" fill-opacity=".08"/><path d="' + d + '" fill="none" stroke="var(--t)" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>' +
+      '<div class="spk-x"><div class="spk-xt">' + xt + "</div>" + xl + "</div>" +
+      '<div class="spk-cur" hidden></div><div class="spk-dot" hidden></div><div class="spk-t" hidden></div><div class="spk-v" hidden></div></div>' +
+      '<div class="spk-foot num"><span>24-hr range ' + mn + "° – " + mx + "°F</span><span>Last: " + esc(tm(t1)) + "</span></div></div>";
     // compact rows so everything fits on one line: short time, with a day row whenever the date changes
     var lastDay = null;
     var rows = o.map(function (x) {

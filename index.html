@@ -202,7 +202,15 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
 .obs{padding:10px 0}
 .spark{padding:0 12px 8px}
 /* Observations chart hold-to-read (same look as the Hourly graphs) */
-.spk{position:relative;padding-top:18px;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;cursor:crosshair}
+.spk-h{font:600 13px/1.2 var(--sans);color:var(--ink);padding:12px 0 2px}
+.spk{position:relative;padding:18px 0 0 30px;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;cursor:crosshair}
+.spk-y{position:absolute;left:0;top:18px;width:28px;pointer-events:none}
+.spk-y span{position:absolute;right:2px;transform:translateY(-50%);font-size:10.5px;color:var(--ink2)}
+.spk-x{position:relative;height:22px;pointer-events:none}
+.spk-xt{position:absolute;left:0;right:0;top:0;height:5px;border-top:1px solid var(--line)}
+.spk-xt i{position:absolute;top:0;width:1px;height:3px;background:var(--muted)}
+.spk-xt i.m{height:5px}
+.spk-x span{position:absolute;top:7px;transform:translateX(-50%);font-size:10px;font-weight:700;color:var(--ink);white-space:nowrap}
 .spk svg{display:block}
 .spk-cur{position:absolute;top:0;bottom:0;width:0;border-left:2px solid var(--nowg);pointer-events:none}
 .spk-dot{position:absolute;width:8px;height:8px;margin:-4px 0 0 -4px;border-radius:50%;background:var(--t);box-shadow:0 0 0 2px var(--surface);pointer-events:none}
@@ -558,9 +566,9 @@ body:has(#testbar:not([hidden])) .sec{scroll-margin-top:140px}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=36"></script>
-<script src="wx-live.js?v=36"></script>
-<script src="wx-scenarios.js?v=36"></script>
-<script src="app.js?v=36"></script>
+<script src="wx-normalize.js?v=37"></script>
+<script src="wx-live.js?v=37"></script>
+<script src="wx-scenarios.js?v=37"></script>
+<script src="app.js?v=37"></script>
 </body>
 </html>
