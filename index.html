@@ -458,7 +458,11 @@ body:has(#testbar:not([hidden])) .sec{scroll-margin-top:140px}
 #locsheet{position:fixed;inset:0;z-index:60}
 .ls-back{position:absolute;inset:0;background:rgba(0,0,0,.35)}
 .ls-card{position:absolute;left:0;right:0;top:0;background:var(--surface);border-bottom:1px solid var(--line);border-radius:0 0 16px 16px;padding:calc(env(safe-area-inset-top,0px) + 14px) 16px 16px;box-shadow:0 10px 30px rgba(0,0,0,.25);max-width:640px;margin:0 auto}
-.ls-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+/* a long list (many saved places plus test scenarios) scrolls inside the sheet instead of running off the screen; the sheet
+   stops above the browser's bottom toolbar so its last rows stay reachable */
+.ls-card{box-sizing:border-box;max-height:calc(100% - 96px - env(safe-area-inset-bottom,0px));overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+.ls-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;position:sticky;top:env(safe-area-inset-top,0px);z-index:2;background:var(--surface);padding:4px 0}
+.ls-head::before{content:"";position:absolute;left:0;right:0;bottom:100%;height:env(safe-area-inset-top,0px);background:var(--surface)} /* covers the strip above the pinned header */
 .ls-head b{font:600 16px var(--sans)}
 .ls-x{background:none;border:0;font-size:26px;line-height:1;color:var(--muted);cursor:pointer;padding:0 4px}
 #lsform{display:flex;gap:8px}
@@ -569,9 +573,9 @@ body:has(#testbar:not([hidden])) .sec{scroll-margin-top:140px}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=43"></script>
-<script src="wx-live.js?v=43"></script>
-<script src="wx-scenarios.js?v=43"></script>
-<script src="app.js?v=43"></script>
+<script src="wx-normalize.js?v=46"></script>
+<script src="wx-live.js?v=46"></script>
+<script src="wx-scenarios.js?v=46"></script>
+<script src="app.js?v=46"></script>
 </body>
 </html>
