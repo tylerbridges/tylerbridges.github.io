@@ -191,7 +191,7 @@
       var p = f.properties;
       return { id: p.id, event: p.event, headline: p.headline, severity: p.severity, urgency: p.urgency,
         certainty: p.certainty, onset: Date.parse(p.onset || p.effective) || null,
-        ends: Date.parse(p.ends || p.expires) || null, sender: p.senderName,
+        ends: Date.parse(p.ends || p.expires) || null, sent: Date.parse(p.sent) || null, expires: Date.parse(p.expires) || null, sender: p.senderName,
         desc: p.description || "", instr: p.instruction || "", area: p.areaDesc || "" };
     }).sort(function (a, b) {
       var o = { Extreme: 0, Severe: 1, Moderate: 2, Minor: 3, Unknown: 4 };
@@ -236,7 +236,14 @@
         var none = function (t) { return !t || /^No hazardous weather is expected/i.test(t); };
         // full segment text verbatim, from "This hazardous weather outlook is for..." on (skips the zone/UGC header)
         var body = /\n(This hazardous weather outlook[\s\S]*)$/i.exec(seg);
-        hwo = { id: raw.hwo.id, issued: Date.parse(raw.hwo.issuanceTime), day1: d1, days27: d27, hazard: !(none(d1) && none(d27)),
+        // expiration: the 6-digit DDHHMM (UTC) code ending the header, resolved to the first such moment after the issue time
+        var issuedMs = Date.parse(raw.hwo.issuanceTime), xm = /(\d{2})(\d{2})(\d{2})-\s*$/.exec(ugcHeader(seg) || ""), expiresMs = null;
+        if (xm && isFinite(issuedMs)) {
+          var d0 = new Date(issuedMs), c = Date.UTC(d0.getUTCFullYear(), d0.getUTCMonth(), +xm[1], +xm[2], +xm[3]);
+          for (var k = 0; k < 3 && c < issuedMs; k++) c = Date.UTC(d0.getUTCFullYear(), d0.getUTCMonth() + k + 1, +xm[1], +xm[2], +xm[3]);
+          if (c >= issuedMs && new Date(c).getUTCDate() === +xm[1]) expiresMs = c;
+        }
+        hwo = { id: raw.hwo.id, issued: issuedMs, expires: expiresMs, day1: d1, days27: d27, hazard: !(none(d1) && none(d27)),
           text: (body ? body[1] : "").trim() };
       }
     }

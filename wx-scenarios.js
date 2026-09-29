@@ -187,7 +187,7 @@
     }
     var alerts = { features: sc.alerts.map(function (al, i) {
       return { properties: { id: "test-" + id + "-" + i, event: al[0], headline: al[0] + " (test scenario)", severity: al[1], urgency: "Expected", certainty: "Likely",
-        onset: iso(h0 + al[2] * H), ends: iso(h0 + al[3] * H), senderName: "Test scenario", description: "* WHAT... " + al[4] + "\n\n* WHERE... " + (loc.label || "This area") + ".",
+        sent: iso(h0 - H), expires: iso(h0 + al[3] * H), onset: iso(h0 + al[2] * H), ends: iso(h0 + al[3] * H), senderName: "Test scenario", description: "* WHAT... " + al[4] + "\n\n* WHERE... " + (loc.label || "This area") + ".",
         instruction: al[5], areaDesc: loc.label || "" } };
     }) };
     var raw = {
