@@ -1001,7 +1001,7 @@
     touchTab();
   }
   // Coming back within TAB_KEEP of the last visit returns to the tab you were on; after longer it starts on Now.
-  var TAB_KEEP = 2 * 3600000;
+  var TAB_KEEP = 30 * 60000;
   function touchTab() { try { localStorage.setItem("wx-tab-at", String(Date.now())); } catch (e) {} }
   function tabStale() { try { return Date.now() - (+localStorage.getItem("wx-tab-at") || 0) > TAB_KEEP; } catch (e) { return false; } }
   $("nav").addEventListener("click", function (e) { var c = e.target.closest("[data-tab]"); if (c) showTab(c.dataset.tab); });
