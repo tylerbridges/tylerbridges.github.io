@@ -1020,19 +1020,33 @@
   function scrubStart(target, x, y, I) {
     if (!I) return; var sc = target.closest && target.closest(".gsc"); if (!sc) return;
     clearTimeout(sc0 && sc0.t); scrubI = I;
-    sc0 = { sc: sc, I: I, host: target.closest(".pan"), x0: x, y0: y, x: x, t: setTimeout(function () { scrubbing = true; scOf(I).classList.add("scrub"); I.el.addEventListener("touchmove", holdStill, { passive: false }); select(idxAt(sc0.sc, sc0.x, I), sc0.host, true, I); }, 300) };
+    sc0 = { sc: sc, I: I, host: target.closest(".pan"), x0: x, y0: y, x: x, t: setTimeout(function () { scrubbing = true; scOf(I).classList.add("scrub"); I.el.addEventListener("touchmove", holdStill, { passive: false }); select(idxAt(sc0.sc, sc0.x, I), sc0.host, true, I); scrubLoop.v = 0; scrubLoop.t = 0; scrubLoop.raf = requestAnimationFrame(scrubLoop); }, 300) };
+  }
+  // While holding, one frame loop reads the hour under the finger and, when the finger nears either edge of the graph,
+  //   eases the graph sideways (speed grows with how close to the edge, capped at EDGE_MAX px/s and smoothed so it starts and stops gently).
+  var EDGE_MAX = 240, AXIS_W = 34;
+  function scrubLoop(ts) {
+    if (!sc0 || !scrubbing) { scrubLoop.raf = 0; return; }
+    var sc = sc0.sc, I = sc0.I, vp = scOf(I), r = vp.getBoundingClientRect(), x = sc0.x; // vp: the scroller; sc: the card content inside it
+    var dt = scrubLoop.t ? Math.min(0.05, (ts - scrubLoop.t) / 1000) : 0; scrubLoop.t = ts;
+    var l = r.left + AXIS_W + 52, rt = r.right - 56, want = 0;
+    if (x < l) want = -Math.pow(Math.min(1, (l - x) / 66), 1.6) * EDGE_MAX;
+    else if (x > rt) want = Math.pow(Math.min(1, (x - rt) / 44), 1.6) * EDGE_MAX;
+    scrubLoop.v += (want - scrubLoop.v) * Math.min(1, dt * 7);
+    if (Math.abs(scrubLoop.v) < 1 && !want) scrubLoop.v = 0;
+    if (scrubLoop.v) vp.scrollLeft += scrubLoop.v * dt;
+    var i = idxAt(sc, x, I); if (i !== selIdx || sc0.host.querySelector(".gread").hidden) select(i, sc0.host, true, I);
+    scrubLoop.raf = requestAnimationFrame(scrubLoop);
   }
   function scrubMove(x, y, ev) {
     if (!sc0) return;
     sc0.x = x;
-    if (scrubbing) {
-      if (!scrubMove.q) { scrubMove.q = true; requestAnimationFrame(function () { scrubMove.q = false; if (!sc0 || !scrubbing) return; var I = sc0.I, i = idxAt(sc0.sc, sc0.x, I); if (i !== selIdx || sc0.host.querySelector(".gread").hidden) select(i, sc0.host, true, I); }); }
-      return;
-    }
+    if (scrubbing) return; // the frame loop (scrubLoop) follows the finger
     if (Math.hypot(x - sc0.x0, y - sc0.y0) > 8) { clearTimeout(sc0.t); sc0 = null; } // it's a swipe, let the graph scroll
   }
   function scrubEnd() {
     if (sc0) clearTimeout(sc0.t);
+    if (scrubLoop.raf) { cancelAnimationFrame(scrubLoop.raf); scrubLoop.raf = 0; }
     if (scrubI) { scOf(scrubI).classList.remove("scrub"); scrubI.el.removeEventListener("touchmove", holdStill, { passive: false }); }
     if (scrubbing) { scrubbing = false; select(scrubI ? scrubI.nowI : 0, null, false, scrubI); }
     sc0 = null;
