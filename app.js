@@ -998,7 +998,12 @@
     if (changed) window.scrollTo(0, 0);
     if (t === "daily") { activeCard = -1; setTopH(); requestAnimationFrame(syncStrip); }
     try { localStorage.setItem("wx-tab", t); } catch (e) {}
+    touchTab();
   }
+  // Coming back within TAB_KEEP of the last visit returns to the tab you were on; after longer it starts on Now.
+  var TAB_KEEP = 2 * 3600000;
+  function touchTab() { try { localStorage.setItem("wx-tab-at", String(Date.now())); } catch (e) {} }
+  function tabStale() { try { return Date.now() - (+localStorage.getItem("wx-tab-at") || 0) > TAB_KEEP; } catch (e) { return false; } }
   $("nav").addEventListener("click", function (e) { var c = e.target.closest("[data-tab]"); if (c) showTab(c.dataset.tab); });
   $("days").addEventListener("click", function (e) {
     var c = e.target.closest(".chip"); if (!c) return;
@@ -1070,7 +1075,12 @@
   }
   window.addEventListener("scroll", guardTop, { passive: true }); guardTop();
 
-  document.addEventListener("visibilitychange", function () { if (!document.hidden && Date.now() - lastCheck > 5 * 60000) refresh(false); });
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden) { touchTab(); return; }
+    if (tabStale() && tab !== "now") showTab("now"); // reopened hours later (an installed app resumes without reloading)
+    else touchTab();
+    if (Date.now() - lastCheck > 5 * 60000) refresh(false);
+  });
   setInterval(renderFresh, 30000);
   // phones fire resize whenever the address bar slides in/out while scrolling; only redraw the graphs when the width changes
   var rw, lastW = window.innerWidth;
@@ -1339,7 +1349,7 @@
 
   // ---------- boot ----------
   var startTab = "now";
-  try { startTab = (location.hash || "").replace("#", "") || localStorage.getItem("wx-tab") || "now"; } catch (e) {}
+  try { startTab = (location.hash || "").replace("#", "") || (tabStale() ? "now" : localStorage.getItem("wx-tab")) || "now"; } catch (e) {}
   // paint the last data this device saw right away (if it's for the same place), then pull live
   var cached = store("wx-cache");
   var qs = new URLSearchParams(location.search), qLat = parseFloat(qs.get("lat")), qLon = parseFloat(qs.get("lon")), qQ = qs.get("q");
