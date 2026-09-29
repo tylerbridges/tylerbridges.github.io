@@ -14,7 +14,7 @@
     ["Anchorage, AK", 61.2181, -149.9003], ["Honolulu, HI", 21.3069, -157.8583], ["San Juan, PR", 18.4655, -66.1057],
     ["Hagåtña, Guam", 13.4757, 144.7489]
   ];
-  var KNOWN_ICON = /^(skc|few|sct|bkn|ovc|wind_(skc|few|sct|bkn|ovc)|snow|rain_snow|rain_sleet|snow_sleet|fzra|rain_fzra|snow_fzra|sleet|rain|rain_showers(_hi)?|tsra(_sct|_hi)?|tornado|hurricane|tropical_storm|dust|smoke|haze|hot|cold|blizzard|fog)$/;
+  var KNOWN_ICON = /^(skc|few|sct|bkn|ovc|wind(_\w*)?|snow|rain_snow|rain_sleet|snow_sleet|fzra|rain_fzra|snow_fzra|sleet|rain|rain_showers(_hi)?|tsra(_sct|_hi)?|tornado|hurricane|tropical_storm|dust|smoke|haze|hot|cold|blizzard|fog)$/;
   var PRECIP_WORD = /rain|snow|sleet|ice|hail|drizzle|shower|storm|precip|freez|flurr/i;
 
   // ---- log every request the data layer makes (status + time), and keep the gridpoint response for the weather-type audit

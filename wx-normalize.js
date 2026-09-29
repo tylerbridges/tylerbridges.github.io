@@ -213,12 +213,22 @@
       });
       return ok;
     }
+    // the zone-code header of a segment: from the first line that starts with a zone/county code through the line that ends
+    //   with the 6-digit expiration time ("…-200800-"), which offices sometimes wrap onto a line of its own
+    function ugcHeader(sg) {
+      var lines = sg.split("\n"), i0 = -1, i;
+      for (i = 0; i < lines.length; i++) {
+        if (i0 < 0 && /^[A-Z]{2}[ZC]\d{3}/.test(lines[i])) i0 = i;
+        if (i0 >= 0 && /(^|-)\d{6}-\s*$/.test(lines[i])) return lines.slice(i0, i + 1).join("");
+      }
+      return null;
+    }
     if (raw.hwo && raw.hwo.productText) {
       var zone = (pt.forecastZone || "").split("/").pop(), cty = (pt.county || "").split("/").pop();
       var segs = raw.hwo.productText.split(/\n\$\$/), seg = null;
       segs.forEach(function (sg) {
-        var um = /\n([A-Z]{2}[ZC]\d{3}[\s\S]*?-\d{6}-)\n/.exec(sg);
-        if (um && !seg && (ugcHas(um[1], zone) || ugcHas(um[1], cty))) seg = sg;
+        var hdr = ugcHeader(sg);
+        if (hdr && !seg && (ugcHas(hdr, zone) || ugcHas(hdr, cty))) seg = sg;
       });
       if (seg) {
         var sect = function (re) { var m = re.exec(seg); return m ? m[1].replace(/\s+/g, " ").trim() : ""; };

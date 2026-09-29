@@ -38,11 +38,19 @@
       var since = new Date(Date.now() - 25 * 3600e3).toISOString().replace(/\.\d+Z$/, "Z");
       var rl = (P.relativeLocation && P.relativeLocation.properties) || {};
       var epa = function (kind) { return rl.city ? get("https://data.epa.gov/efservice/getEnvirofactsUV" + kind + "/CITY/" + encodeURIComponent(rl.city) + "/STATE/" + rl.state + "/JSON", true) : Promise.resolve(null); };
+      // forecast.weather.gov's MapClick JSON is also the fallback for finding the nearest observation station: for some
+      //   grids (International Falls, MN) the gridpoint station list is a 404, but MapClick still names the station
+      var mcP = get("https://forecast.weather.gov/MapClick.php?lat=" + lat + "&lon=" + lon + "&FcstType=json", true);
       var stP = get(P.observationStations, true).then(function (s) {
         var f = s && s.features && s.features[0];
-        if (!f) return { station: {}, obs: null };
-        var st = { id: f.properties.stationIdentifier, name: f.properties.name,
+        if (f) return { id: f.properties.stationIdentifier, name: f.properties.name,
           elevFt: f.properties.elevation && f.properties.elevation.value != null ? Math.round(f.properties.elevation.value * 3.28084) : null };
+        return mcP.then(function (m) {
+          var co = m && m.currentobservation, id = (m && m.location && m.location.metar) || (co && co.id);
+          return id ? { id: id, name: (co && co.name) || id, elevFt: co && isFinite(+co.elev) ? Math.round(+co.elev) : null } : null;
+        });
+      }).then(function (st) {
+        if (!st) return { station: {}, obs: null };
         return get(API + "/stations/" + st.id + "/observations?start=" + since, true).then(function (o) { return { station: st, obs: o }; });
       });
       var first = function (type) {
@@ -54,7 +62,7 @@
         get(P.forecast), get(P.forecastGridData), stP,
         get(API + "/alerts/active?point=" + lat + "," + lon, true),
         first("AFD"), first("HWO"), epa("DAILY"), epa("HOURLY"),
-        get("https://forecast.weather.gov/MapClick.php?lat=" + lat + "&lon=" + lon + "&FcstType=json", true)
+        mcP
       ]);
     }).then(function (r) {
       return root.WXNormalize.normalize({ points: points, forecast: r[0], grid: r[1], station: r[2].station, obs: r[2].obs, alerts: r[3],

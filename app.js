@@ -159,7 +159,9 @@
     rows.push(["Humidity", c.rh != null ? c.rh + "%" : "–"],
       ["Wind / Gusts", (c.ws == null ? "–" : c.ws) + " / " + (gust == null ? "–" : gust) + " mph"],
       ["Visibility", c.vis != null ? (c.vis >= 10 ? "10.00" : c.vis.toFixed(2)) + " mi" : "–"]);
-    if (c.wc != null && c.t != null && c.wc < c.t) rows.push(["Wind chill", c.wc + "°F"]);
+    // some stations report slowly; say when the reading on screen is more than 90 minutes old
+    if (c.ms && Date.now() - c.ms > 90 * 60000) { var oh = Math.round((Date.now() - c.ms) / 3600000 * 10) / 10; rows.push(["Observed", tm(c.ms) + " · " + (oh >= 24 ? Math.round(oh / 24) + " d" : oh + " h") + " ago"]); }
+        if (c.wc != null && c.t != null && c.wc < c.t) rows.push(["Wind chill", c.wc + "°F"]);
     if (c.hi != null && c.t != null && c.hi > c.t) rows.push(["Heat index", c.hi + "°F"]);
     var d0 = groupDays(p)[0];
     $("nowtitle").textContent = fmt(d0 ? d0.s : Date.now(), { weekday: "long", month: "short", day: "numeric" });
