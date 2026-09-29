@@ -253,7 +253,7 @@
     };
   }
 
-  var api = { normalize: normalize };
+  var api = { normalize: normalize, TYPE: TYPE, COV: COV }; // TYPE/COV are exposed for check.html
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.WXNormalize = api;
 })(typeof window !== "undefined" ? window : globalThis);

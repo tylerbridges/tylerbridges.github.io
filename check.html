@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Live data check</title>
+<style>
+:root{--bg:#EEF2F5;--fg:#15202B;--mut:#6B7988;--ok:#2E7D4F;--warn:#B7791F;--bad:#C0392B;--card:#fff;--line:#DCE3E9;--accent:#2C6BB0}
+@media (prefers-color-scheme:dark){:root{--bg:#0B0F14;--fg:#E6EDF3;--mut:#8B98A5;--ok:#4CAF7A;--warn:#E0A23C;--bad:#E0564B;--card:#151B22;--line:#26303B;--accent:#6FA3E0}}
+*{box-sizing:border-box}
+body{margin:0;padding:16px;background:var(--bg);color:var(--fg);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+h1{font-size:18px;margin:0 0 4px}
+p{margin:0 0 12px;color:var(--mut)}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+button{font:600 15px system-ui,-apple-system,sans-serif;padding:10px 16px;border:0;border-radius:10px;background:var(--accent);color:#fff;cursor:pointer}
+button.alt{background:var(--card);color:var(--fg);border:1px solid var(--line)}
+button:disabled{opacity:.5}
+#sum{font-weight:600;margin:6px 0}
+#prog{color:var(--mut);font-size:13px;min-height:18px}
+pre{margin:8px 0 0;padding:12px;background:var(--card);border:1px solid var(--line);border-radius:12px;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;word-break:break-word}
+.ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}
+a{color:var(--accent)}
+</style>
+</head>
+<body>
+<h1>Live data check</h1>
+<p>Runs the site's real data pipeline against weather.gov and friends for a spread of places, checks each result, loads the site itself in a hidden frame for each place, and sweeps the Maps images. Takes 3–5 minutes; keep this page open. <a href="./">Back to the site</a></p>
+<div class="row"><button id="run">Run full check</button><button id="quick" class="alt">Data only (faster)</button><button id="copy" class="alt" disabled>Copy report</button></div>
+<div id="sum"></div><div id="prog"></div>
+<pre id="out">Tap “Run full check”.</pre>
+<script src="wx-normalize.js?v=47"></script>
+<script src="wx-live.js?v=47"></script>
+<script src="wx-scenarios.js?v=47"></script>
+<script src="wx-check.js?v=47"></script>
+</body>
+</html>

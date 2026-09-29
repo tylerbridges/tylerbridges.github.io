@@ -1,5 +1,7 @@
 (function () {
   "use strict";
+  // check.html loads the site in a hidden frame with ?nostore=1 so its test places never end up in your recents or favorites
+  if (/[?&]nostore=1/.test(location.search)) { try { Storage.prototype.setItem = function () {}; } catch (e) {} }
   var H = 3600000, PX = 16, GL = 38; // GL: left gutter so the first hours (and the now line) sit clear of the axis labels
   var tab = "now", doc = null, db = null, lastCheck = 0, busy = false, selIdx = null;
   var $ = function (id) { return document.getElementById(id); };
