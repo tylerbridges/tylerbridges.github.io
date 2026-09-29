@@ -182,11 +182,18 @@
     var d = String(c.desc || "").replace(/freezing fog/ig, "").replace(/[\w\/-]+\s+in\s+vicinity/ig, "");
     return PRECIP_WORDS.test(d) || (c.icon || []).some(function (x) { return PRECIP_ICON.test(x.c || ""); });
   }
-  // While it is precipitating, show the Precipitation card from the Hourly tab (same card, same hold-to-read) on the Now
-  //   tab, between the current conditions and today/tonight.
+  // ...or when the hourly forecast has a 50%+ chance of precipitation in the current hour or the next two
+  function precipSoon(g) {
+    if (!g || !g.n || !g.s || !g.s.pop) return false;
+    var k0 = Math.floor((Date.now() - g.start) / H), k1 = Math.floor((Date.now() + 2 * H - g.start) / H);
+    for (var k = Math.max(0, k0); k <= Math.min(g.n - 1, k1); k++) if (g.s.pop[k] >= 50) return true;
+    return false;
+  }
+  // While it is precipitating or about to (see above), show the Precipitation card from the Hourly tab (same card, same
+  //   hold-to-read) on the Now tab, between the current conditions and today/tonight.
   function renderNowPrecip() {
     var host = $("nowprecip"); GN = null; if (!host) return;
-    if (!doc || !precipNow(doc.cur) || !doc.grid || !doc.grid.n) { host.hidden = true; host.innerHTML = ""; return; }
+    if (!doc || !doc.grid || !doc.grid.n || !(precipNow(doc.cur) || precipSoon(doc.grid))) { host.hidden = true; host.innerHTML = ""; return; }
     host.hidden = false; GN = renderGraph(host, "precip");
   }
 
