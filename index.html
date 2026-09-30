@@ -23,10 +23,11 @@
 .rplay svg{width:16px;height:16px;fill:#fff}
 .rrange{flex:1;min-width:0;accent-color:var(--accent);margin:0}
 .rtime{font-size:12.5px;font-weight:500;color:var(--ink);white-space:nowrap;min-width:112px;text-align:right}
-.rleg{position:absolute;left:10px;top:10px;border-radius:10px;padding:6px 9px 5px;display:flex;flex-direction:column;gap:3px;width:132px;cursor:pointer;text-align:left}
-.rleg i{display:block;height:6px;border-radius:3px}
-.rlt{display:flex;justify-content:space-between;font-size:10px;color:var(--ink2)}.rlt b{font-weight:500}
-.rleg em{font-style:normal;font-size:10px;color:var(--muted)}
+.rleg{position:absolute;left:10px;top:10px;border-radius:10px;padding:6px 9px 5px;display:flex;flex-direction:column;gap:4px;width:150px;cursor:pointer;text-align:left}
+.rleg .lrow{display:flex;align-items:center;gap:7px;font-size:10.5px;font-weight:500;color:var(--ink2)}
+.rleg .lrow span{width:28px;flex:none}
+.rleg i{display:block;height:6px;border-radius:3px;flex:1}
+.rleg em{font-style:normal;font-size:9.5px;line-height:1.25;color:var(--muted)}
 .rloc{position:absolute;right:10px;top:10px;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;cursor:pointer;padding:0}
 .rloc svg{width:19px;height:19px;fill:none;stroke:var(--accent);stroke-width:2;stroke-linecap:round}.rloc .f{fill:var(--accent);stroke:none}
 .rstat{position:absolute;left:50%;top:58px;transform:translateX(-50%);border-radius:999px;padding:5px 12px;font-size:12px;color:var(--ink2);white-space:nowrap;pointer-events:none}
@@ -550,7 +551,7 @@ body:has(#testbar:not([hidden])) .sec{scroll-margin-top:140px}
 
   <section id="radar" class="sec" data-tab="radar" hidden>
     <div class="rmap" id="rmap"></div>
-    <div class="rsrc">Radar: NWS NEXRAD base reflectivity mosaic for the lower 48 via the Iowa Environmental Mesonet, updated every 5 minutes. Map: Esri, HERE, Garmin, © OpenStreetMap contributors.</div>
+    <div class="rsrc">Radar: NOAA MRMS reflectivity and precipitation type (lower 48, 1 km, every 2 minutes) from NCEP; if unavailable, the NWS NEXRAD mosaic via the Iowa Environmental Mesonet (no rain/snow split). Map: Esri, HERE, Garmin, © OpenStreetMap contributors.</div>
   </section>
 
   <section id="maps" class="sec" data-tab="maps" hidden>
@@ -600,10 +601,10 @@ body:has(#testbar:not([hidden])) .sec{scroll-margin-top:140px}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=56"></script>
-<script src="wx-live.js?v=56"></script>
-<script src="wx-scenarios.js?v=56"></script>
-<script src="wx-radar.js?v=56"></script>
-<script src="app.js?v=56"></script>
+<script src="wx-normalize.js?v=57"></script>
+<script src="wx-live.js?v=57"></script>
+<script src="wx-scenarios.js?v=57"></script>
+<script src="wx-radar.js?v=57"></script>
+<script src="app.js?v=57"></script>
 </body>
 </html>

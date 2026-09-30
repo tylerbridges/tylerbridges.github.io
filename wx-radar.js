@@ -1,14 +1,18 @@
 // Radar tab: a small dependency-free slippy map drawn on three stacked canvases (base map, radar, labels).
-//   Radar: the NEXRAD base-reflectivity mosaic for the lower 48 (NWS Level III N0Q, ~1 km, every 5 min) as map
-//   tiles from the Iowa Environmental Mesonet, the last 50 minutes in 11 frames. When the tile server allows
-//   pixel access (CORS), each tile's colours are read back to reflectivity (dBZ) and redrawn in a smooth palette;
-//   otherwise the NWS colours are drawn as served. Tiles are drawn with bilinear smoothing and frames crossfade.
+//   Radar, first choice: NOAA MRMS (Multi-Radar Multi-Sensor, lower 48, 1 km, every 2 min) from NCEP's GeoServer:
+//   quality-controlled base reflectivity plus MRMS precipitation type, requested as WMS tiles for 11 frames over the
+//   last hour. Each pixel's colour is decoded back to its exact value using the layers' own legends (fetched as JSON),
+//   then redrawn by type: rain in greens → yellow → red, snow in white → light blue → blue, hail cores magenta.
+//   Fallback (if NCEP can't be reached or doesn't allow pixel access): the NWS NEXRAD N0Q mosaic from the Iowa
+//   Environmental Mesonet, read back to dBZ from the NWS colour ramp and drawn in the rain palette (no type).
+//   Radar is requested one zoom level coarser than the map and drawn with bilinear smoothing; frames crossfade.
 //   Base map and labels: Esri Canvas (dark or light grey to match the theme).
 (function (root) {
   "use strict";
   var TS = 256, MINZ = 3, MAXZ = 12, RMAX = 8, NF = 11, STEP = 5 * 60000;
   var IEM = "https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/";
   var META = "https://mesonet.agron.iastate.edu/data/gis/images/4326/USCOMP/n0q_0.json";
+  var OG = "https://opengeo.ncep.noaa.gov/geoserver/conus/", REF = "conus_bref_qcd", TYP = "conus_pcpn_typ";
   var ESRI = "https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/";
   var el, cvB, cvR, cvL, cxB, cxR, cxL, ui = {}, W = 0, HH = 0, dpr = 1, on = false, opts = {};
   var view = { x: 0.5, y: 0.5, z: 7 }, home = null;
@@ -31,9 +35,13 @@
   //   colour ramp and takes the dBZ of the nearest point on it.
   var NWS = [[5, 4, 233, 231], [10, 1, 159, 244], [15, 3, 0, 244], [20, 2, 253, 2], [25, 1, 197, 1], [30, 0, 142, 0], [35, 253, 248, 2],
     [40, 229, 188, 0], [45, 253, 149, 0], [50, 253, 0, 0], [55, 212, 0, 0], [60, 188, 0, 0], [65, 248, 0, 253], [70, 152, 84, 198], [75, 253, 253, 253]];
-  // smooth display palette: dBZ, r, g, b, alpha (light returns fade in; blues for rain, yellow→red→magenta for the cores)
-  var SMOOTH = [[8, 110, 180, 255, 0], [14, 110, 180, 255, 0.34], [20, 86, 156, 252, 0.6], [28, 52, 112, 238, 0.8], [35, 34, 76, 206, 0.9],
-    [40, 250, 206, 64, 0.93], [46, 255, 146, 42, 0.95], [52, 240, 66, 52, 0.97], [58, 214, 36, 112, 1], [64, 188, 64, 222, 1], [72, 255, 226, 255, 1]];
+  // display palettes by precipitation type: dBZ, r, g, b, alpha (the lightest returns fade in)
+  var RAIN = [[10, 120, 214, 120, 0], [15, 120, 214, 120, 0.42], [20, 76, 190, 88, 0.68], [28, 34, 156, 62, 0.84], [35, 18, 118, 48, 0.9],
+    [40, 246, 214, 52, 0.93], [45, 255, 156, 32, 0.95], [50, 236, 58, 40, 0.97], [56, 178, 18, 40, 1], [62, 222, 44, 196, 1], [70, 255, 222, 255, 1]];
+  var SNOW = [[5, 236, 246, 255, 0], [10, 236, 246, 255, 0.5], [18, 196, 226, 255, 0.72], [26, 132, 188, 250, 0.86], [33, 78, 138, 238, 0.93], [42, 44, 88, 206, 1]];
+  var HAIL = [[30, 18, 118, 48, 0.9], [45, 255, 156, 32, 0.95], [52, 236, 58, 40, 1], [58, 222, 44, 196, 1], [70, 255, 222, 255, 1]];
+  var MINDBZ = 10; // below this is mostly clutter and drizzle-level noise: not drawn in the smooth style
+  function pack(c) { return [Math.round(c[0]), Math.round(c[1]), Math.round(c[2]), Math.round(c[3] * 255)]; }
   function ramp(P, v) {
     if (v <= P[0][0]) return P[0].slice(1);
     for (var i = 1; i < P.length; i++) if (v <= P[i][0]) {
@@ -42,34 +50,96 @@
     }
     return P[P.length - 1].slice(1);
   }
-  function toDbz(r, g, b) {
-    var best = 1e9, dbz = null;
-    for (var i = 1; i < NWS.length; i++) {
-      var a = NWS[i - 1], c = NWS[i], vx = c[1] - a[1], vy = c[2] - a[2], vz = c[3] - a[3], L = vx * vx + vy * vy + vz * vz;
+  // colour → value along a colour ramp [[value, r, g, b], …]: the value at the nearest point on the ramp, or null
+  //   when no ramp colour is within `tol` (map furniture, missing-data grey)
+  function project(P, r, g, b, tol) {
+    var best = 1e9, v = null;
+    if (P.length === 1) { var q = P[0]; best = (r - q[1]) * (r - q[1]) + (g - q[2]) * (g - q[2]) + (b - q[3]) * (b - q[3]); v = q[0]; }
+    for (var i = 1; i < P.length; i++) {
+      var a = P[i - 1], c = P[i], vx = c[1] - a[1], vy = c[2] - a[2], vz = c[3] - a[3], L = vx * vx + vy * vy + vz * vz || 1;
       var t = Math.max(0, Math.min(1, ((r - a[1]) * vx + (g - a[2]) * vy + (b - a[3]) * vz) / L));
       var dx = r - (a[1] + vx * t), dy = g - (a[2] + vy * t), dz = b - (a[3] + vz * t), d = dx * dx + dy * dy + dz * dz;
-      if (d < best) { best = d; dbz = a[0] + (c[0] - a[0]) * t; }
+      if (d < best) { best = d; v = a[0] + (c[0] - a[0]) * t; }
     }
-    return best < 110 * 110 ? dbz : null; // not a reflectivity colour (map furniture, missing-data grey)
+    return best <= tol * tol ? v : null;
   }
-  var LUT = new Map();
-  function recolor(im) {
-    var c = document.createElement("canvas"); c.width = im.naturalWidth || TS; c.height = im.naturalHeight || TS;
-    var x = c.getContext("2d", { willReadFrequently: true }); x.drawImage(im, 0, 0);
-    var d = x.getImageData(0, 0, c.width, c.height), p = d.data; // throws if the server doesn't allow CORS
-    for (var i = 0; i < p.length; i += 4) {
-      if (!p[i + 3]) continue;
-      var k = (p[i] << 16) | (p[i + 1] << 8) | p[i + 2], o = LUT.get(k);
-      if (o === undefined) {
-        var z = toDbz(p[i], p[i + 1], p[i + 2]);
-        o = z == null ? null : ramp(SMOOTH, z).map(function (v, j) { return j < 3 ? Math.round(v) : Math.round(v * 255); });
-        LUT.set(k, o);
+  function toDbz(r, g, b) { return project(NWS, r, g, b, 110); }
+  // MRMS legends: reflectivity is a colour ramp (value → colour, interpolated); precipitation type is exact colours
+  //   per class. Built from GeoServer's JSON legend so the decoding matches NCEP's own styling exactly.
+  var REFP = null, TYPC = null;
+  function hex(c) { c = String(c || "").replace("#", ""); return [parseInt(c.slice(0, 2), 16), parseInt(c.slice(2, 4), 16), parseInt(c.slice(4, 6), 16)]; }
+  function entries(j) {
+    var out = [];
+    (function walk(o) { if (!o || typeof o !== "object") return; if (Array.isArray(o.entries) && o.entries.length && o.entries[0].color) { out = out.concat(o.entries); return; } Object.keys(o).forEach(function (k) { walk(o[k]); }); })(j);
+    return out;
+  }
+  function typeOf(label, q) {
+    var t = String(label || "").toLowerCase();
+    if (/no ?precip|no ?coverage|missing|none/.test(t) || q === 0 || q < 0) return null;
+    if (/snow/.test(t) || q === 3) return "s";
+    if (/hail/.test(t) || q === 7) return "h";
+    return "r";
+  }
+  var LREF = new Map(), LTYP = new Map();
+  function refDbz(r, g, b) { var k = (r << 16) | (g << 8) | b, v = LREF.get(k); if (v === undefined) { v = project(REFP, r, g, b, 40); LREF.set(k, v); } return v; }
+  function typAt(r, g, b) {
+    var k = (r << 16) | (g << 8) | b, v = LTYP.get(k);
+    if (v === undefined) { var best = 1e9; v = null; TYPC.forEach(function (c) { var d = (r - c[0]) * (r - c[0]) + (g - c[1]) * (g - c[1]) + (b - c[2]) * (b - c[2]); if (d < best) { best = d; v = c[3]; } }); if (best > 30 * 30) v = null; LTYP.set(k, v); }
+    return v;
+  }
+  function pixels(im) {
+    var c = document.createElement("canvas"); c.width = TS; c.height = TS;
+    var x = c.getContext("2d", { willReadFrequently: true }); x.drawImage(im, 0, 0, TS, TS);
+    return { c: c, x: x, d: x.getImageData(0, 0, TS, TS) }; // getImageData throws if the server doesn't allow CORS
+  }
+  // colour tables per type (index: dBZ×2, 0–99.5 dBZ) as packed RGBA words for direct writes into image data
+  var PALS = null;
+  function pal() {
+    if (PALS) return PALS;
+    var le = new Uint8Array(new Uint32Array([1]).buffer)[0] === 1;
+    PALS = [RAIN, RAIN, SNOW, HAIL].map(function (P) {
+      var a = new Uint32Array(200);
+      for (var i = 0; i < 200; i++) { var c = pack(ramp(P, i / 2)); a[i] = le ? ((c[3] << 24) | (c[2] << 16) | (c[1] << 8) | c[0]) >>> 0 : ((c[0] << 24) | (c[1] << 16) | (c[2] << 8) | c[3]) >>> 0; }
+      return a;
+    });
+    return PALS;
+  }
+  // Smooth rendering: decode every pixel to its value (dBZ) and type, soften the value field with a light 3x3 blur
+  //   (1-2-1 weights, so single-pixel speckle fades but real cores keep most of their intensity), then resample it at
+  //   twice the resolution with bilinear interpolation and colour each output pixel from its value: smooth contour
+  //   edges instead of blocky 1 km pixels, with colours that still come from the measured value. Type is nearest-pixel.
+  function smoothTile(im, dec, imT) {
+    var R = pixels(im), p = R.d.data, q = imT ? pixels(imT).d.data : null, N = TS, LOW = MINDBZ - 12;
+    var f = new Float32Array(N * N), ty = new Uint8Array(N * N), any = false;
+    for (var i = 0, k = 0; k < N * N; k++, i += 4) {
+      var z = p[i + 3] ? dec(p[i], p[i + 1], p[i + 2]) : null;
+      f[k] = z == null ? LOW : Math.max(LOW, z); if (z != null && z >= MINDBZ - 4) any = true;
+      if (z != null) { var t = q ? (q[i + 3] ? typAt(q[i], q[i + 1], q[i + 2]) : null) : "r"; ty[k] = t === "s" ? 2 : t === "h" ? 3 : 1; }
+    }
+    var c = document.createElement("canvas"), M = N * 2; c.width = c.height = M;
+    if (!any) return c; // nothing to draw (most tiles)
+    var g = new Float32Array(N * N), h = new Float32Array(N * N), x, y;
+    for (y = 0; y < N; y++) for (x = 0; x < N; x++) { var o = y * N; g[o + x] = (f[o + Math.max(0, x - 1)] + 2 * f[o + x] + f[o + Math.min(N - 1, x + 1)]) / 4; }
+    for (y = 0; y < N; y++) for (x = 0; x < N; x++) h[y * N + x] = (g[Math.max(0, y - 1) * N + x] + 2 * g[y * N + x] + g[Math.min(N - 1, y + 1) * N + x]) / 4;
+    var cx = c.getContext("2d"), out = cx.createImageData(M, M), d32 = new Uint32Array(out.data.buffer), L = pal();
+    for (y = 0; y < M; y++) {
+      var sy = Math.max(0, Math.min(N - 1.001, (y + 0.5) / 2 - 0.5)), y0 = sy | 0, fy = sy - y0;
+      for (x = 0; x < M; x++) {
+        var sx = Math.max(0, Math.min(N - 1.001, (x + 0.5) / 2 - 0.5)), x0 = sx | 0, fx = sx - x0, a = y0 * N + x0;
+        var v = (h[a] * (1 - fx) + h[a + 1] * fx) * (1 - fy) + (h[a + N] * (1 - fx) + h[a + N + 1] * fx) * fy;
+        if (v < MINDBZ) continue;
+        var tk = ty[((sy + 0.5) | 0) * N + ((sx + 0.5) | 0)] || ty[a] || ty[a + 1] || ty[a + N] || ty[a + N + 1] || 1;
+        d32[y * M + x] = L[tk][Math.min(199, (v * 2) | 0)];
       }
-      if (!o) { p[i + 3] = 0; continue; }
-      p[i] = o[0]; p[i + 1] = o[1]; p[i + 2] = o[2]; p[i + 3] = Math.round(o[3] * p[i + 3] / 255);
     }
-    x.putImageData(d, 0, 0); return c;
+    cx.putImageData(out, 0, 0); return c;
   }
+  // MRMS: reflectivity tile + type tile → one smooth, type-coloured tile
+  function compose(imR, imT) { return smoothTile(imR, refDbz, imT || null); }
+  // IEM fallback: reflectivity only (read back from the NWS colour ramp), drawn in the rain palette
+  var LIEM = new Map();
+  function iemDbz(r, g, b) { var k = (r << 16) | (g << 8) | b, v = LIEM.get(k); if (v === undefined) { v = toDbz(r, g, b); LIEM.set(k, v); } return v; }
+  function recolor(im) { return smoothTile(im, iemDbz, null); }
 
   // ---------- tiles ----------
   function get(key, url, radar) {
@@ -82,12 +152,13 @@
     return e;
   }
   function load(e, url, radar, cors) {
+    if (Array.isArray(url)) return loadMrms(e, url);
     var im = new Image(); im.decoding = "async"; if (cors) im.crossOrigin = "anonymous";
     im.onload = function () {
       e.raw = im;
-      if (radar && cors) { try { e.sm = recolor(im); corsOK = true; } catch (x) { corsOK = false; } }
       if (radar && !cors && e.corsFail) corsOK = false; // loads fine without CORS: the server just doesn't allow pixel access
-      e.ok = true; paint(radar ? 2 : 5);
+      if (radar && cors) work(function () { try { e.sm = recolor(im); corsOK = true; } catch (x) { corsOK = false; } e.ok = true; paint(2); });
+      else { e.ok = true; paint(radar ? 2 : 5); }
     };
     im.onerror = function () {
       if (cors) { e.corsFail = true; load(e, url, radar, false); return; }
@@ -95,9 +166,40 @@
     };
     im.src = url;
   }
+  // MRMS tile: reflectivity and type images, composed once both are in (a missing type tile just means "rain")
+  function loadMrms(e, urls) {
+    var ims = [null, null], left = 2;
+    function done() {
+      if (--left) return;
+      if (!ims[0]) { e.err = true; paint(0); return; }
+      e.raw = ims[0];
+      work(function () { try { e.sm = compose(ims[0], ims[1]); corsOK = true; } catch (x) { corsOK = false; } e.ok = true; paint(2); });
+    }
+    urls.forEach(function (u, k) {
+      var im = new Image(); im.crossOrigin = "anonymous"; im.decoding = "async";
+      im.onload = function () { ims[k] = im; done(); }; im.onerror = done; im.src = u;
+    });
+  }
+  // smoothing runs in small slices (~10 ms per turn) so a big rain shield never freezes scrolling or the map
+  var jobs = [], jobT = 0;
+  function work(fn) { jobs.push(fn); if (!jobT) jobT = setTimeout(runJobs, 0); }
+  function runJobs() {
+    var t0 = performance.now(); jobT = 0;
+    while (jobs.length && performance.now() - t0 < 10) jobs.shift()();
+    if (jobs.length) jobT = setTimeout(runJobs, 0);
+  }
   function img(e) { return !e || !e.ok ? null : style === "smooth" && e.sm ? e.sm : e.raw; }
   function baseUrl(kind, z, x, y) { return ESRI + (dark() ? "World_Dark_Gray_" : "World_Light_Gray_") + kind + "/MapServer/tile/" + z + "/" + y + "/" + x; }
-  function radarUrl(f, k, z, x, y) { return IEM + f.layers[k] + "/" + z + "/" + x + "/" + y + ".png?b=" + f.bucket; }
+  var E = 20037508.342789244;
+  function wms(layer, time, z, x, y) {
+    var sz = 2 * E / Math.pow(2, z), x0 = -E + x * sz, y1 = E - y * sz;
+    return OG + layer + "/ows?service=WMS&version=1.1.1&request=GetMap&layers=" + layer + "&styles=&format=image/png&transparent=true&srs=EPSG:3857" +
+      "&width=256&height=256&bbox=" + [x0, y1 - sz, x0 + sz, y1].map(function (v) { return v.toFixed(1); }).join(",") + "&time=" + new Date(time).toISOString().replace(".000Z", "Z");
+  }
+  function radarUrl(f, k, z, x, y) {
+    if (f.src === "mrms") return [wms(REF, f.times[k], z, x, y), wms(TYP, f.times[k], z, x, y)];
+    return IEM + f.layers[k] + "/" + z + "/" + x + "/" + y + ".png?b=" + f.bucket;
+  }
 
   // visible tile range at tile zoom zt: [{i, j, x0, y0, x1, y1}] in device pixels (edges rounded so tiles never overlap)
   function visible(zt) {
@@ -128,10 +230,12 @@
     return function (z, x, y, request) { var k = kind + th + z + "/" + x + "/" + y; return request ? get(k, baseUrl(kind, z, x, y), false) : peek(k); };
   }
   function radarGet(f, k) {
-    return function (z, x, y, request) { var key = "r" + f.bucket + ":" + k + ":" + z + "/" + x + "/" + y; return request ? get(key, radarUrl(f, k, z, x, y), true) : peek(key); };
+    return function (z, x, y, request) { var key = rkey(f, k, z, x, y); return request ? get(key, radarUrl(f, k, z, x, y), true) : peek(key); };
   }
+  function rkey(f, k, z, x, y) { return "r" + f.src + (f.times ? f.times[k] : f.bucket + ":" + k) + ":" + z + "/" + x + "/" + y; }
   function tz() { return Math.max(0, Math.min(16, Math.round(view.z))); }
-  function rz() { return Math.max(MINZ, Math.min(RMAX, Math.round(view.z))); }
+  // radar one level coarser than the map (smoother, and MRMS/NEXRAD mosaics are ~1 km anyway), native in NWS colours
+  function rz() { return Math.max(MINZ, Math.min(RMAX, Math.round(view.z) - (style === "smooth" ? 1 : 0))); }
 
   // ---------- drawing ----------
   function paint(bits) { need |= bits || 7; if (on && !raf) raf = requestAnimationFrame(frame); }
@@ -178,29 +282,65 @@
   }
 
   // ---------- frames and playback ----------
-  function makeFrames(valid) {
-    var bucket = Math.floor(Date.now() / STEP), layers = [];
-    for (var k = 0; k < NF; k++) { var m = (NF - 1 - k) * 5; layers.push("nexrad-n0q-900913" + (m ? "-m" + (m < 10 ? "0" : "") + m + "m" : "")); }
-    return { bucket: bucket, layers: layers, valid: valid || null };
+  function iemFrames() {
+    var bucket = Math.floor(Date.now() / STEP), layers = [], n = 11;
+    for (var k = 0; k < n; k++) { var m = (n - 1 - k) * 5; layers.push("nexrad-n0q-900913" + (m ? "-m" + (m < 10 ? "0" : "") + m + "m" : "")); }
+    var f = { src: "iem", n: n, bucket: bucket, layers: layers, valid: null, times: null };
+    fetch(META + "?b=" + bucket).then(function (r) { return r.json(); }).then(function (j) {
+      var v = Date.parse(j && j.meta && j.meta.valid); if (isFinite(v)) { f.valid = v; timeUi(); }
+    }).catch(function () {});
+    return f;
+  }
+  // MRMS frame times from the layer's WMS capabilities: the latest time and ~6-minute steps back over the last hour
+  function mrmsTimes(xml) {
+    var m = /<(?:Dimension|Extent)[^>]*name="time"[^>]*>([^<]+)</i.exec(xml); if (!m) return null;
+    var all = [];
+    m[1].trim().split(",").forEach(function (part) {
+      var r = part.trim().split("/");
+      if (r.length === 3) { var a = Date.parse(r[0]), b = Date.parse(r[1]), pm = /PT(?:(\d+)H)?(?:(\d+)M)?/.exec(r[2]), st = pm ? ((+pm[1] || 0) * 60 + (+pm[2] || 0)) * 60000 : 0; if (st) for (var t = b; t >= a && all.length < 2000; t -= st) all.push(t); }
+      else { var t1 = Date.parse(r[0]); if (isFinite(t1)) all.push(t1); }
+    });
+    all = all.filter(isFinite).sort(function (a, b) { return a - b; }); if (!all.length) return null;
+    var last = all[all.length - 1], pick = [];
+    for (var k = 10; k >= 0; k--) {
+      var want = last - k * 6 * 60000, best = null;
+      all.forEach(function (t) { if (Math.abs(t - want) <= 3 * 60000 && (best == null || Math.abs(t - want) < Math.abs(best - want))) best = t; });
+      if (best != null && pick.indexOf(best) < 0) pick.push(best);
+    }
+    return pick.length >= 2 ? pick : null;
+  }
+  // try MRMS (needs NCEP to allow cross-origin reads: legends, capabilities and tile pixels); otherwise the IEM mosaic
+  var mrmsOK = null;
+  function mrmsFrames() {
+    if (mrmsOK === false) return Promise.reject();
+    var leg = function (l) { return fetch(OG + l + "/ows?service=WMS&request=GetLegendGraphic&format=application/json&layer=" + l).then(function (r) { if (!r.ok) throw 0; return r.json(); }); };
+    return Promise.all([leg(REF), leg(TYP), fetch(OG + REF + "/ows?service=WMS&version=1.3.0&request=GetCapabilities&b=" + Math.floor(Date.now() / 120000)).then(function (r) { if (!r.ok) throw 0; return r.text(); })]).then(function (res) {
+      var re = entries(res[0]).map(function (e) { var c = hex(e.color); return [parseFloat(e.quantity)].concat(c); }).filter(function (e) { return isFinite(e[0]); }).sort(function (a, b) { return a[0] - b[0]; });
+      var te = entries(res[1]).map(function (e) { var c = hex(e.color); return c.concat(typeOf(e.label, parseFloat(e.quantity))); });
+      var times = mrmsTimes(res[2]);
+      if (re.length < 5 || !te.length || !times) throw 0;
+      REFP = re; TYPC = te; LREF.clear(); LTYP.clear(); mrmsOK = true;
+      return { src: "mrms", n: times.length, times: times, valid: times[times.length - 1], bucket: times[times.length - 1] };
+    }).catch(function (e) { mrmsOK = false; throw e; });
   }
   function loadFrames() {
-    var f = makeFrames(null);
-    fetch(META + "?b=" + f.bucket).then(function (r) { return r.json(); }).then(function (j) {
-      var v = Date.parse(j && j.meta && j.meta.valid); if (isFinite(v)) { f.valid = v; paint(0); timeUi(); }
-    }).catch(function () {});
-    if (!frames) { frames = f; preload(); paint(2); } else { pending = f; preload(); }
+    mrmsFrames().catch(function () { return iemFrames(); }).then(function (f) {
+      if (!frames) { setFrames(f); preload(); paint(2); } else if (f.bucket !== frames.bucket || f.src !== frames.src) { pending = f; preload(); }
+      legend();
+    });
   }
+  function setFrames(f) { frames = f; NF = f.n; ui.range.max = NF - 1; if (cur > NF - 1 || !started) cur = NF - 1; }
   // request every frame's visible tiles so playback never waits on the network
   function preload() {
-    [frames, pending].forEach(function (f) { if (!f) return; var vs = visible(rz()); for (var k = 0; k < NF; k++) { var g = radarGet(f, k); vs.forEach(function (v) { g(v.z, ((v.i % v.n) + v.n) % v.n, v.j, true); }); } });
+    [frames, pending].forEach(function (f) { if (!f) return; var vs = visible(rz()); for (var k = 0; k < f.n; k++) { var g = radarGet(f, k); vs.forEach(function (v) { g(v.z, ((v.i % v.n) + v.n) % v.n, v.j, true); }); } });
   }
   function ready(f) {
     var vs = visible(rz()), n = 0, ok = 0;
-    for (var k = 0; k < NF; k++) vs.forEach(function (v) { var e = peek("r" + f.bucket + ":" + k + ":" + v.z + "/" + (((v.i % v.n) + v.n) % v.n) + "/" + v.j); n++; if (e && (e.ok || e.err)) ok++; });
+    for (var k = 0; k < f.n; k++) vs.forEach(function (v) { var e = peek(rkey(f, k, v.z, ((v.i % v.n) + v.n) % v.n, v.j)); n++; if (e && (e.ok || e.err)) ok++; });
     return n ? ok / n : 1;
   }
   function checkPending() {
-    if (pending && ready(pending) >= 1) { frames = pending; pending = null; paint(2); }
+    if (pending && ready(pending) >= 1) { setFrames(pending); pending = null; paint(2); }
     var r = frames ? ready(frames) : 0;
     status(outUS ? "Radar mosaic covers the lower 48 states" : r < 1 ? "Loading radar… " + Math.round(r * 100) + "%" : "");
     if (r >= 1 && !playing && !userPaused && !started) { started = true; if (!reduced()) play(true); }
@@ -221,10 +361,12 @@
   }
   function timeUi() {
     if (!ui.time) return;
-    var pos = cur + frac, k = Math.round(pos) % NF, ago = (NF - 1 - k) * 5;
+    var pos = cur + frac, k = Math.round(pos) % NF;
     ui.range.value = pos > NF - 1 ? NF - 1 : pos;
-    var abs = frames && frames.valid ? (opts.fmtTime ? opts.fmtTime(frames.valid - ago * 60000) : new Date(frames.valid - ago * 60000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })) : "";
-    ui.time.textContent = (abs ? abs + " · " : "") + (ago ? ago + " min ago" : "Latest");
+    var t = !frames ? null : frames.times ? frames.times[k] : frames.valid ? frames.valid - (NF - 1 - k) * 5 * 60000 : null;
+    var ago = frames && frames.times ? Math.round((frames.valid - t) / 60000) : (NF - 1 - k) * 5;
+    var abs = t ? (opts.fmtTime ? opts.fmtTime(t) : new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })) : "";
+    ui.time.textContent = (abs ? abs + " · " : "") + (k === NF - 1 ? "Latest" : ago + " min ago");
   }
   function status(t) { if (ui.stat.textContent !== t) { ui.stat.textContent = t; ui.stat.hidden = !t; } }
 
@@ -302,7 +444,7 @@
     el = host; el.innerHTML =
       '<canvas class="rl rb"></canvas><canvas class="rl rr"></canvas><canvas class="rl rt"></canvas>' +
       '<div class="rstat" hidden></div>' +
-      '<button type="button" class="rleg" aria-label="Switch radar colours"><i></i><span class="rlt"><b>Light</b><b>Heavy</b></span><em></em></button>' +
+      '<button type="button" class="rleg" aria-label="Switch radar colours"><span class="lrow lr"><span>Rain</span><i></i></span><span class="lrow ls"><span>Snow</span><i></i></span><em></em></button>' +
       '<button type="button" class="rloc" aria-label="Back to your location"><svg viewBox="0 0 24 24"><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2" class="f"/></svg></button>' +
       '<div class="rbar"><button type="button" class="rplay" aria-label="Play"></button><input type="range" class="rrange" min="0" max="' + (NF - 1) + '" step="0.01" value="' + (NF - 1) + '" aria-label="Radar time"><span class="rtime num"></span></div>';
     var cs = el.querySelectorAll("canvas"); cvB = cs[0]; cvR = cs[1]; cvL = cs[2];
@@ -314,17 +456,21 @@
     ui.leg.addEventListener("click", function () {
       if (corsOK === false) return;
       style = style === "smooth" ? "nws" : "smooth"; try { localStorage.setItem("wx-radar-style", style); } catch (e) {}
-      legend(); paint(2);
+      legend(); paint(2); preload();
     });
     legend(); play(false); wire();
     new ResizeObserver(size).observe(el);
     if (root.matchMedia) root.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function () { paint(7); });
   }
+  function grad(P) { return "linear-gradient(90deg," + P.filter(function (s) { return s[4] == null || s[4] > 0; }).map(function (s) { return "rgba(" + s[1] + "," + s[2] + "," + s[3] + "," + Math.max(0.45, s[4] == null ? 1 : s[4]) + ")"; }).join(",") + ")"; }
   function legend() {
-    var P = style === "smooth" && corsOK !== false ? SMOOTH : NWS.map(function (s) { return s.concat(1); });
-    ui.leg.querySelector("i").style.background = "linear-gradient(90deg," + P.filter(function (s) { return s[0] >= 10; }).map(function (s) {
-      return "rgba(" + s[1] + "," + s[2] + "," + s[3] + "," + Math.max(0.35, s[4]) + ")"; }).join(",") + ")";
-    ui.leg.querySelector("em").textContent = corsOK === false ? "NWS colours" : style === "smooth" ? "Smooth" : "NWS colours";
+    if (!ui.leg) return;
+    var sm = style === "smooth" && corsOK !== false, typed = sm && frames && frames.src === "mrms";
+    ui.leg.querySelector(".lr i").style.background = grad(sm ? RAIN : NWS);
+    ui.leg.querySelector(".lr span").textContent = sm ? "Rain" : "Radar";
+    ui.leg.querySelector(".ls").hidden = !typed;
+    ui.leg.querySelector(".ls i").style.background = grad(SNOW);
+    ui.leg.querySelector("em").textContent = !sm ? "NWS colours" + (corsOK === false ? "" : " · tap for smooth") : typed ? "Light → heavy · tap for NWS colours" : "Type not available · tap for NWS colours";
   }
   function size() {
     var r = el.getBoundingClientRect(); if (!r.width) return;
@@ -349,8 +495,8 @@
     hide: function () { on = false; playing && play(false); started = false; userPaused = false; clearInterval(refreshT); if (raf) cancelAnimationFrame(raf); raf = 0; },
     refresh: function () { if (on) loadFrames(); },
     // for the live data check
-    _state: function () { return { corsOK: corsOK, frames: frames && frames.layers.length, valid: frames && frames.valid, ready: frames ? ready(frames) : 0, view: view, playing: playing, cur: cur, frac: frac }; },
-    _dbz: toDbz
+    _state: function () { return { src: frames && frames.src, mrmsOK: mrmsOK, corsOK: corsOK, frames: frames && frames.n, valid: frames && frames.valid, ready: frames ? ready(frames) : 0, view: view, playing: playing, cur: cur, frac: frac }; },
+    _dbz: toDbz, _test: function (im) { return recolor(im); }
   };
   root.WXRadar = api;
 })(this);
