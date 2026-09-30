@@ -14,7 +14,7 @@
   var META = "https://mesonet.agron.iastate.edu/data/gis/images/4326/USCOMP/n0q_0.json";
   var OG = "https://opengeo.ncep.noaa.gov/geoserver/conus/", REF = "conus_bref_qcd", TYP = "conus_pcpn_typ";
   var ESRI = "https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/";
-  var el, stage, cvB, cvR, cvL, cxB, cxR, cxL, ui = {}, W = 0, HH = 0, SW = 0, SH = 0, MG = 0, dpr = 1, on = false, opts = {};
+  var el, stage, cvB, cvR, cvL, cxB, cxR, cxL, ui = {}, W = 0, HH = 0, SW = 0, SH = 0, MG = 0, dpr = 1, ldpr = 1, on = false, opts = {};
   // rv: the view the canvases were last drawn at. While a finger moves the map, only a CSS transform on the canvas
   //   stage changes (composited by the browser at the display's full refresh rate); the canvases are redrawn when the
   //   gesture ends or the stage's spare margin runs out.
@@ -207,12 +207,12 @@
   }
 
   // visible tile range at tile zoom zt: [{i, j, x0, y0, x1, y1}] in device pixels (edges rounded so tiles never overlap)
-  function visible(zt) {
-    var n = Math.pow(2, zt), s = rscale(), out = [];
+  function visible(zt, dp) {
+    dp = dp || dpr; var n = Math.pow(2, zt), s = rscale(), out = [];
     var l = rv.x - SW / 2 / s, r = rv.x + SW / 2 / s, t = rv.y - SH / 2 / s, b = rv.y + SH / 2 / s;
     for (var j = Math.max(0, Math.floor(t * n)); j <= Math.min(n - 1, Math.floor(b * n)); j++)
       for (var i = Math.floor(l * n); i <= Math.floor(r * n); i++) {
-        var px = function (wx) { return Math.round(((wx - rv.x) * s + SW / 2) * dpr); }, py = function (wy) { return Math.round(((wy - rv.y) * s + SH / 2) * dpr); };
+        var px = function (wx) { return Math.round(((wx - rv.x) * s + SW / 2) * dp); }, py = function (wy) { return Math.round(((wy - rv.y) * s + SH / 2) * dp); };
         out.push({ i: i, j: j, n: n, z: zt, x0: px(i / n), y0: py(j / n), x1: px((i + 1) / n), y1: py((j + 1) / n) });
       }
     return out;
@@ -244,18 +244,25 @@
 
   // ---------- drawing ----------
   function paint(bits) { need |= bits || 7; if (on && !raf) raf = requestAnimationFrame(frame); }
+  // base map: the vector map (wx-vmap.js) when its tiles can be reached — pure black land in dark mode, sharp lines
+  //   and text at any zoom — otherwise Esri's raster tiles
+  var VM = root.WXVMap;
+  function vec() { return VM && VM.ok(); }
   function drawBase() {
-    cxB.fillStyle = dark() ? "#1e1e1e" : "#e8e8e6"; cxB.fillRect(0, 0, cvB.width, cvB.height);
+    if (vec()) { VM.drawBase(cxB, visible(VM.tileZoom(rv.z)), { dark: dark(), dpr: dpr, z: rv.z }); return; }
+    cxB.setTransform(1, 0, 0, 1, 0, 0); cxB.fillStyle = dark() ? "#000" : "#f3f3f1"; cxB.fillRect(0, 0, cvB.width, cvB.height);
+    if (VM && !VM.failed()) return; // vector map still starting up
     var g = layerGet("Base"); visible(tz()).forEach(function (v) { drawTile(cxB, v, g); });
   }
   function drawLabels() {
-    cxL.clearRect(0, 0, cvL.width, cvL.height);
-    var g = layerGet("Reference"); visible(tz()).forEach(function (v) { drawTile(cxL, v, g); });
+    cxL.setTransform(1, 0, 0, 1, 0, 0); cxL.clearRect(0, 0, cvL.width, cvL.height);
+    if (vec()) VM.drawTop(cxL, visible(VM.tileZoom(rv.z), ldpr), { dark: dark(), dpr: ldpr, z: rv.z, w: SW, h: SH });
+    else if (!VM || VM.failed()) { var g = layerGet("Reference"); visible(tz(), ldpr).forEach(function (v) { drawTile(cxL, v, g); }); }
     if (home) { // location dot
-      var s = rscale(), hx = home.x - rv.x; hx -= Math.round(hx); var x = (hx * s + SW / 2) * dpr, y = ((home.y - rv.y) * s + SH / 2) * dpr;
-      cxL.beginPath(); cxL.arc(x, y, 9 * dpr, 0, 7); cxL.fillStyle = "rgba(47,125,246,.22)"; cxL.fill();
-      cxL.beginPath(); cxL.arc(x, y, 5.5 * dpr, 0, 7); cxL.fillStyle = "#fff"; cxL.fill();
-      cxL.beginPath(); cxL.arc(x, y, 4 * dpr, 0, 7); cxL.fillStyle = "#2F7DF6"; cxL.fill();
+      var s = rscale(), hx = home.x - rv.x, d = ldpr; hx -= Math.round(hx); var x = (hx * s + SW / 2) * d, y = ((home.y - rv.y) * s + SH / 2) * d;
+      cxL.beginPath(); cxL.arc(x, y, 9 * d, 0, 7); cxL.fillStyle = "rgba(47,125,246,.22)"; cxL.fill();
+      cxL.beginPath(); cxL.arc(x, y, 5.5 * d, 0, 7); cxL.fillStyle = "#fff"; cxL.fill();
+      cxL.beginPath(); cxL.arc(x, y, 4 * d, 0, 7); cxL.fillStyle = "#2F7DF6"; cxL.fill();
     }
   }
   // two frames blended exactly: A at (1-f) and B at f with additive compositing = a linear crossfade
@@ -521,6 +528,7 @@
       legend(); paint(2); preload();
     });
     legend(); play(false); wire();
+    if (VM) VM.init(function () { paint(7); }, function () { paint(5); });
     new ResizeObserver(size).observe(el);
     if (root.matchMedia) root.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function () { paint(7); });
   }
@@ -537,11 +545,13 @@
   function size() {
     var r = el.getBoundingClientRect(); if (!r.width) return;
     // the stage is the view plus a spare margin on every side, so a drag shows already-drawn map until it is redrawn
-    W = r.width; HH = r.height; dpr = Math.min(2, root.devicePixelRatio || 1); MG = Math.round(Math.max(W, HH) * 0.2);
+    // map and radar at up to 2x; the lines-and-labels layer at the screen's full resolution (up to 3x) for sharp text
+    W = r.width; HH = r.height; dpr = Math.min(2, root.devicePixelRatio || 1); ldpr = Math.min(3, root.devicePixelRatio || 1); MG = Math.round(Math.max(W, HH) * 0.2);
     SW = W + 2 * MG; SH = HH + 2 * MG;
     stage.style.cssText = "left:" + -MG + "px;top:" + -MG + "px;width:" + SW + "px;height:" + SH + "px";
     rv.x = view.x; rv.y = view.y; rv.z = view.z;
-    [cvB, cvR, cvL].forEach(function (c) { c.width = Math.round(SW * dpr); c.height = Math.round(SH * dpr); });
+    [cvB, cvR].forEach(function (c) { c.width = Math.round(SW * dpr); c.height = Math.round(SH * dpr); });
+    cvL.width = Math.round(SW * ldpr); cvL.height = Math.round(SH * ldpr);
     paint(7); preload();
   }
 
