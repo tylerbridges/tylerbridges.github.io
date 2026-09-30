@@ -14,7 +14,11 @@
   var META = "https://mesonet.agron.iastate.edu/data/gis/images/4326/USCOMP/n0q_0.json";
   var OG = "https://opengeo.ncep.noaa.gov/geoserver/conus/", REF = "conus_bref_qcd", TYP = "conus_pcpn_typ";
   var ESRI = "https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/";
-  var el, cvB, cvR, cvL, cxB, cxR, cxL, ui = {}, W = 0, HH = 0, dpr = 1, on = false, opts = {};
+  var el, stage, cvB, cvR, cvL, cxB, cxR, cxL, ui = {}, W = 0, HH = 0, SW = 0, SH = 0, MG = 0, dpr = 1, on = false, opts = {};
+  // rv: the view the canvases were last drawn at. While a finger moves the map, only a CSS transform on the canvas
+  //   stage changes (composited by the browser at the display's full refresh rate); the canvases are redrawn when the
+  //   gesture ends or the stage's spare margin runs out.
+  var rv = { x: 0.5, y: 0.5, z: 7 }, redraws = 0;
   var view = { x: 0.5, y: 0.5, z: 7 }, home = null;
   var cache = new Map(), tick = 0, corsOK = null, style = "smooth";
   var frames = null, pending = null, cur = NF - 1, frac = 0, playing = false, ph = 0, userPaused = false;
@@ -25,6 +29,7 @@
   function mx(lon) { return (lon + 180) / 360; }
   function my(lat) { var s = Math.sin(Math.max(-85, Math.min(85, lat)) * Math.PI / 180); return 0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI); }
   function scale() { return TS * Math.pow(2, view.z); }
+  function rscale() { return TS * Math.pow(2, rv.z); }
   function dark() {
     var t = document.documentElement.getAttribute("data-theme");
     return t ? t === "dark" : !!(root.matchMedia && root.matchMedia("(prefers-color-scheme: dark)").matches);
@@ -203,11 +208,11 @@
 
   // visible tile range at tile zoom zt: [{i, j, x0, y0, x1, y1}] in device pixels (edges rounded so tiles never overlap)
   function visible(zt) {
-    var n = Math.pow(2, zt), s = scale(), out = [];
-    var l = view.x - W / 2 / s, r = view.x + W / 2 / s, t = view.y - HH / 2 / s, b = view.y + HH / 2 / s;
+    var n = Math.pow(2, zt), s = rscale(), out = [];
+    var l = rv.x - SW / 2 / s, r = rv.x + SW / 2 / s, t = rv.y - SH / 2 / s, b = rv.y + SH / 2 / s;
     for (var j = Math.max(0, Math.floor(t * n)); j <= Math.min(n - 1, Math.floor(b * n)); j++)
       for (var i = Math.floor(l * n); i <= Math.floor(r * n); i++) {
-        var px = function (wx) { return Math.round(((wx - view.x) * s + W / 2) * dpr); }, py = function (wy) { return Math.round(((wy - view.y) * s + HH / 2) * dpr); };
+        var px = function (wx) { return Math.round(((wx - rv.x) * s + SW / 2) * dpr); }, py = function (wy) { return Math.round(((wy - rv.y) * s + SH / 2) * dpr); };
         out.push({ i: i, j: j, n: n, z: zt, x0: px(i / n), y0: py(j / n), x1: px((i + 1) / n), y1: py((j + 1) / n) });
       }
     return out;
@@ -233,9 +238,9 @@
     return function (z, x, y, request) { var key = rkey(f, k, z, x, y); return request ? get(key, radarUrl(f, k, z, x, y), true) : peek(key); };
   }
   function rkey(f, k, z, x, y) { return "r" + f.src + (f.times ? f.times[k] : f.bucket + ":" + k) + ":" + z + "/" + x + "/" + y; }
-  function tz() { return Math.max(0, Math.min(16, Math.round(view.z))); }
+  function tz() { return Math.max(0, Math.min(16, Math.round(rv.z))); }
   // radar one level coarser than the map (smoother, and MRMS/NEXRAD mosaics are ~1 km anyway), native in NWS colours
-  function rz() { return Math.max(MINZ, Math.min(RMAX, Math.round(view.z) - (style === "smooth" ? 1 : 0))); }
+  function rz() { return Math.max(MINZ, Math.min(RMAX, Math.round(rv.z) - (style === "smooth" ? 1 : 0))); }
 
   // ---------- drawing ----------
   function paint(bits) { need |= bits || 7; if (on && !raf) raf = requestAnimationFrame(frame); }
@@ -247,7 +252,7 @@
     cxL.clearRect(0, 0, cvL.width, cvL.height);
     var g = layerGet("Reference"); visible(tz()).forEach(function (v) { drawTile(cxL, v, g); });
     if (home) { // location dot
-      var s = scale(), x = ((home.x - view.x) * s + W / 2) * dpr, y = ((home.y - view.y) * s + HH / 2) * dpr;
+      var s = rscale(), hx = home.x - rv.x; hx -= Math.round(hx); var x = (hx * s + SW / 2) * dpr, y = ((home.y - rv.y) * s + SH / 2) * dpr;
       cxL.beginPath(); cxL.arc(x, y, 9 * dpr, 0, 7); cxL.fillStyle = "rgba(47,125,246,.22)"; cxL.fill();
       cxL.beginPath(); cxL.arc(x, y, 5.5 * dpr, 0, 7); cxL.fillStyle = "#fff"; cxL.fill();
       cxL.beginPath(); cxL.arc(x, y, 4 * dpr, 0, 7); cxL.fillStyle = "#2F7DF6"; cxL.fill();
@@ -273,12 +278,22 @@
     if (playing) { advance(dt); need |= 2; }
     if (inertia) { stepInertia(dt); }
     if (tween) { stepTween(ts); }
+    // redraw at the current view when the gesture is over, or mid-gesture when the drawn margin or zoom range runs out
+    var gest = pts.size > 0 || inertia || tween, dx = view.x - rv.x; dx -= Math.round(dx);
+    var k = Math.pow(2, view.z - rv.z), tx = -dx * scale(), ty = (rv.y - view.y) * scale();
+    var stale = dx || view.y !== rv.y || view.z !== rv.z;
+    if (stale && (!gest || Math.abs(tx) + W / 2 * Math.abs(1 - k) > MG * 0.9 || Math.abs(ty) + HH / 2 * Math.abs(1 - k) > MG * 0.9 || k < 0.8 || k > 1.6)) {
+      rv.x = view.x; rv.y = view.y; rv.z = view.z; need |= 7; tx = ty = 0; k = 1; redraws++;
+      clearTimeout(moved.t); moved.t = setTimeout(preload, 120);
+    }
+    var tf = tx || ty || k !== 1 ? "translate3d(" + tx.toFixed(2) + "px," + ty.toFixed(2) + "px,0) scale(" + k.toFixed(5) + ")" : "";
+    if (stage.style.transform !== tf) stage.style.transform = tf;
     if (need & 1) drawBase();
     if (need & 2) drawRadar();
     if (need & 4) drawLabels();
     if (need) { need = 0; timeUi(); }
     checkPending();
-    if (playing || inertia || tween) raf = requestAnimationFrame(frame); else lastT = 0;
+    if (playing || gest) raf = requestAnimationFrame(frame); else { lastT = 0; if (stale && !raf) raf = requestAnimationFrame(frame); }
   }
 
   // ---------- frames and playback ----------
@@ -378,8 +393,8 @@
     var s = scale(); view.x = w.x - (sx - W / 2) / s; view.y = w.y - (sy - HH / 2) / s; clampView();
   }
   function clampView() { view.y = Math.max(0.05, Math.min(0.95, view.y)); view.x = ((view.x % 1) + 1) % 1; }
-  function moved() { paint(7); clearTimeout(moved.t); moved.t = setTimeout(preload, 150); }
-  function local(e) { var r = cvL.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+  function moved() { paint(0); clearTimeout(moved.t); moved.t = setTimeout(preload, 150); }
+  function local(e) { var r = el.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
   function gesture() {
     var p = Array.from(pts.values());
     if (p.length === 1) g0 = { n: 1, x: p[0].x, y: p[0].y, vx: view.x, vy: view.y };
@@ -387,7 +402,7 @@
     if (g0 && g0.n === 2) g0.w = worldAt(g0.m.x, g0.m.y);
   }
   function wire() {
-    var t = cvL;
+    var t = stage;
     t.addEventListener("pointerdown", function (e) {
       t.setPointerCapture(e.pointerId); var p = local(e); pts.set(e.pointerId, p); inertia = null; tween = null;
       if (pts.size === 1) { samples = [{ x: p.x, y: p.y, t: e.timeStamp }]; t._down = { x: p.x, y: p.y, t: e.timeStamp }; }
@@ -415,7 +430,7 @@
           var a = samples[0], b = samples[samples.length - 1], dt = Math.max(16, b.t - a.t);
           if (e.timeStamp - b.t < 80) { inertia = { vx: (b.x - a.x) / dt, vy: (b.y - a.y) / dt }; paint(0); }
         }
-        g0 = null;
+        g0 = null; paint(0);
       } else gesture();
     }
     t.addEventListener("pointerup", up); t.addEventListener("pointercancel", up);
@@ -426,13 +441,13 @@
   }
   function stepInertia(dt) {
     var ms = dt * 1000, s = scale(); view.x -= inertia.vx * ms / s; view.y -= inertia.vy * ms / s; clampView();
-    var k = Math.exp(-ms / 260); inertia.vx *= k; inertia.vy *= k; need |= 7;
+    var k = Math.exp(-ms / 260); inertia.vx *= k; inertia.vy *= k;
     if (Math.hypot(inertia.vx, inertia.vy) < 0.02) { inertia = null; preload(); }
   }
   function zoomTo(sx, sy, z) { tween = { sx: sx, sy: sy, z0: view.z, z1: Math.max(MINZ, Math.min(MAXZ, z)), t0: 0 }; paint(0); }
   function stepTween(ts) {
     if (!tween.t0) tween.t0 = ts; var t = Math.min(1, (ts - tween.t0) / 260);
-    zoomAt(tween.sx, tween.sy, tween.z0 + (tween.z1 - tween.z0) * smooth(t)); need |= 7;
+    zoomAt(tween.sx, tween.sy, tween.z0 + (tween.z1 - tween.z0) * smooth(t));
     if (t >= 1) { tween = null; preload(); }
   }
   function recenter(animate) {
@@ -442,12 +457,12 @@
   // ---------- setup ----------
   function build(host) {
     el = host; el.innerHTML =
-      '<canvas class="rl rb"></canvas><canvas class="rl rr"></canvas><canvas class="rl rt"></canvas>' +
+      '<div class="rstage"><canvas class="rl rb"></canvas><canvas class="rl rr"></canvas><canvas class="rl rt"></canvas></div>' +
       '<div class="rstat" hidden></div>' +
       '<button type="button" class="rleg" aria-label="Switch radar colours"><span class="lrow lr"><span>Rain</span><i></i></span><span class="lrow ls"><span>Snow</span><i></i></span><em></em></button>' +
       '<button type="button" class="rloc" aria-label="Back to your location"><svg viewBox="0 0 24 24"><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2" class="f"/></svg></button>' +
       '<div class="rbar"><button type="button" class="rplay" aria-label="Play"></button><input type="range" class="rrange" min="0" max="' + (NF - 1) + '" step="0.01" value="' + (NF - 1) + '" aria-label="Radar time"><span class="rtime num"></span></div>';
-    var cs = el.querySelectorAll("canvas"); cvB = cs[0]; cvR = cs[1]; cvL = cs[2];
+    stage = el.querySelector(".rstage"); var cs = el.querySelectorAll("canvas"); cvB = cs[0]; cvR = cs[1]; cvL = cs[2];
     cxB = cvB.getContext("2d"); cxR = cvR.getContext("2d"); cxL = cvL.getContext("2d");
     ui = { stat: el.querySelector(".rstat"), play: el.querySelector(".rplay"), range: el.querySelector(".rrange"), time: el.querySelector(".rtime"), leg: el.querySelector(".rleg") };
     ui.play.addEventListener("click", function () { userPaused = playing; play(!playing); started = true; });
@@ -470,12 +485,16 @@
     ui.leg.querySelector(".lr span").textContent = sm ? "Rain" : "Radar";
     ui.leg.querySelector(".ls").hidden = !typed;
     ui.leg.querySelector(".ls i").style.background = grad(SNOW);
-    ui.leg.querySelector("em").textContent = !sm ? "NWS colours" + (corsOK === false ? "" : " · tap for smooth") : typed ? "Light → heavy · tap for NWS colours" : "Type not available · tap for NWS colours";
+    ui.leg.querySelector("em").textContent = !sm ? "NWS colours" + (corsOK === false ? "" : " · tap to switch back") : typed ? "Light → heavy · tap for NWS colours" : "Rain/snow type unavailable";
   }
   function size() {
     var r = el.getBoundingClientRect(); if (!r.width) return;
-    W = r.width; HH = r.height; dpr = Math.min(3, root.devicePixelRatio || 1);
-    [cvB, cvR, cvL].forEach(function (c) { c.width = Math.round(W * dpr); c.height = Math.round(HH * dpr); });
+    // the stage is the view plus a spare margin on every side, so a drag shows already-drawn map until it is redrawn
+    W = r.width; HH = r.height; dpr = Math.min(2, root.devicePixelRatio || 1); MG = Math.round(Math.max(W, HH) * 0.2);
+    SW = W + 2 * MG; SH = HH + 2 * MG;
+    stage.style.cssText = "left:" + -MG + "px;top:" + -MG + "px;width:" + SW + "px;height:" + SH + "px";
+    rv.x = view.x; rv.y = view.y; rv.z = view.z;
+    [cvB, cvR, cvL].forEach(function (c) { c.width = Math.round(SW * dpr); c.height = Math.round(SH * dpr); });
     paint(7); preload();
   }
 
@@ -495,7 +514,7 @@
     hide: function () { on = false; playing && play(false); started = false; userPaused = false; clearInterval(refreshT); if (raf) cancelAnimationFrame(raf); raf = 0; },
     refresh: function () { if (on) loadFrames(); },
     // for the live data check
-    _state: function () { return { src: frames && frames.src, mrmsOK: mrmsOK, corsOK: corsOK, frames: frames && frames.n, valid: frames && frames.valid, ready: frames ? ready(frames) : 0, view: view, playing: playing, cur: cur, frac: frac }; },
+    _state: function () { return { redraws: redraws, tf: stage && stage.style.transform, src: frames && frames.src, mrmsOK: mrmsOK, corsOK: corsOK, frames: frames && frames.n, valid: frames && frames.valid, ready: frames ? ready(frames) : 0, view: view, playing: playing, cur: cur, frac: frac }; },
     _dbz: toDbz, _test: function (im) { return recolor(im); }
   };
   root.WXRadar = api;

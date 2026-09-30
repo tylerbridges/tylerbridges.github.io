@@ -195,7 +195,7 @@
               if (MOCK) return null;
               return openTab("radar", function () { var r = w.WXRadar && w.WXRadar._state(); return r && (r.ready >= 1 || r.corsOK === false && r.ready > 0.9); }, "Radar tab", 20000).then(function (ok) {
                 var r = w.WXRadar && w.WXRadar._state(); if (!r) return;
-                res.radar = "radar " + (r.src === "mrms" ? "MRMS (rain/snow)" : r.src === "iem" ? "IEM NEXRAD (no type)" : "?") + " " + Math.round(r.ready * 100) + "% loaded, colours " + (r.corsOK ? "smooth" : r.corsOK === false ? "NWS only (no pixel access)" : "unknown") + (r.valid ? ", latest " + Math.round((Date.now() - r.valid) / 60000) + " min old" : ", frame times unavailable");
+                res.radar = "radar " + (r.src === "mrms" ? "MRMS (rain/snow)" : r.src === "iem" ? "IEM NEXRAD (no type)" : "?") + " " + Math.round(r.ready * 100) + "% loaded, colours " + (r.corsOK ? "recoloured" : r.corsOK === false ? "NWS only (no pixel access)" : "unknown") + (r.valid ? ", latest " + Math.round((Date.now() - r.valid) / 60000) + " min old" : ", frame times unavailable");
                 if (r.src === "iem") res.warns.push("radar fell back to IEM: MRMS rain/snow colouring unavailable");
                 if (r.corsOK === false) res.warns.push("radar tiles don't allow pixel access: smooth colours unavailable");
                 if (!r.valid) res.warns.push("radar frame times unavailable");
