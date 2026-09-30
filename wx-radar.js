@@ -4,7 +4,7 @@
 //   last hour. Each pixel's colour is decoded back to its exact value using the layers' own legends (fetched as JSON),
 //   then redrawn by type: rain in greens → yellow → red, snow in white → light blue → blue, hail cores magenta.
 //   Fallback (if NCEP can't be reached or doesn't allow pixel access): the NWS NEXRAD N0Q mosaic from the Iowa
-//   Environmental Mesonet, read back to dBZ from the NWS colour ramp and drawn in the rain palette (no type).
+//   Environmental Mesonet, read back to dBZ from IEM's exact N0Q colour table and drawn in the rain palette (no type).
 //   Radar is requested one zoom level coarser than the map and drawn with bilinear smoothing; frames crossfade.
 //   Base map and labels: Esri Canvas (dark or light grey to match the theme).
 (function (root) {
@@ -21,11 +21,15 @@
   // rv: the view the canvases were last drawn at. While a finger moves the map, only a CSS transform on the canvas
   //   stage changes (composited by the browser at the display's full refresh rate); the canvases are redrawn when the
   //   gesture ends or the stage's spare margin runs out.
-  var rv = { x: 0.5, y: 0.5, z: 7 }, redraws = 0;
+  //   Each layer keeps its own drawn view (RV.B base, RV.R radar, RV.L lines+labels) and its own transform, so when
+  //   the margin runs low the layers are redrawn on separate frames (never all three at once), well before the edge
+  //   shows. `rv` points at the view being drawn right now.
+  var RV = { B: { x: 0.5, y: 0.5, z: 7 }, R: { x: 0.5, y: 0.5, z: 7 }, L: { x: 0.5, y: 0.5, z: 7 } }, rv = RV.R, redraws = 0;
+  function at(v, fn) { var o = rv; rv = v; try { return fn(); } finally { rv = o; } }
   var view = { x: 0.5, y: 0.5, z: 7 }, home = null;
   var cache = new Map(), tick = 0, corsOK = null, style = "smooth";
   var frames = null, pending = null, cur = NF - 1, frac = 0, playing = false, ph = 0, userPaused = false;
-  var need = 0, raf = 0, lastT = 0, refreshT = 0;
+  var need = 0, raf = 0, lastT = 0, refreshT = 0, LAYERS = [];
   try { style = localStorage.getItem("wx-radar-style") || "smooth"; } catch (e) {}
 
   // ---------- projection (web mercator, x/y in 0..1) ----------
@@ -114,10 +118,11 @@
     });
     return PALS;
   }
-  // Smooth rendering: decode every pixel to its value (dBZ) and type, soften the value field with a light 3x3 blur
-  //   (1-2-1 weights, so single-pixel speckle fades but real cores keep most of their intensity), then resample it at
-  //   twice the resolution with bilinear interpolation and colour each output pixel from its value: smooth contour
-  //   edges instead of blocky 1 km pixels, with colours that still come from the measured value. Type is nearest-pixel.
+  // Smooth rendering: decode every pixel to its value (dBZ) and type, then resample the value field at twice the
+  //   resolution with bilinear interpolation and colour each output pixel from its value: smooth contour edges
+  //   instead of blocky 1 km pixels, with colours that still come from the measured values. No extra blur: in a
+  //   comparison against single-site NEXRAD Level II, blurring shaved storm cores (fewer 35+ dBZ areas shown) for no
+  //   gain in average accuracy. Type is nearest-pixel.
   function smoothTile(im, dec, imT) {
     var R = pixels(im), p = R.d.data, q = imT ? pixels(imT).d.data : null, N = TS, LOW = MINDBZ - 12;
     var f = new Float32Array(N * N), ty = new Uint8Array(N * N), any = false;
@@ -128,9 +133,7 @@
     }
     if (!any) return EMPTY; // nothing to draw (most tiles)
     var M = N * 2, c = mk(M, M);
-    var g = new Float32Array(N * N), h = new Float32Array(N * N), x, y;
-    for (y = 0; y < N; y++) for (x = 0; x < N; x++) { var o = y * N; g[o + x] = (f[o + Math.max(0, x - 1)] + 2 * f[o + x] + f[o + Math.min(N - 1, x + 1)]) / 4; }
-    for (y = 0; y < N; y++) for (x = 0; x < N; x++) h[y * N + x] = (g[Math.max(0, y - 1) * N + x] + 2 * g[y * N + x] + g[Math.min(N - 1, y + 1) * N + x]) / 4;
+    var h = f, x, y;
     var cx = c.getContext("2d"), out = cx.createImageData(M, M), d32 = new Uint32Array(out.data.buffer), L = pal();
     for (y = 0; y < M; y++) {
       var sy = Math.max(0, Math.min(N - 1.001, (y + 0.5) / 2 - 0.5)), y0 = sy | 0, fy = sy - y0;
@@ -147,8 +150,19 @@
   // MRMS: reflectivity tile + type tile → one smooth, type-coloured tile
   function compose(imR, imT) { return smoothTile(imR, refDbz, imT || null); }
   // IEM fallback: reflectivity only (read back from the NWS colour ramp), drawn in the rain palette
-  var LIEM = new Map();
-  function iemDbz(r, g, b) { var k = (r << 16) | (g << 8) | b, v = LIEM.get(k); if (v === undefined) { v = toDbz(r, g, b); LIEM.set(k, v); } return v; }
+  // The IEM mosaic tiles use IEM's own 255-colour N0Q table (index i = -32 + (i-1)/2 dBZ, 0.5 dBZ steps; from
+  //   mesonet.agron.iastate.edu/GIS/rasters.php?rid=2), not the 15-colour NWS ramp, so pixels are decoded against
+  //   that exact table: an exact colour match, else the nearest table colour if it is close.
+  var IEMP = "85718f85728f86738d87758b87768b887789897987897a878a7b858b7d848b7e848c7f828d81808d82808e837e8f847c8f857c90877b918879918979928b77938d759691539894579b975b9d9a60a09d64a3a068a5a36da8a671aaa976adac7ab0af7eb2b283b7b88cbabb90bdbe94bfc199c2c49dc4c7a2c7caa6cacdaaccd0afd2d4b4cfd2b4c9ccb4c6c9b4c3c7b4c0c4b4bdc1b4b9beb4b6bbb4b3b9b4b0b6b4adb3b4aab0b4a4abb4a0a8b49da5b49aa2b497a0b4949db4919ab4949bb59098b48c95b38892b2808cb07c89af7886ae7483ac7080ab6c7daa6779a96376a85f73a75b70a6576da44f67a24b64a14761a0435e9f415b9e4361a24568a6486faa4a76ae4d7db24f84b6518bbb5699c3599fc75ba6cb5eadcf60b4d462bbd865c2dc67c9e06ad0e46fd6e868d6d759d6b352d6a24bd69043d67e3cd66d35d65b11d51811d11710cd1710c81610c4160fbc150fb7140eb3140eaf130eab130da6120da2120d9e110c99110c95100c91100b880f0b840e0a800e0a7c0d0a770d09730c096f0c096b0b08660b08620a095e09327308467d085b88076f9207849d0698a806adb205c1bd05d6c704ead204ffe200ffd800ffd300ffce00ffc900ffc400ffc000ffbb00ffb600ffb100ffac00ffa700ffa200ff9900ff9400ff8f00ff8a00ff8500ff8000ff0000f80000f10000ea0000e30000d50000cd0000c60000bf0000b80000b10000aa0000a300009b00009400008d00007f0000780000710000fffffffff5ffffeaffffdfffffd4ffffc9ffffbeffffb3ffff9dffff92ffff75fffc6bfdf960faf656f7f34bf4f040f1ed36efea2bece720e9e10be3b200ffac00fca400f79b00f49300ef8800ea8300e87900e27200dd6900db05ecf005ebf005eaf005dde005dce005dbe005cdd005ccd004bdc004bcc004bbc004aeb004adb0049ea0049da0049ca0038e90038d90038c90037e80037d80036f70036e70036d70025f60025e60024f50024e50024d50023f40023e40023d40013030012f30012020011f20011e203a67b53a66b53a65b53a64b53a63b53a62b5";
+  var LIEM = new Map(), IEMC = null;
+  function iemDbz(r, g, b) {
+    var k = (r << 16) | (g << 8) | b, v = LIEM.get(k);
+    if (v !== undefined) return v;
+    if (!IEMC) { IEMC = []; for (var i = 0; i < IEMP.length / 6; i++) { var c = parseInt(IEMP.substr(i * 6, 6), 16); IEMC.push([c >> 16, (c >> 8) & 255, c & 255, -32 + i / 2]); LIEM.set(c, -32 + i / 2); } v = LIEM.get(k); if (v !== undefined) return v; }
+    var best = 1e9; v = null;
+    IEMC.forEach(function (c) { var d = (r - c[0]) * (r - c[0]) + (g - c[1]) * (g - c[1]) + (b - c[2]) * (b - c[2]); if (d < best) { best = d; v = c[3]; } });
+    if (best > 24 * 24) v = null; LIEM.set(k, v); return v;
+  }
   function recolor(im) { return smoothTile(im, iemDbz, null); }
 
   // ---------- tiles ----------
@@ -224,10 +238,10 @@
     });
   }
   // tile arrivals repaint right away while the map is still; mid-gesture they're batched (a few per second at most)
-  var soonT = 0, soonB = 0;
+  var soonT = 0, soonB = 0, dirty = 0;
   function soon(b) {
     if (!(pts.size || inertia || tween)) return paint(b);
-    soonB |= b; if (!soonT) soonT = setTimeout(function () { soonT = 0; var x = soonB; soonB = 0; paint(x); }, 180);
+    soonB |= b; if (!soonT) soonT = setTimeout(function () { soonT = 0; dirty |= soonB; soonB = 0; paint(0); }, 180);
   }
   // smoothing runs in small slices (~10 ms per turn) so a big rain shield never freezes scrolling or the map
   var jobs = [], jobT = 0;
@@ -288,7 +302,7 @@
   function rz() { return Math.max(MINZ, Math.min(RMAX, Math.round(rv.z) - (style === "smooth" ? 1 : 0))); }
 
   // ---------- drawing ----------
-  function paint(bits) { need |= bits || 7; if (on && !raf) raf = requestAnimationFrame(frame); }
+  function paint(bits) { need |= bits == null ? 7 : bits; if (on && !raf) raf = requestAnimationFrame(frame); }
   // base map: the vector map (wx-vmap.js) when its tiles can be reached — pure black land in dark mode, sharp lines
   //   and text at any zoom — otherwise Esri's raster tiles
   var VM = root.WXVMap;
@@ -369,7 +383,7 @@
     var key = motionKey(); if (!frames || !key || key === mvKey && MV[key]) return;
     mvKey = key; if (MV[key]) return;
     var f = frames, out = MV[key] = [];
-    for (var k = 0; k < f.n - 1; k++) (function (k) { work(function () { if (frames === f && mvKey === key) estimate(f, k, function (m) { if (mvKey === key) { out[k] = m; paint(2); } }); }); })(k);
+    for (var k = 0; k < f.n - 1; k++) (function (k) { work(function () { if (frames === f && mvKey === key) at(RV.R, function () { estimate(f, k, function (m) { if (mvKey === key) { out[k] = m; paint(2); } }); }); }); })(k);
   }
   function frame(ts) {
     raf = 0; if (!on) return;
@@ -377,22 +391,36 @@
     if (playing) { advance(dt); need |= 2; }
     if (inertia) { stepInertia(dt); }
     if (tween) { stepTween(ts); }
-    // redraw at the current view when the gesture is over, or mid-gesture when the drawn margin or zoom range runs out
-    var gest = pts.size > 0 || inertia || tween, dx = view.x - rv.x; dx -= Math.round(dx);
-    var k = Math.pow(2, view.z - rv.z), tx = -dx * scale(), ty = (rv.y - view.y) * scale();
-    var stale = dx || view.y !== rv.y || view.z !== rv.z;
-    if (stale && (!gest || Math.abs(tx) + W / 2 * Math.abs(1 - k) > MG * 0.9 || Math.abs(ty) + HH / 2 * Math.abs(1 - k) > MG * 0.9 || k < 0.8 || k > 1.6)) {
-      rv.x = view.x; rv.y = view.y; rv.z = view.z; need |= 7; tx = ty = 0; k = 1; redraws++;
-      clearTimeout(moved.t); moved.t = setTimeout(preload, 120);
+    // Each layer shows its last drawing moved/scaled by a CSS transform until it is redrawn at the current view:
+    //   right away for new content (need bits), when the gesture is over, or mid-gesture once its spare margin is
+    //   half used. Stale layers are redrawn one per frame so no single frame does all the work. While playing, the
+    //   radar is redrawn every frame anyway, so it simply follows the view.
+    var gest = pts.size > 0 || inertia || tween, stale = 0, pick = null, worst = -1, sv = scale();
+    LAYERS.forEach(function (L) {
+      var v = RV[L.k], dx = view.x - v.x; dx -= Math.round(dx);
+      var k = Math.pow(2, view.z - v.z), tx = -dx * sv, ty = (v.y - view.y) * sv, off = dx || view.y !== v.y || view.z !== v.z;
+      L.tf = off ? "translate3d(" + tx.toFixed(2) + "px," + ty.toFixed(2) + "px,0) scale(" + k.toFixed(5) + ")" : "";
+      if (dirty & L.b && !(need & L.b) && worst < 2) { worst = 2; pick = L; } // new tiles arrived mid-gesture
+      if (!off) return;
+      stale |= L.b;
+      var use = Math.max(Math.abs(tx) + W / 2 * Math.abs(1 - k), Math.abs(ty) + HH / 2 * Math.abs(1 - k)) / MG + (k < 0.8 || k > 1.6 ? 1 : 0);
+      if (need & L.b) return; // redrawn below anyway
+      if ((!gest || use > 0.5) && use > worst) { worst = use; pick = L; }
+    });
+    if (pick) { need |= pick.b; dirty &= ~pick.b; if (worst < 2) redraws++; }
+    if (need) {
+      LAYERS.forEach(function (L) {
+        if (!(need & L.b)) return;
+        var v = RV[L.k]; v.x = view.x; v.y = view.y; v.z = view.z; L.tf = "";
+        at(v, L.draw);
+      });
+      if (need & stale) { clearTimeout(moved.t); moved.t = setTimeout(preload, 120); }
+      dirty &= ~need; need = 0; timeUi();
     }
-    var tf = tx || ty || k !== 1 ? "translate3d(" + tx.toFixed(2) + "px," + ty.toFixed(2) + "px,0) scale(" + k.toFixed(5) + ")" : "";
-    if (stage.style.transform !== tf) stage.style.transform = tf;
-    if (need & 1) drawBase();
-    if (need & 2) drawRadar();
-    if (need & 4) drawLabels();
-    if (need) { need = 0; timeUi(); }
+    LAYERS.forEach(function (L) { if (L.c.style.transform !== L.tf) L.c.style.transform = L.tf; });
     checkPending();
-    if (playing || gest) raf = requestAnimationFrame(frame); else { lastT = 0; if (stale && !raf) raf = requestAnimationFrame(frame); }
+    var left = LAYERS.some(function (L) { return L.tf; });
+    if (playing || gest || left || dirty) raf = requestAnimationFrame(frame); else lastT = 0;
   }
 
   // ---------- frames and playback ----------
@@ -446,10 +474,10 @@
   function setFrames(f) { frames = f; NF = f.n; ui.range.max = NF - 1; if (cur > NF - 1 || !started) cur = NF - 1; }
   // request every frame's visible tiles so playback never waits on the network
   function preload() {
-    [frames, pending].forEach(function (f) { if (!f) return; var vs = visible(rz()); for (var k = 0; k < f.n; k++) { var g = radarGet(f, k); vs.forEach(function (v) { g(v.z, ((v.i % v.n) + v.n) % v.n, v.j, true); }); } });
+    [frames, pending].forEach(function (f) { if (!f) return; var vs = at(view, function () { return visible(rz()); }); for (var k = 0; k < f.n; k++) { var g = radarGet(f, k); vs.forEach(function (v) { g(v.z, ((v.i % v.n) + v.n) % v.n, v.j, true); }); } });
   }
   function ready(f) {
-    var vs = visible(rz()), n = 0, ok = 0;
+    var vs = at(RV.R, function () { return visible(rz()); }), n = 0, ok = 0;
     for (var k = 0; k < f.n; k++) vs.forEach(function (v) { var e = peek(rkey(f, k, v.z, ((v.i % v.n) + v.n) % v.n, v.j)); n++; if (e && (e.ok || e.err)) ok++; });
     return n ? ok / n : 1;
   }
@@ -457,7 +485,7 @@
     if (pending && ready(pending) >= 1) { setFrames(pending); pending = null; paint(2); }
     var r = frames ? ready(frames) : 0;
     status(outUS ? "Radar mosaic covers the lower 48 states" : r < 1 ? "Loading radar… " + Math.round(r * 100) + "%" : "");
-    if (r >= 1) planMotion();
+    if (r >= 1) at(RV.R, planMotion);
     if (r >= 1 && !playing && !userPaused && !started) { started = true; if (!reduced()) play(true); }
   }
   var started = false, outUS = false;
@@ -568,6 +596,7 @@
       '<div class="rbar"><button type="button" class="rplay" aria-label="Play"></button><input type="range" class="rrange" min="0" max="' + (NF - 1) + '" step="0.01" value="' + (NF - 1) + '" aria-label="Radar time"><span class="rtime num"></span></div>';
     stage = el.querySelector(".rstage"); var cs = el.querySelectorAll("canvas"); cvB = cs[0]; cvR = cs[1]; cvL = cs[2];
     cxB = cvB.getContext("2d"); cxR = cvR.getContext("2d"); cxL = cvL.getContext("2d");
+    LAYERS = [{ k: "R", b: 2, c: cvR, draw: drawRadar, tf: "" }, { k: "B", b: 1, c: cvB, draw: drawBase, tf: "" }, { k: "L", b: 4, c: cvL, draw: drawLabels, tf: "" }];
     ui = { stat: el.querySelector(".rstat"), play: el.querySelector(".rplay"), range: el.querySelector(".rrange"), time: el.querySelector(".rtime"), leg: el.querySelector(".rleg") };
     ui.play.addEventListener("click", function () { userPaused = playing; play(!playing); started = true; });
     ui.range.addEventListener("input", function () { var v = +ui.range.value; playing && play(false); userPaused = true; started = true; cur = Math.min(NF - 1, Math.floor(v)); frac = v - cur; if (cur === NF - 1) frac = 0; paint(2); });
@@ -600,7 +629,7 @@
     W = r.width; HH = r.height; dpr = Math.min(2, root.devicePixelRatio || 1); rdpr = Math.min(1.5, root.devicePixelRatio || 1); ldpr = Math.min(3, root.devicePixelRatio || 1); MG = Math.round(Math.max(W, HH) * 0.2);
     SW = W + 2 * MG; SH = HH + 2 * MG;
     stage.style.cssText = "left:" + -MG + "px;top:" + -MG + "px;width:" + SW + "px;height:" + SH + "px";
-    rv.x = view.x; rv.y = view.y; rv.z = view.z;
+    ["B", "R", "L"].forEach(function (k) { RV[k].x = view.x; RV[k].y = view.y; RV[k].z = view.z; });
     cvB.width = Math.round(SW * dpr); cvB.height = Math.round(SH * dpr);
     cvR.width = Math.round(SW * rdpr); cvR.height = Math.round(SH * rdpr);
     cvL.width = Math.round(SW * ldpr); cvL.height = Math.round(SH * ldpr);
@@ -623,8 +652,8 @@
     hide: function () { on = false; playing && play(false); started = false; userPaused = false; clearInterval(refreshT); if (raf) cancelAnimationFrame(raf); raf = 0; },
     refresh: function () { if (on) loadFrames(); },
     // for the live data check
-    _state: function () { return { wk: !!WK, mv: (MV[mvKey] || []).map(function (m) { return m ? [+(m.x * rscale()).toFixed(1), +(m.y * rscale()).toFixed(1)] : null; }), redraws: redraws, tf: stage && stage.style.transform, src: frames && frames.src, mrmsOK: mrmsOK, corsOK: corsOK, frames: frames && frames.n, valid: frames && frames.valid, ready: frames ? ready(frames) : 0, view: view, playing: playing, cur: cur, frac: frac }; },
-    _dbz: toDbz, _test: function (im) { return recolor(im); }
+    _state: function () { return { wk: !!WK, mv: (MV[mvKey] || []).map(function (m) { return m ? [+(m.x * rscale()).toFixed(1), +(m.y * rscale()).toFixed(1)] : null; }), redraws: redraws, tf: cvL && cvL.style.transform, tfs: LAYERS.map(function (L) { return L.c.style.transform; }), src: frames && frames.src, mrmsOK: mrmsOK, corsOK: corsOK, frames: frames && frames.n, valid: frames && frames.valid, ready: frames ? ready(frames) : 0, view: view, playing: playing, cur: cur, frac: frac }; },
+    _dbz: toDbz, _iem: iemDbz, _test: function (im) { return recolor(im); }
   };
   if (!INW) { root.WXRadar = api; return; }
   // ---------- worker side ----------
