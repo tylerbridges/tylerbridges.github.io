@@ -1095,6 +1095,7 @@
   document.addEventListener("visibilitychange", function () {
     if (document.hidden) { touchTab(); return; }
     if (tabStale() && tab !== "now") showTab("now"); // reopened hours later (an installed app resumes without reloading)
+    if (follow && Date.now() - lastFix > 10 * 60000) locateQuietly();
     else touchTab();
     if (Date.now() - lastCheck > 5 * 60000) refresh(false);
   });
@@ -1258,6 +1259,31 @@
   function store(k, v) { try { if (v === undefined) return JSON.parse(localStorage.getItem(k) || "null"); localStorage.setItem(k, JSON.stringify(v)); } catch (e) { return null; } }
   var loc = store("wx-loc") || HOME, recents = store("wx-recents") || [HOME], favs = store("wx-favs") || [];
   function curLoc() { return loc; }
+  // "Use my current location" turns on following (like a weather app's My Location): on every later open, and on
+  //   returning to the app after 10+ minutes, the site quietly re-checks the phone's position (only if location
+  //   permission isn't blocked) and switches when it has moved ~2 km or more. Picking any other place turns it off.
+  var follow = !!store("wx-follow"), lastFix = 0;
+  function setFollow(on) { follow = !!on; store("wx-follow", follow); markFollow(); }
+  function markFollow() {
+    if ($("pgps")) $("pgps").toggleAttribute("hidden", !follow || !!urlLoc); // an SVG has no .hidden property
+    var g = $("lsgps"); if (g) { g.classList.toggle("on", follow); var sm = g.querySelector("small"); if (sm) sm.textContent = follow ? "On" : ""; }
+  }
+  function whenIdle(fn) { if (busy) setTimeout(function () { whenIdle(fn); }, 300); else fn(); }
+  function locateQuietly() {
+    if (!follow || TEST || !navigator.geolocation) return;
+    function ask() {
+      navigator.geolocation.getCurrentPosition(function (p) {
+        lastFix = Date.now();
+        var here = { lat: +p.coords.latitude.toFixed(4), lon: +p.coords.longitude.toFixed(4) };
+        if (!follow || same(here, loc)) return;
+        WXLive.place(here.lat, here.lon).then(function (label) {
+          if (label === false || !follow) return;
+          whenIdle(function () { useLoc({ lat: here.lat, lon: here.lon, label: label || "Current location" }); });
+        }).catch(function () {});
+      }, function () {}, { enableHighAccuracy: false, timeout: 15000, maximumAge: 600000 });
+    }
+    try { navigator.permissions.query({ name: "geolocation" }).then(function (st) { if (st.state !== "denied") ask(); }, ask); } catch (e) { ask(); }
+  }
   function saveCache(d) { store("wx-cache", d); }
   function same(a, b) { return a && b && Math.abs(a.lat - b.lat) < 0.02 && Math.abs(a.lon - b.lon) < 0.02; }
   function isFav(l) { return favs.some(function (f) { return same(f, l); }); }
@@ -1268,7 +1294,7 @@
   function setUrl() {
     try {
       var u = new URL(location.href);
-      if (same(loc, HOME)) { u.searchParams.delete("lat"); u.searchParams.delete("lon"); u.searchParams.delete("q"); }
+      if (same(loc, HOME) || follow) { u.searchParams.delete("label"); u.searchParams.delete("lat"); u.searchParams.delete("lon"); u.searchParams.delete("q"); }
       else { u.searchParams.delete("q"); u.searchParams.set("lat", loc.lat); u.searchParams.set("lon", loc.lon); }
       history.replaceState(null, "", u.pathname + u.search + u.hash);
     } catch (e) {}
@@ -1303,8 +1329,9 @@
     $("psub").textContent = ""; $("psub").hidden = true;
   }
   function busyLs(on) { $("lsgo").disabled = on; if ($("lsgps")) $("lsgps").disabled = on; }
-  function go(l) {
+  function go(l, fromGps) {
     if (TEST) setTest(null);
+    setFollow(!!fromGps); if (fromGps) lastFix = Date.now();
     busyLs(true); lsStatus("Loading " + (l.label || "location") + " from weather.gov…");
     useLoc(l).then(function (ok) { busyLs(false); if (ok) lsClose(); else lsStatus("Couldn't load that location from weather.gov. Try again.", true); });
   }
@@ -1326,7 +1353,7 @@
       var lat = +p.coords.latitude.toFixed(4), lon = +p.coords.longitude.toFixed(4);
       WXLive.place(lat, lon).then(function (label) {
         if (label === false) { lsStatus("weather.gov has no forecast for your location.", true); busyLs(false); return; }
-        go({ lat: lat, lon: lon, label: label || "Current location" });
+        go({ lat: lat, lon: lon, label: label || "Current location" }, true);
       });
     }, function (err) {
       busyLs(false);
@@ -1370,6 +1397,8 @@
   // paint the last data this device saw right away (if it's for the same place), then pull live
   var cached = store("wx-cache");
   var qs = new URLSearchParams(location.search), qLat = parseFloat(qs.get("lat")), qLon = parseFloat(qs.get("lon")), qQ = qs.get("q");
+  // a place in the URL is shown as asked (a shared link); following resumes on the next plain open
+  var urlLoc = (isFinite(qLat) && isFinite(qLon) && !same(loc, { lat: qLat, lon: qLon })) || !!qQ;
   if (isFinite(qLat) && isFinite(qLon)) {
     var known = [loc].concat(favs, recents).filter(function (r) { return r && r.label && same(r, { lat: qLat, lon: qLon }); })[0];
     loc = { lat: qLat, lon: qLon, label: qs.get("label") || (known && known.label) || null };
@@ -1380,4 +1409,6 @@
   if (qQ) {
     WXLive.geocode(qQ).then(function (hit) { if (hit) useLoc(hit); else { toast("No US location found for \"" + qQ + "\""); useLoc(loc); } }).catch(function () { useLoc(loc); });
   } else useLoc(loc);
+  markFollow();
+  if (follow && !urlLoc) locateQuietly();
 })();
