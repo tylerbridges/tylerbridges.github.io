@@ -8,6 +8,8 @@
   var TILEJSON = "https://tiles.openfreemap.org/planet";
   var tmpl = null, maxz = 14, state = "idle", onReady = null, onTile = null;
   var tiles = new Map(), tick = 0;
+  // tiles are fetched and decoded by a background worker (this same file) so decoding never stalls the map
+  var INW = typeof document === "undefined", SELF = !INW && document.currentScript ? document.currentScript.src : null;
 
   // ---------- protobuf / Mapbox Vector Tile decoding ----------
   function Pbf(buf) { this.b = buf; this.p = 0; this.end = buf.length; }
@@ -46,7 +48,7 @@
         if (id === 1) { cur = [x, y]; out.push(cur); } else if (cur) cur.push(x, y);
       }
     }
-    return out;
+    return out.map(function (r) { return new Int16Array(r); }); // compact, and cheap to hand over from the worker
   }
   var WANT = { water: 1, waterway: 1, boundary: 1, transportation: 1, place: 1, water_name: 0 };
   function decode(buf) {
@@ -85,14 +87,27 @@
       state = "ok"; if (onReady) onReady(true);
     }).catch(function () { state = "fail"; if (onReady) onReady(false); });
   }
+  var WK = null, wid = 0, wjobs = {};
+  function worker() {
+    if (WK !== null) return WK;
+    WK = false; if (!SELF || typeof Worker === "undefined") return WK;
+    try {
+      WK = new Worker(SELF);
+      WK.onmessage = function (ev) { var r = ev.data, cb = wjobs[r.id]; delete wjobs[r.id]; if (cb) cb(r.err ? null : r.L, r.err); };
+      WK.onerror = function (ev) { ev.preventDefault(); WK.terminate(); WK = false; var js = wjobs; wjobs = {}; Object.keys(js).forEach(function (k) { js[k](null, "redo"); }); };
+    } catch (x) { WK = false; }
+    return WK;
+  }
+  function fetchTile(url, cb) {
+    if (worker()) { var id = ++wid; wjobs[id] = function (L, err) { if (err === "redo") fetchTile(url, cb); else cb(L); }; WK.postMessage({ id: id, url: url }); return; }
+    fetch(url).then(function (r) { if (!r.ok) throw 0; return r.arrayBuffer(); }).then(function (b) { cb(decode(b)); }).catch(function () { cb(null); });
+  }
   function get(z, x, y, request) {
     var k = z + "/" + x + "/" + y, e = tiles.get(k);
     if (e) { e.t = ++tick; return e; }
     if (!request || state !== "ok") return null;
     e = { t: ++tick }; tiles.set(k, e);
-    fetch(tmpl.replace("{z}", z).replace("{x}", x).replace("{y}", y)).then(function (r) { if (!r.ok) throw 0; return r.arrayBuffer(); })
-      .then(function (b) { e.L = decode(b); e.ok = true; if (onTile) onTile(); })
-      .catch(function () { e.err = true; });
+    fetchTile(tmpl.replace("{z}", z).replace("{x}", x).replace("{y}", y), function (L) { if (L) { e.L = L; e.ok = true; if (onTile) onTile(); } else e.err = true; });
     if (tiles.size > 400) { var all = Array.from(tiles.entries()).sort(function (a, b) { return a[1].t - b[1].t; }); for (var i = 0; i < 120; i++) tiles.delete(all[i][0]); }
     return e;
   }
@@ -101,14 +116,15 @@
 
   // ---------- styling ----------
   var PAL = {
-    dark: { bg: "#000000", water: "#0a1119", waterway: "#0e1722", county: "rgba(255,255,255,.10)", state: "rgba(255,255,255,.46)", country: "rgba(255,255,255,.6)",
-      road: [ "rgba(255,255,255,.34)", "rgba(255,255,255,.24)", "rgba(255,255,255,.17)", "rgba(255,255,255,.11)" ], text: "#ffffff", text2: "#c9d0d8", text3: "#9aa3ad", halo: "rgba(0,0,0,.92)", stateText: "rgba(255,255,255,.42)" },
-    light: { bg: "#f3f3f1", water: "#d3dee8", waterway: "#c3d2e0", county: "rgba(0,0,0,.10)", state: "rgba(0,0,0,.38)", country: "rgba(0,0,0,.5)",
-      road: [ "rgba(0,0,0,.26)", "rgba(0,0,0,.19)", "rgba(0,0,0,.13)", "rgba(0,0,0,.09)" ], text: "#141b24", text2: "#2e3845", text3: "#56616d", halo: "rgba(255,255,255,.95)", stateText: "rgba(0,0,0,.4)" }
+    dark: { bg: "#000000", water: "#0f2033", waterway: "#1a3450", county: "rgba(255,255,255,.24)", state: "rgba(255,255,255,.78)", country: "rgba(255,255,255,.9)",
+      road: [ "rgba(255,255,255,.58)", "rgba(255,255,255,.44)", "rgba(255,255,255,.32)", "rgba(255,255,255,.22)" ], text: "#ffffff", text2: "#dde3ea", text3: "#b4bcc6", halo: "rgba(0,0,0,.92)", stateText: "rgba(255,255,255,.62)" },
+    light: { bg: "#f3f3f1", water: "#bfd3e6", waterway: "#a9c2da", county: "rgba(0,0,0,.2)", state: "rgba(0,0,0,.62)", country: "rgba(0,0,0,.75)",
+      road: [ "rgba(0,0,0,.42)", "rgba(0,0,0,.32)", "rgba(0,0,0,.23)", "rgba(0,0,0,.16)" ], text: "#10161e", text2: "#26303c", text3: "#47525e", halo: "rgba(255,255,255,.95)", stateText: "rgba(0,0,0,.55)" }
   };
+
   function roadRank(c) { return c === "motorway" ? 0 : c === "trunk" || c === "primary" ? 1 : c === "secondary" ? 2 : c === "tertiary" || c === "minor" ? 3 : -1; }
   function roadMinZ(r) { return [5, 7, 9, 11][r]; }
-  function roadWidth(r, z) { var b = [1.3, 1.0, 0.8, 0.7][r]; return b * Math.max(0.6, Math.min(3, Math.pow(1.3, z - 8))); }
+  function roadWidth(r, z) { var b = [1.5, 1.15, 0.9, 0.75][r]; return b * Math.max(0.6, Math.min(3, Math.pow(1.3, z - 8))); }
 
   // Visit the loaded tile (or nearest loaded ancestor) for each visible tile slot, with a transform from tile
   //   units to device pixels and a clip to that slot. cb(layers, s, zt) draws; s = device px per tile unit.
@@ -128,15 +144,17 @@
       }
     });
   }
-  function path(ctx, g, close) { ctx.beginPath(); g.forEach(function (r) { ctx.moveTo(r[0], r[1]); for (var k = 2; k < r.length; k += 2) ctx.lineTo(r[k], r[k + 1]); if (close) ctx.closePath(); }); }
+  // one path per style (all features batched): far fewer draw calls, and overlapping segments don't double up
+  function add(ctx, g, close) { g.forEach(function (r) { ctx.moveTo(r[0], r[1]); for (var k = 2; k < r.length; k += 2) ctx.lineTo(r[k], r[k + 1]); if (close) ctx.closePath(); }); }
+  function strokeAll(ctx, list) { if (!list.length) return; ctx.beginPath(); list.forEach(function (f) { add(ctx, f.g); }); ctx.stroke(); }
 
   // land and water, under the radar
   function drawBase(ctx, slots, o) {
     var P = o.dark ? PAL.dark : PAL.light;
     ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = P.bg; ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
     eachTile(ctx, slots, function (L, s) {
-      if (L.water) { ctx.fillStyle = P.water; L.water.f.forEach(function (f) { if (f.t === 3) { path(ctx, f.g, true); ctx.fill(); } }); }
-      if (L.waterway && o.z >= 8) { ctx.strokeStyle = P.waterway; ctx.lineWidth = 1 * o.dpr / s; ctx.lineJoin = ctx.lineCap = "round"; L.waterway.f.forEach(function (f) { if (f.t === 2) { path(ctx, f.g); ctx.stroke(); } }); }
+      if (L.water) { ctx.fillStyle = P.water; ctx.beginPath(); L.water.f.forEach(function (f) { if (f.t === 3) add(ctx, f.g, true); }); ctx.fill(); }
+      if (L.waterway && o.z >= 8) { ctx.strokeStyle = P.waterway; ctx.lineWidth = 1.2 * o.dpr / s; ctx.lineJoin = ctx.lineCap = "round"; strokeAll(ctx, L.waterway.f.filter(function (f) { return f.t === 2; })); }
     });
   }
   // county/state lines and roads over the radar, then place names
@@ -147,18 +165,14 @@
       if (L.transportation) {
         var by = [[], [], [], []];
         L.transportation.f.forEach(function (f) { var r = roadRank(f.p["class"]); if (f.t === 2 && r >= 0 && z >= roadMinZ(r) && f.p.brunnel !== "tunnel") by[r].push(f); });
-        for (var r = 3; r >= 0; r--) { if (!by[r].length) continue; ctx.strokeStyle = P.road[r]; ctx.lineWidth = roadWidth(r, z) * d / s; by[r].forEach(function (f) { path(ctx, f.g); ctx.stroke(); }); }
+        for (var r = 3; r >= 0; r--) { if (!by[r].length) continue; ctx.strokeStyle = P.road[r]; ctx.lineWidth = roadWidth(r, z) * d / s; strokeAll(ctx, by[r]); }
       }
       if (L.boundary) {
-        L.boundary.f.forEach(function (f) {
-          if (f.t !== 2 || f.p.maritime === 1 || f.p.maritime === true) return;
-          var a = +f.p.admin_level;
-          if (a === 6 && z >= 7) { ctx.strokeStyle = P.county; ctx.lineWidth = 0.7 * d / s; }
-          else if (a === 4) { ctx.strokeStyle = P.state; ctx.lineWidth = (z < 6 ? 0.9 : 1.2) * d / s; }
-          else if (a === 2) { ctx.strokeStyle = P.country; ctx.lineWidth = 1.4 * d / s; }
-          else return;
-          path(ctx, f.g); ctx.stroke();
-        });
+        var bl = { 6: [], 4: [], 2: [] };
+        L.boundary.f.forEach(function (f) { if (f.t === 2 && f.p.maritime !== 1 && f.p.maritime !== true && bl[+f.p.admin_level]) bl[+f.p.admin_level].push(f); });
+        if (z >= 7) { ctx.strokeStyle = P.county; ctx.lineWidth = 0.8 * d / s; strokeAll(ctx, bl[6]); }
+        ctx.strokeStyle = P.state; ctx.lineWidth = (z < 6 ? 1.1 : 1.5) * d / s; strokeAll(ctx, bl[4]);
+        ctx.strokeStyle = P.country; ctx.lineWidth = 1.7 * d / s; strokeAll(ctx, bl[2]);
       }
       if (L.place) L.place.f.forEach(function (f) {
         if (f.t !== 1 || !f.g[0]) return;
@@ -200,5 +214,16 @@
     });
   }
 
+  if (INW) {
+    root.onmessage = function (ev) {
+      var m = ev.data;
+      fetch(m.url).then(function (r) { if (!r.ok) throw 0; return r.arrayBuffer(); }).then(function (b) {
+        var L = decode(b), tr = [];
+        Object.keys(L).forEach(function (n) { L[n].f.forEach(function (f) { f.g.forEach(function (r) { tr.push(r.buffer); }); }); });
+        root.postMessage({ id: m.id, L: L }, tr);
+      }).catch(function () { root.postMessage({ id: m.id, err: true }); });
+    };
+    return;
+  }
   root.WXVMap = { init: init, ok: function () { return state === "ok"; }, failed: function () { return state === "fail"; }, tileZoom: tileZoom, drawBase: drawBase, drawTop: drawTop, _decode: decode };
 })(this);

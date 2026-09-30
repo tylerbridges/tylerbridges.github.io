@@ -14,7 +14,10 @@
   var META = "https://mesonet.agron.iastate.edu/data/gis/images/4326/USCOMP/n0q_0.json";
   var OG = "https://opengeo.ncep.noaa.gov/geoserver/conus/", REF = "conus_bref_qcd", TYP = "conus_pcpn_typ";
   var ESRI = "https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/";
-  var el, stage, cvB, cvR, cvL, cxB, cxR, cxL, ui = {}, W = 0, HH = 0, SW = 0, SH = 0, MG = 0, dpr = 1, ldpr = 1, on = false, opts = {};
+  // this same file also runs as a background worker (decoding and smoothing radar tiles, storm-motion matching) so
+  //   that heavy work never blocks drawing: INW is true inside the worker
+  var INW = typeof document === "undefined", SELF = !INW && document.currentScript ? document.currentScript.src : null;
+  var el, stage, cvB, cvR, cvL, cxB, cxR, cxL, ui = {}, W = 0, HH = 0, SW = 0, SH = 0, MG = 0, dpr = 1, rdpr = 1, ldpr = 1, on = false, opts = {};
   // rv: the view the canvases were last drawn at. While a finger moves the map, only a CSS transform on the canvas
   //   stage changes (composited by the browser at the display's full refresh rate); the canvases are redrawn when the
   //   gesture ends or the stage's spare margin runs out.
@@ -92,8 +95,10 @@
     if (v === undefined) { var best = 1e9; v = null; TYPC.forEach(function (c) { var d = (r - c[0]) * (r - c[0]) + (g - c[1]) * (g - c[1]) + (b - c[2]) * (b - c[2]); if (d < best) { best = d; v = c[3]; } }); if (best > 30 * 30) v = null; LTYP.set(k, v); }
     return v;
   }
+  function mk(w, h) { if (INW) return new OffscreenCanvas(w, h); var c = document.createElement("canvas"); c.width = w; c.height = h; return c; }
+  var EMPTY = INW ? {} : mk(1, 1); // a tile with nothing to draw
   function pixels(im) {
-    var c = document.createElement("canvas"); c.width = TS; c.height = TS;
+    var c = mk(TS, TS);
     var x = c.getContext("2d", { willReadFrequently: true }); x.drawImage(im, 0, 0, TS, TS);
     return { c: c, x: x, d: x.getImageData(0, 0, TS, TS) }; // getImageData throws if the server doesn't allow CORS
   }
@@ -121,8 +126,8 @@
       f[k] = z == null ? LOW : Math.max(LOW, z); if (z != null && z >= MINDBZ - 4) any = true;
       if (z != null) { var t = q ? (q[i + 3] ? typAt(q[i], q[i + 1], q[i + 2]) : null) : "r"; ty[k] = t === "s" ? 2 : t === "h" ? 3 : 1; }
     }
-    var c = document.createElement("canvas"), M = N * 2; c.width = c.height = M;
-    if (!any) return c; // nothing to draw (most tiles)
+    if (!any) return EMPTY; // nothing to draw (most tiles)
+    var M = N * 2, c = mk(M, M);
     var g = new Float32Array(N * N), h = new Float32Array(N * N), x, y;
     for (y = 0; y < N; y++) for (x = 0; x < N; x++) { var o = y * N; g[o + x] = (f[o + Math.max(0, x - 1)] + 2 * f[o + x] + f[o + Math.min(N - 1, x + 1)]) / 4; }
     for (y = 0; y < N; y++) for (x = 0; x < N; x++) h[y * N + x] = (g[Math.max(0, y - 1) * N + x] + 2 * g[y * N + x] + g[Math.min(N - 1, y + 1) * N + x]) / 4;
@@ -157,13 +162,14 @@
     return e;
   }
   function load(e, url, radar, cors) {
+    if (radar && cors && workers()) return loadW(e, url);
     if (Array.isArray(url)) return loadMrms(e, url);
     var im = new Image(); im.decoding = "async"; if (cors) im.crossOrigin = "anonymous";
     im.onload = function () {
       e.raw = im;
       if (radar && !cors && e.corsFail) corsOK = false; // loads fine without CORS: the server just doesn't allow pixel access
-      if (radar && cors) work(function () { try { e.sm = recolor(im); corsOK = true; } catch (x) { corsOK = false; } e.ok = true; paint(2); });
-      else { e.ok = true; paint(radar ? 2 : 5); }
+      if (radar && cors) work(function () { try { e.sm = recolor(im); corsOK = true; } catch (x) { corsOK = false; } e.ok = true; soon(2); });
+      else { e.ok = true; soon(radar ? 2 : 5); }
     };
     im.onerror = function () {
       if (cors) { e.corsFail = true; load(e, url, radar, false); return; }
@@ -178,12 +184,50 @@
       if (--left) return;
       if (!ims[0]) { e.err = true; paint(0); return; }
       e.raw = ims[0];
-      work(function () { try { e.sm = compose(ims[0], ims[1]); corsOK = true; } catch (x) { corsOK = false; } e.ok = true; paint(2); });
+      work(function () { try { e.sm = compose(ims[0], ims[1]); corsOK = true; } catch (x) { corsOK = false; } e.ok = true; soon(2); });
     }
     urls.forEach(function (u, k) {
       var im = new Image(); im.crossOrigin = "anonymous"; im.decoding = "async";
       im.onload = function () { ims[k] = im; done(); }; im.onerror = done; im.src = u;
     });
+  }
+  // Background workers (2, this same script): fetch the tile(s), decode and smooth them and hand back ready-to-draw
+  //   bitmaps, so a big rain shield or a refresh never stalls playback or panning. Without worker support (or if a
+  //   worker fails) the same code runs here on the main thread in small slices.
+  var WK = null, wkI = 0, wid = 0, wjobs = {};
+  function workers() {
+    if (WK !== null) return WK;
+    WK = false;
+    if (!SELF || typeof Worker === "undefined" || typeof OffscreenCanvas === "undefined" || typeof createImageBitmap === "undefined") return WK;
+    try { WK = [0, 1].map(function () { var w = new Worker(SELF); w.onmessage = fromW; w.onerror = wFail; return w; }); cfgW(); } catch (x) { WK = false; }
+    return WK;
+  }
+  function cfgW() { if (WK && REFP) WK.forEach(function (w) { w.postMessage({ cfg: { REFP: REFP, TYPC: TYPC } }); }); }
+  function toW(m, cb, tr) { m.id = ++wid; wjobs[m.id] = { cb: cb, m: m }; WK[wkI++ % WK.length].postMessage(m, tr || []); }
+  function fromW(ev) {
+    var r = ev.data, j = wjobs[r.id]; if (!j) return; delete wjobs[r.id];
+    if (r.nosupport) { wFail(); j.cb(null, true); return; }
+    j.cb(r);
+  }
+  // a worker that can't run: stop using workers and redo whatever was waiting on them here
+  function wFail(ev) {
+    if (ev && ev.preventDefault) ev.preventDefault();
+    if (!WK) return; WK.forEach(function (w) { w.terminate(); }); WK = false;
+    var js = wjobs; wjobs = {}; Object.keys(js).forEach(function (k) { js[k].cb(null, true); });
+  }
+  function loadW(e, url) {
+    var mrms = Array.isArray(url);
+    toW({ kind: "tile", urls: mrms ? url : [url], mrms: mrms }, function (r, redo) {
+      if (redo) return load(e, url, true, true);
+      if (r.err) { if (mrms) { e.err = true; soon(0); } else { e.corsFail = true; load(e, url, true, false); } return; }
+      e.raw = r.raw; e.sm = r.empty ? EMPTY : r.sm; corsOK = true; e.ok = true; soon(2);
+    });
+  }
+  // tile arrivals repaint right away while the map is still; mid-gesture they're batched (a few per second at most)
+  var soonT = 0, soonB = 0;
+  function soon(b) {
+    if (!(pts.size || inertia || tween)) return paint(b);
+    soonB |= b; if (!soonT) soonT = setTimeout(function () { soonT = 0; var x = soonB; soonB = 0; paint(x); }, 180);
   }
   // smoothing runs in small slices (~10 ms per turn) so a big rain shield never freezes scrolling or the map
   var jobs = [], jobT = 0;
@@ -223,6 +267,7 @@
     for (var d = 0; d <= 4 && v.z - d >= 0; d++) {
       var e = getE(v.z - d, i >> d, v.j >> d, d === 0), im = img(e);
       if (!im) continue;
+      if (im === EMPTY) return true;
       var sz = (im.width || im.naturalWidth) / (1 << d), sx = (i - ((i >> d) << d)) * sz, sy = (v.j - ((v.j >> d) << d)) * sz;
       ctx.drawImage(im, sx, sy, sz, sz, v.x0, v.y0, v.x1 - v.x0, v.y1 - v.y0);
       return true;
@@ -270,10 +315,10 @@
     cxR.globalCompositeOperation = "source-over"; cxR.globalAlpha = 1; cxR.clearRect(0, 0, cvR.width, cvR.height);
     if (!frames) return;
     cxR.imageSmoothingEnabled = true; cxR.imageSmoothingQuality = "high";
-    var vs = visible(rz()), a = cur, b = (cur + 1) % NF, f = playing || frac ? frac : 0;
+    var vs = visible(rz(), rdpr), a = cur, b = (cur + 1) % NF, f = playing || frac ? frac : 0;
     // motion-compensated in-between: frame A slides forward along the storms' motion while frame B slides in from
     //   behind, so echoes glide between radar scans instead of fading in and out in place
-    var mv = b === a + 1 ? motionFor(a) : null, s = rscale() * dpr, mx = mv ? mv.x * s : 0, my = mv ? mv.y * s : 0;
+    var mv = b === a + 1 ? motionFor(a) : null, s = rscale() * rdpr, mx = mv ? mv.x * s : 0, my = mv ? mv.y * s : 0;
     cxR.globalCompositeOperation = "lighter";
     [[a, 1 - f, f], [b, f, f - 1]].forEach(function (p) {
       if (p[1] <= 0.001) return;
@@ -292,34 +337,39 @@
   function motionKey() { return frames ? frames.bucket + ":" + rz() + ":" + Math.round(rv.x * 16) + "," + Math.round(rv.y * 16) : ""; }
   function motionFor(k) { var e = MV[mvKey]; return e && e[k] ? e[k] : null; }
   function alphaGrid(f, k, C, gw, gh) {
-    var c = document.createElement("canvas"); c.width = gw; c.height = gh;
+    var c = mk(gw, gh);
     var x = c.getContext("2d", { willReadFrequently: true }), g = radarGet(f, k), q = 1 / (C * dpr);
     visible(rz()).forEach(function (v) { drawTile(x, { i: v.i, j: v.j, n: v.n, z: v.z, x0: v.x0 * q, y0: v.y0 * q, x1: v.x1 * q, y1: v.y1 * q }, g); });
     var d = x.getImageData(0, 0, gw, gh).data, a = new Uint8Array(gw * gh);
     for (var i = 0; i < a.length; i++) a[i] = d[i * 4 + 3];
     return a;
   }
-  function estimate(f, k, key) {
-    var C = 6, gw = Math.ceil(SW / C), gh = Math.ceil(SH / C), R = 5, A, B;
-    try { A = alphaGrid(f, k, C, gw, gh); B = alphaGrid(f, k + 1, C, gw, gh); } catch (e) { return null; }
+  function estimate(f, k, cb) {
+    var C = 6, gw = Math.ceil(SW / C), gh = Math.ceil(SH / C), R = 5, A, B, w = rscale();
+    try { A = alphaGrid(f, k, C, gw, gh); B = alphaGrid(f, k + 1, C, gw, gh); } catch (e) { return cb(null); }
+    function done(m) { cb(m ? { x: m.x * C / w, y: m.y * C / w } : { x: 0, y: 0 }); }
+    if (workers()) toW({ kind: "sad", A: A, B: B, gw: gw, gh: gh, R: R }, function (r, redo) { done(redo ? sad(A, B, gw, gh, R) : r.mv); }, [A.buffer, B.buffer]);
+    else done(sad(A, B, gw, gh, R));
+  }
+  // best shift (in grid cells, sub-cell) between two alpha grids, or null when there's too little echo to tell
+  function sad(A, B, gw, gh, R) {
     var echo = 0; for (var i = 0; i < A.length; i++) if (A[i] > 40) echo++;
-    if (echo < 60) return { x: 0, y: 0 };
+    if (echo < 60) return null;
     var sc = {}, best = 1e18, bx = 0, by = 0;
     for (var dy = -R; dy <= R; dy++) for (var dx = -R; dx <= R; dx++) {
       var sum = 0, n = 0, y0 = Math.max(0, -dy), y1 = Math.min(gh, gh - dy), x0 = Math.max(0, -dx), x1 = Math.min(gw, gw - dx);
       for (var y = y0; y < y1; y++) { var ra = y * gw, rb = (y + dy) * gw + dx; for (var x = x0; x < x1; x++) { var d = A[ra + x] - B[rb + x]; sum += d < 0 ? -d : d; } n += x1 - x0; }
       var v = sum / Math.max(1, n); sc[dx + "," + dy] = v; if (v < best) { best = v; bx = dx; by = dy; }
     }
-    if (Math.abs(bx) === R || Math.abs(by) === R) return { x: 0, y: 0 }; // at the edge of the search: not trustworthy
+    if (Math.abs(bx) === R || Math.abs(by) === R) return null; // at the edge of the search: not trustworthy
     function sub(m, c, p) { var den = m - 2 * c + p; return den > 0 ? Math.max(-0.5, Math.min(0.5, (m - p) / (2 * den))) : 0; }
-    var fx = bx + sub(sc[(bx - 1) + "," + by], best, sc[(bx + 1) + "," + by]), fy = by + sub(sc[bx + "," + (by - 1)], best, sc[bx + "," + (by + 1)]);
-    var w = rscale(); return { x: fx * C / w, y: fy * C / w };
+    return { x: bx + sub(sc[(bx - 1) + "," + by], best, sc[(bx + 1) + "," + by]), y: by + sub(sc[bx + "," + (by - 1)], best, sc[bx + "," + (by + 1)]) };
   }
   function planMotion() {
     var key = motionKey(); if (!frames || !key || key === mvKey && MV[key]) return;
     mvKey = key; if (MV[key]) return;
     var f = frames, out = MV[key] = [];
-    for (var k = 0; k < f.n - 1; k++) (function (k) { work(function () { if (frames === f && mvKey === key) { out[k] = estimate(f, k, key); paint(2); } }); })(k);
+    for (var k = 0; k < f.n - 1; k++) (function (k) { work(function () { if (frames === f && mvKey === key) estimate(f, k, function (m) { if (mvKey === key) { out[k] = m; paint(2); } }); }); })(k);
   }
   function frame(ts) {
     raf = 0; if (!on) return;
@@ -383,7 +433,7 @@
       var te = entries(res[1]).map(function (e) { var c = hex(e.color); return c.concat(typeOf(e.label, parseFloat(e.quantity))); });
       var times = mrmsTimes(res[2]);
       if (re.length < 5 || !te.length || !times) throw 0;
-      REFP = re; TYPC = te; LREF.clear(); LTYP.clear(); mrmsOK = true;
+      REFP = re; TYPC = te; LREF.clear(); LTYP.clear(); mrmsOK = true; cfgW();
       return { src: "mrms", n: times.length, times: times, valid: times[times.length - 1], bucket: times[times.length - 1] };
     }).catch(function (e) { mrmsOK = false; throw e; });
   }
@@ -431,11 +481,11 @@
   function timeUi() {
     if (!ui.time) return;
     var pos = cur + frac, k = Math.round(pos) % NF;
-    ui.range.value = pos > NF - 1 ? NF - 1 : pos;
+    var rvv = String(+(pos > NF - 1 ? NF - 1 : pos).toFixed(2)); if (ui.range.value !== rvv) ui.range.value = rvv;
     var t = !frames ? null : frames.times ? frames.times[k] : frames.valid ? frames.valid - (NF - 1 - k) * 5 * 60000 : null;
     var ago = frames && frames.times ? Math.round((frames.valid - t) / 60000) : (NF - 1 - k) * 5;
     var abs = t ? (opts.fmtTime ? opts.fmtTime(t) : new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })) : "";
-    ui.time.textContent = (abs ? abs + " · " : "") + (k === NF - 1 ? "Latest" : ago + " min ago");
+    var tt = (abs ? abs + " · " : "") + (k === NF - 1 ? "Latest" : ago + " min ago"); if (ui.time.textContent !== tt) ui.time.textContent = tt;
   }
   function status(t) { if (ui.stat.textContent !== t) { ui.stat.textContent = t; ui.stat.hidden = !t; } }
 
@@ -528,7 +578,7 @@
       legend(); paint(2); preload();
     });
     legend(); play(false); wire();
-    if (VM) VM.init(function () { paint(7); }, function () { paint(5); });
+    if (VM) VM.init(function () { paint(7); }, function () { soon(5); });
     new ResizeObserver(size).observe(el);
     if (root.matchMedia) root.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function () { paint(7); });
   }
@@ -540,17 +590,19 @@
     ui.leg.querySelector(".lr span").textContent = sm ? "Rain" : "Radar";
     ui.leg.querySelector(".ls").hidden = !typed;
     ui.leg.querySelector(".ls i").style.background = grad(SNOW);
-    ui.leg.querySelector("em").textContent = !sm ? "NWS colours" + (corsOK === false ? "" : " · tap to switch back") : typed ? "Light → heavy · tap for NWS colours" : "Rain/snow type unavailable";
+    ui.leg.querySelector("em").textContent = !sm ? "NWS colours" + (corsOK === false ? "" : " · tap to switch back") : "Light → heavy · tap for NWS colours";
   }
   function size() {
     var r = el.getBoundingClientRect(); if (!r.width) return;
     // the stage is the view plus a spare margin on every side, so a drag shows already-drawn map until it is redrawn
     // map and radar at up to 2x; the lines-and-labels layer at the screen's full resolution (up to 3x) for sharp text
-    W = r.width; HH = r.height; dpr = Math.min(2, root.devicePixelRatio || 1); ldpr = Math.min(3, root.devicePixelRatio || 1); MG = Math.round(Math.max(W, HH) * 0.2);
+    // radar at 1.5x: the smoothed radar has about one source pixel per CSS pixel, so more only costs time per frame
+    W = r.width; HH = r.height; dpr = Math.min(2, root.devicePixelRatio || 1); rdpr = Math.min(1.5, root.devicePixelRatio || 1); ldpr = Math.min(3, root.devicePixelRatio || 1); MG = Math.round(Math.max(W, HH) * 0.2);
     SW = W + 2 * MG; SH = HH + 2 * MG;
     stage.style.cssText = "left:" + -MG + "px;top:" + -MG + "px;width:" + SW + "px;height:" + SH + "px";
     rv.x = view.x; rv.y = view.y; rv.z = view.z;
-    [cvB, cvR].forEach(function (c) { c.width = Math.round(SW * dpr); c.height = Math.round(SH * dpr); });
+    cvB.width = Math.round(SW * dpr); cvB.height = Math.round(SH * dpr);
+    cvR.width = Math.round(SW * rdpr); cvR.height = Math.round(SH * rdpr);
     cvL.width = Math.round(SW * ldpr); cvL.height = Math.round(SH * ldpr);
     paint(7); preload();
   }
@@ -571,8 +623,27 @@
     hide: function () { on = false; playing && play(false); started = false; userPaused = false; clearInterval(refreshT); if (raf) cancelAnimationFrame(raf); raf = 0; },
     refresh: function () { if (on) loadFrames(); },
     // for the live data check
-    _state: function () { return { mv: (MV[mvKey] || []).map(function (m) { return m ? [+(m.x * rscale()).toFixed(1), +(m.y * rscale()).toFixed(1)] : null; }), redraws: redraws, tf: stage && stage.style.transform, src: frames && frames.src, mrmsOK: mrmsOK, corsOK: corsOK, frames: frames && frames.n, valid: frames && frames.valid, ready: frames ? ready(frames) : 0, view: view, playing: playing, cur: cur, frac: frac }; },
+    _state: function () { return { wk: !!WK, mv: (MV[mvKey] || []).map(function (m) { return m ? [+(m.x * rscale()).toFixed(1), +(m.y * rscale()).toFixed(1)] : null; }), redraws: redraws, tf: stage && stage.style.transform, src: frames && frames.src, mrmsOK: mrmsOK, corsOK: corsOK, frames: frames && frames.n, valid: frames && frames.valid, ready: frames ? ready(frames) : 0, view: view, playing: playing, cur: cur, frac: frac }; },
     _dbz: toDbz, _test: function (im) { return recolor(im); }
   };
-  root.WXRadar = api;
+  if (!INW) { root.WXRadar = api; return; }
+  // ---------- worker side ----------
+  var can2d = false; try { can2d = !!new OffscreenCanvas(1, 1).getContext("2d"); } catch (x) {}
+  function fetchBitmap(u) {
+    return fetch(u, { mode: "cors", credentials: "omit" }).then(function (r) { if (!r.ok) throw 0; return r.blob(); })
+      .then(function (b) { return createImageBitmap(b, { colorSpaceConversion: "none" }); });
+  }
+  root.onmessage = function (ev) {
+    var m = ev.data;
+    if (m.cfg) { REFP = m.cfg.REFP; TYPC = m.cfg.TYPC; LREF.clear(); LTYP.clear(); return; }
+    if (!can2d) { root.postMessage({ id: m.id, nosupport: true }); return; }
+    if (m.kind === "sad") { root.postMessage({ id: m.id, mv: sad(m.A, m.B, m.gw, m.gh, m.R) }); return; }
+    // tile: a missing type tile just means "rain"; a missing reflectivity tile is an error
+    Promise.all(m.urls.map(function (u, i) { return fetchBitmap(u).catch(function (x) { if (i === 0) throw x; return null; }); })).then(function (ims) {
+      var sm = m.mrms ? compose(ims[0], ims[1]) : recolor(ims[0]), out = { id: m.id, raw: ims[0] }, tr = [ims[0]];
+      if (ims[1]) ims[1].close();
+      if (sm === EMPTY) out.empty = true; else { out.sm = sm.transferToImageBitmap(); tr.push(out.sm); }
+      root.postMessage(out, tr);
+    }).catch(function () { root.postMessage({ id: m.id, err: true }); });
+  };
 })(this);
