@@ -264,13 +264,55 @@
     if (!frames) return;
     cxR.imageSmoothingEnabled = true; cxR.imageSmoothingQuality = "high";
     var vs = visible(rz()), a = cur, b = (cur + 1) % NF, f = playing || frac ? frac : 0;
+    // motion-compensated in-between: frame A slides forward along the storms' motion while frame B slides in from
+    //   behind, so echoes glide between radar scans instead of fading in and out in place
+    var mv = b === a + 1 ? motionFor(a) : null, s = rscale() * dpr, mx = mv ? mv.x * s : 0, my = mv ? mv.y * s : 0;
     cxR.globalCompositeOperation = "lighter";
-    [[a, 1 - f], [b, f]].forEach(function (p) {
+    [[a, 1 - f, f], [b, f, f - 1]].forEach(function (p) {
       if (p[1] <= 0.001) return;
-      cxR.globalAlpha = p[1]; var g = radarGet(frames, p[0]);
-      vs.forEach(function (v) { drawTile(cxR, v, g); });
+      cxR.globalAlpha = p[1]; var g = radarGet(frames, p[0]), ox = mx * p[2], oy = my * p[2];
+      vs.forEach(function (v) { drawTile(cxR, ox || oy ? shift(v, ox, oy) : v, g); });
     });
     cxR.globalCompositeOperation = "source-over"; cxR.globalAlpha = 1;
+  }
+  function shift(v, ox, oy) { return { i: v.i, j: v.j, n: v.n, z: v.z, x0: v.x0 + ox, y0: v.y0 + oy, x1: v.x1 + ox, y1: v.y1 + oy }; }
+
+  // ---------- storm motion between consecutive frames ----------
+  // For each pair of frames, the shift that best lines up their echoes (a coarse block match on a 1/6-scale copy of
+  //   the view, refined to sub-cell with a parabola fit). Stored in world units, so it holds while panning nearby;
+  //   recomputed for a new zoom level or area. Echo-free views get no motion (plain crossfade).
+  var MV = {}, mvKey = "";
+  function motionKey() { return frames ? frames.bucket + ":" + rz() + ":" + Math.round(rv.x * 16) + "," + Math.round(rv.y * 16) : ""; }
+  function motionFor(k) { var e = MV[mvKey]; return e && e[k] ? e[k] : null; }
+  function alphaGrid(f, k, C, gw, gh) {
+    var c = document.createElement("canvas"); c.width = gw; c.height = gh;
+    var x = c.getContext("2d", { willReadFrequently: true }), g = radarGet(f, k), q = 1 / (C * dpr);
+    visible(rz()).forEach(function (v) { drawTile(x, { i: v.i, j: v.j, n: v.n, z: v.z, x0: v.x0 * q, y0: v.y0 * q, x1: v.x1 * q, y1: v.y1 * q }, g); });
+    var d = x.getImageData(0, 0, gw, gh).data, a = new Uint8Array(gw * gh);
+    for (var i = 0; i < a.length; i++) a[i] = d[i * 4 + 3];
+    return a;
+  }
+  function estimate(f, k, key) {
+    var C = 6, gw = Math.ceil(SW / C), gh = Math.ceil(SH / C), R = 5, A, B;
+    try { A = alphaGrid(f, k, C, gw, gh); B = alphaGrid(f, k + 1, C, gw, gh); } catch (e) { return null; }
+    var echo = 0; for (var i = 0; i < A.length; i++) if (A[i] > 40) echo++;
+    if (echo < 60) return { x: 0, y: 0 };
+    var sc = {}, best = 1e18, bx = 0, by = 0;
+    for (var dy = -R; dy <= R; dy++) for (var dx = -R; dx <= R; dx++) {
+      var sum = 0, n = 0, y0 = Math.max(0, -dy), y1 = Math.min(gh, gh - dy), x0 = Math.max(0, -dx), x1 = Math.min(gw, gw - dx);
+      for (var y = y0; y < y1; y++) { var ra = y * gw, rb = (y + dy) * gw + dx; for (var x = x0; x < x1; x++) { var d = A[ra + x] - B[rb + x]; sum += d < 0 ? -d : d; } n += x1 - x0; }
+      var v = sum / Math.max(1, n); sc[dx + "," + dy] = v; if (v < best) { best = v; bx = dx; by = dy; }
+    }
+    if (Math.abs(bx) === R || Math.abs(by) === R) return { x: 0, y: 0 }; // at the edge of the search: not trustworthy
+    function sub(m, c, p) { var den = m - 2 * c + p; return den > 0 ? Math.max(-0.5, Math.min(0.5, (m - p) / (2 * den))) : 0; }
+    var fx = bx + sub(sc[(bx - 1) + "," + by], best, sc[(bx + 1) + "," + by]), fy = by + sub(sc[bx + "," + (by - 1)], best, sc[bx + "," + (by + 1)]);
+    var w = rscale(); return { x: fx * C / w, y: fy * C / w };
+  }
+  function planMotion() {
+    var key = motionKey(); if (!frames || !key || key === mvKey && MV[key]) return;
+    mvKey = key; if (MV[key]) return;
+    var f = frames, out = MV[key] = [];
+    for (var k = 0; k < f.n - 1; k++) (function (k) { work(function () { if (frames === f && mvKey === key) { out[k] = estimate(f, k, key); paint(2); } }); })(k);
   }
   function frame(ts) {
     raf = 0; if (!on) return;
@@ -358,15 +400,20 @@
     if (pending && ready(pending) >= 1) { setFrames(pending); pending = null; paint(2); }
     var r = frames ? ready(frames) : 0;
     status(outUS ? "Radar mosaic covers the lower 48 states" : r < 1 ? "Loading radar… " + Math.round(r * 100) + "%" : "");
+    if (r >= 1) planMotion();
     if (r >= 1 && !playing && !userPaused && !started) { started = true; if (!reduced()) play(true); }
   }
   var started = false, outUS = false;
   function reduced() { return root.matchMedia && root.matchMedia("(prefers-reduced-motion: reduce)").matches; }
   function smooth(t) { return t * t * (3 - 2 * t); }
+  // continuous playback: each step glides from one scan to the next over its whole duration (no hold, no jump);
+  //   the latest frame holds, then fades back to the first
+  var STEPD = 0.55, HOLD = 1.6, BACK = 0.35;
   function advance(dt) {
-    ph += dt; var d = cur === NF - 1 ? 1.8 : 0.62, fade = 0.26;
-    if (ph >= d) { ph -= d; cur = (cur + 1) % NF; d = cur === NF - 1 ? 1.8 : 0.62; }
-    frac = ph > d - fade ? smooth((ph - (d - fade)) / fade) : 0;
+    ph += dt;
+    if (cur === NF - 1) { if (ph >= HOLD + BACK) { ph = 0; cur = 0; frac = 0; } else frac = ph > HOLD ? smooth((ph - HOLD) / BACK) : 0; return; }
+    if (ph >= STEPD) { ph -= STEPD; cur++; if (cur === NF - 1) { frac = 0; return; } }
+    frac = ph / STEPD;
   }
   function play(p) {
     playing = p; ui.play.innerHTML = p ? '<svg viewBox="0 0 24 24"><rect x="6.5" y="5" width="4" height="14" rx="1.2"/><rect x="13.5" y="5" width="4" height="14" rx="1.2"/></svg>' : '<svg viewBox="0 0 24 24"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.2-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5Z"/></svg>';
@@ -514,7 +561,7 @@
     hide: function () { on = false; playing && play(false); started = false; userPaused = false; clearInterval(refreshT); if (raf) cancelAnimationFrame(raf); raf = 0; },
     refresh: function () { if (on) loadFrames(); },
     // for the live data check
-    _state: function () { return { redraws: redraws, tf: stage && stage.style.transform, src: frames && frames.src, mrmsOK: mrmsOK, corsOK: corsOK, frames: frames && frames.n, valid: frames && frames.valid, ready: frames ? ready(frames) : 0, view: view, playing: playing, cur: cur, frac: frac }; },
+    _state: function () { return { mv: (MV[mvKey] || []).map(function (m) { return m ? [+(m.x * rscale()).toFixed(1), +(m.y * rscale()).toFixed(1)] : null; }), redraws: redraws, tf: stage && stage.style.transform, src: frames && frames.src, mrmsOK: mrmsOK, corsOK: corsOK, frames: frames && frames.n, valid: frames && frames.valid, ready: frames ? ready(frames) : 0, view: view, playing: playing, cur: cur, frac: frac }; },
     _dbz: toDbz, _test: function (im) { return recolor(im); }
   };
   root.WXRadar = api;
