@@ -358,32 +358,68 @@
     for (var i = 0; i < a.length; i++) a[i] = d[i * 4 + 3];
     return a;
   }
+  // Search range covers storms up to ~160 km/h at any zoom: the range in grid cells grows as you zoom in, and a
+  //   coarse-to-fine search keeps that cheap.
+  var VMAX = 160 / 3.6; // m/s
+  function gapMs(f, k) { return f.times ? f.times[k + 1] - f.times[k] : 5 * 60000; }
   function estimate(f, k, cb) {
-    var C = 6, gw = Math.ceil(SW / C), gh = Math.ceil(SH / C), R = 5, A, B, w = rscale();
+    var C = 6, gw = Math.ceil(SW / C), gh = Math.ceil(SH / C), A, B, w = rscale();
+    var cellM = C / w * 40075016 * Math.cos(Math.atan(Math.sinh(Math.PI * (1 - 2 * rv.y))));
+    var R = Math.max(5, Math.min(90, Math.ceil(VMAX * gapMs(f, k) / 1000 / cellM) + 1));
     try { A = alphaGrid(f, k, C, gw, gh); B = alphaGrid(f, k + 1, C, gw, gh); } catch (e) { return cb(null); }
-    function done(m) { cb(m ? { x: m.x * C / w, y: m.y * C / w } : { x: 0, y: 0 }); }
+    function done(m) { cb(m ? { x: m.x * C / w, y: m.y * C / w } : null); }
     if (workers()) toW({ kind: "sad", A: A, B: B, gw: gw, gh: gh, R: R }, function (r, redo) { done(redo ? sad(A, B, gw, gh, R) : r.mv); }, [A.buffer, B.buffer]);
     else done(sad(A, B, gw, gh, R));
   }
-  // best shift (in grid cells, sub-cell) between two alpha grids, or null when there's too little echo to tell
+  // mean absolute difference between grid A and grid B shifted by (dx, dy)
+  function mad(A, B, gw, gh, dx, dy) {
+    var sum = 0, n = 0, y0 = Math.max(0, -dy), y1 = Math.min(gh, gh - dy), x0 = Math.max(0, -dx), x1 = Math.min(gw, gw - dx);
+    for (var y = y0; y < y1; y++) { var ra = y * gw, rb = (y + dy) * gw + dx; for (var x = x0; x < x1; x++) { var d = A[ra + x] - B[rb + x]; sum += d < 0 ? -d : d; } n += x1 - x0; }
+    return n > 0 ? sum / n : 1e9;
+  }
+  function half(A, gw, gh) {
+    var w = gw >> 1, h = gh >> 1, o = new Uint8Array(w * h);
+    for (var y = 0; y < h; y++) for (var x = 0; x < w; x++) { var i = 2 * y * gw + 2 * x; o[y * w + x] = (A[i] + A[i + 1] + A[i + gw] + A[i + gw + 1] + 2) >> 2; }
+    return { A: o, w: w, h: h };
+  }
+  // best shift (in grid cells, sub-cell) between two alpha grids, or null when there's too little echo to tell or
+  //   the best match sits at the edge of the search. Coarse-to-fine: halve the grids until the range is ≤ 6 cells,
+  //   search that fully, then refine ±2 cells at each finer level.
   function sad(A, B, gw, gh, R) {
     var echo = 0; for (var i = 0; i < A.length; i++) if (A[i] > 40) echo++;
     if (echo < 60) return null;
-    var sc = {}, best = 1e18, bx = 0, by = 0;
-    for (var dy = -R; dy <= R; dy++) for (var dx = -R; dx <= R; dx++) {
-      var sum = 0, n = 0, y0 = Math.max(0, -dy), y1 = Math.min(gh, gh - dy), x0 = Math.max(0, -dx), x1 = Math.min(gw, gw - dx);
-      for (var y = y0; y < y1; y++) { var ra = y * gw, rb = (y + dy) * gw + dx; for (var x = x0; x < x1; x++) { var d = A[ra + x] - B[rb + x]; sum += d < 0 ? -d : d; } n += x1 - x0; }
-      var v = sum / Math.max(1, n); sc[dx + "," + dy] = v; if (v < best) { best = v; bx = dx; by = dy; }
+    var L = [{ A: A, B: B, w: gw, h: gh }];
+    while (R >> (L.length - 1) > 6 && L[L.length - 1].w > 40 && L[L.length - 1].h > 40) { var t = L[L.length - 1], a = half(t.A, t.w, t.h), b = half(t.B, t.w, t.h); L.push({ A: a.A, B: b.A, w: a.w, h: a.h }); }
+    var top = L.length - 1, Rt = Math.ceil(R / (1 << top)), bx = 0, by = 0, best = 1e18, dx, dy, v;
+    for (dy = -Rt; dy <= Rt; dy++) for (dx = -Rt; dx <= Rt; dx++) { v = mad(L[top].A, L[top].B, L[top].w, L[top].h, dx, dy); if (v < best) { best = v; bx = dx; by = dy; } }
+    if (Math.abs(bx) === Rt || Math.abs(by) === Rt) return null; // at the edge of the search: not trustworthy
+    for (var l = top - 1; l >= 0; l--) {
+      var cx = bx * 2, cy = by * 2; best = 1e18;
+      for (dy = cy - 2; dy <= cy + 2; dy++) for (dx = cx - 2; dx <= cx + 2; dx++) { v = mad(L[l].A, L[l].B, L[l].w, L[l].h, dx, dy); if (v < best) { best = v; bx = dx; by = dy; } }
     }
-    if (Math.abs(bx) === R || Math.abs(by) === R) return null; // at the edge of the search: not trustworthy
     function sub(m, c, p) { var den = m - 2 * c + p; return den > 0 ? Math.max(-0.5, Math.min(0.5, (m - p) / (2 * den))) : 0; }
-    return { x: bx + sub(sc[(bx - 1) + "," + by], best, sc[(bx + 1) + "," + by]), y: by + sub(sc[bx + "," + (by - 1)], best, sc[bx + "," + (by + 1)]) };
+    return { x: bx + sub(mad(A, B, gw, gh, bx - 1, by), best, mad(A, B, gw, gh, bx + 1, by)), y: by + sub(mad(A, B, gw, gh, bx, by - 1), best, mad(A, B, gw, gh, bx, by + 1)) };
+  }
+  // Storm motion changes slowly, so once every pair is measured: pairs that couldn't be measured take their
+  //   neighbours' motion, then a median of three and a light 1-2-1 average remove outliers and speed jumps from
+  //   one step to the next (the glide then keeps a steady pace through the loop).
+  function settle(raw, n) {
+    var v = raw.slice(0, n).map(function (m) { return m ? { x: m.x, y: m.y } : null; });
+    if (!v.some(Boolean)) return v.map(function () { return { x: 0, y: 0 }; });
+    for (var i = 0; i < n; i++) if (!v[i]) { var a = null, b = null; for (var j = i - 1; j >= 0; j--) if (raw[j]) { a = raw[j]; break; } for (j = i + 1; j < n; j++) if (raw[j]) { b = raw[j]; break; } v[i] = a && b ? { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } : { x: (a || b).x, y: (a || b).y }; }
+    function med(q, c) { return q.map(function (m, i) { var s = [q[Math.max(0, i - 1)][c], m[c], q[Math.min(n - 1, i + 1)][c]].sort(function (p, r) { return p - r; }); return s[1]; }); }
+    var mx = med(v, "x"), my = med(v, "y");
+    return v.map(function (m, i) { var p = Math.max(0, i - 1), q = Math.min(n - 1, i + 1); return { x: (mx[p] + 2 * mx[i] + mx[q]) / 4, y: (my[p] + 2 * my[i] + my[q]) / 4 }; });
   }
   function planMotion() {
     var key = motionKey(); if (!frames || !key || key === mvKey && MV[key]) return;
     mvKey = key; if (MV[key]) return;
-    var f = frames, out = MV[key] = [];
-    for (var k = 0; k < f.n - 1; k++) (function (k) { work(function () { if (frames === f && mvKey === key) at(RV.R, function () { estimate(f, k, function (m) { if (mvKey === key) { out[k] = m; paint(2); } }); }); }); })(k);
+    var f = frames, out = MV[key] = [], raw = [], left = f.n - 1;
+    for (var k = 0; k < f.n - 1; k++) (function (k) { work(function () { if (frames === f && mvKey === key) at(RV.R, function () { estimate(f, k, function (m) {
+      raw[k] = m; if (m) out[k] = m;
+      if (--left === 0) settle(raw, f.n - 1).forEach(function (s, i) { out[i] = s; });
+      if (mvKey === key) paint(2);
+    }); }); }); })(k);
   }
   function frame(ts) {
     raf = 0; if (!on) return;
@@ -494,11 +530,17 @@
   // continuous playback: each step glides from one scan to the next over its whole duration (no hold, no jump);
   //   the latest frame holds, then fades back to the first
   var STEPD = 0.55, HOLD = 1.6, BACK = 0.35;
+  // each step lasts in proportion to the real time between its scans, so storms move at a steady pace
+  function stepDur(k) {
+    var t = frames && frames.times; if (!t || k + 1 >= t.length) return STEPD;
+    var g = (t[t.length - 1] - t[0]) / (t.length - 1); return g > 0 ? STEPD * Math.max(0.5, Math.min(2, (t[k + 1] - t[k]) / g)) : STEPD;
+  }
   function advance(dt) {
     ph += dt;
     if (cur === NF - 1) { if (ph >= HOLD + BACK) { ph = 0; cur = 0; frac = 0; } else frac = ph > HOLD ? smooth((ph - HOLD) / BACK) : 0; return; }
-    if (ph >= STEPD) { ph -= STEPD; cur++; if (cur === NF - 1) { frac = 0; return; } }
-    frac = ph / STEPD;
+    var d = stepDur(cur);
+    if (ph >= d) { ph -= d; cur++; if (cur === NF - 1) { frac = 0; return; } d = stepDur(cur); }
+    frac = Math.min(1, ph / d);
   }
   function play(p) {
     playing = p; ui.play.innerHTML = p ? '<svg viewBox="0 0 24 24"><rect x="6.5" y="5" width="4" height="14" rx="1.2"/><rect x="13.5" y="5" width="4" height="14" rx="1.2"/></svg>' : '<svg viewBox="0 0 24 24"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.2-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5Z"/></svg>';
