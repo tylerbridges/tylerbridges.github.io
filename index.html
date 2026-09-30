@@ -10,7 +10,28 @@
 <link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2">
 <link rel="manifest" href="/manifest.webmanifest">
-<style>html,body{margin:0;padding:0}</style>
+<style>html,body{margin:0;padding:0}
+/* radar */
+.rmap{position:relative;height:calc(100svh - var(--toph,96px) - 118px);min-height:380px;max-height:820px;border-radius:12px;overflow:hidden;background:#1e1e1e;border:1px solid var(--line);touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+:root:not([data-theme="dark"]) .rmap{background:#e8e8e6}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .rmap{background:#1e1e1e}}
+.rl{position:absolute;inset:0;width:100%;height:100%;display:block}
+.rt{touch-action:none;cursor:grab}.rt:active{cursor:grabbing}
+.rbar,.rleg,.rloc,.rstat{background:color-mix(in srgb,var(--surface) 74%,transparent);-webkit-backdrop-filter:blur(14px) saturate(1.4);backdrop-filter:blur(14px) saturate(1.4);border:1px solid color-mix(in srgb,var(--line) 75%,transparent);box-shadow:0 4px 18px rgba(0,0,0,.18)}
+.rbar{position:absolute;left:10px;right:10px;bottom:10px;display:flex;align-items:center;gap:10px;padding:5px 14px 5px 5px;border-radius:999px}
+.rplay{width:34px;height:34px;border-radius:50%;border:0;background:var(--accent);display:grid;place-items:center;flex:none;cursor:pointer;padding:0}
+.rplay svg{width:16px;height:16px;fill:#fff}
+.rrange{flex:1;min-width:0;accent-color:var(--accent);margin:0}
+.rtime{font-size:12.5px;font-weight:500;color:var(--ink);white-space:nowrap;min-width:112px;text-align:right}
+.rleg{position:absolute;left:10px;top:10px;border-radius:10px;padding:6px 9px 5px;display:flex;flex-direction:column;gap:3px;width:132px;cursor:pointer;text-align:left}
+.rleg i{display:block;height:6px;border-radius:3px}
+.rlt{display:flex;justify-content:space-between;font-size:10px;color:var(--ink2)}.rlt b{font-weight:500}
+.rleg em{font-style:normal;font-size:10px;color:var(--muted)}
+.rloc{position:absolute;right:10px;top:10px;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;cursor:pointer;padding:0}
+.rloc svg{width:19px;height:19px;fill:none;stroke:var(--accent);stroke-width:2;stroke-linecap:round}.rloc .f{fill:var(--accent);stroke:none}
+.rstat{position:absolute;left:50%;top:58px;transform:translateX(-50%);border-radius:999px;padding:5px 12px;font-size:12px;color:var(--ink2);white-space:nowrap;pointer-events:none}
+.rsrc{font-size:11px;line-height:1.4;color:var(--muted);padding:0 2px}
+</style>
 <title>Weather</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -501,7 +522,7 @@ body:has(#testbar:not([hidden])) .sec{scroll-margin-top:140px}
       <button class="rbtn" id="rbtn" type="button" aria-label="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button>
     </div>
     <nav class="nav" id="nav">
-      <button type="button" class="chip on" data-tab="now">Now</button><button type="button" class="chip" data-tab="daily">Daily</button><button type="button" class="chip" data-tab="hourly">Hourly</button><button type="button" class="chip" data-tab="maps">Maps</button><button type="button" class="chip" data-tab="obs">Observations</button>
+      <button type="button" class="chip on" data-tab="now">Now</button><button type="button" class="chip" data-tab="daily">Daily</button><button type="button" class="chip" data-tab="hourly">Hourly</button><button type="button" class="chip" data-tab="radar">Radar</button><button type="button" class="chip" data-tab="maps">Maps</button><button type="button" class="chip" data-tab="obs">Observations</button>
     </nav>
     <div class="testbar" id="testbar" hidden><span>Test: <b id="testname"></b> · sample data, not a real forecast</span><button type="button" class="chip" id="testx">Exit</button></div>
   </header>
@@ -525,6 +546,11 @@ body:has(#testbar:not([hidden])) .sec{scroll-margin-top:140px}
   <section id="hourly" class="sec" data-tab="hourly" hidden>
     <div class="days" id="days" hidden></div>
     <div class="gstack" id="gin"></div>
+  </section>
+
+  <section id="radar" class="sec" data-tab="radar" hidden>
+    <div class="rmap" id="rmap"></div>
+    <div class="rsrc">Radar: NWS NEXRAD base reflectivity mosaic for the lower 48 via the Iowa Environmental Mesonet, updated every 5 minutes. Map: Esri, HERE, Garmin, © OpenStreetMap contributors.</div>
   </section>
 
   <section id="maps" class="sec" data-tab="maps" hidden>
@@ -574,9 +600,10 @@ body:has(#testbar:not([hidden])) .sec{scroll-margin-top:140px}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=55"></script>
-<script src="wx-live.js?v=55"></script>
-<script src="wx-scenarios.js?v=55"></script>
-<script src="app.js?v=55"></script>
+<script src="wx-normalize.js?v=56"></script>
+<script src="wx-live.js?v=56"></script>
+<script src="wx-scenarios.js?v=56"></script>
+<script src="wx-radar.js?v=56"></script>
+<script src="app.js?v=56"></script>
 </body>
 </html>

@@ -190,6 +190,16 @@
               // this place's local NWS sector: does the snowfall map exist for its office?
               return mapTry(d, "precip", "ndfd-SnowAmt", "local", false).then(function (r) { res.sector = r; if (r !== "ok") res.warns.push("local snowfall map: " + r); });
             })
+            // Radar tab: frames load, and whether the tile server allows pixel access (needed for the smooth colours)
+            .then(function () {
+              if (MOCK) return null;
+              return openTab("radar", function () { var r = w.WXRadar && w.WXRadar._state(); return r && (r.ready >= 1 || r.corsOK === false && r.ready > 0.9); }, "Radar tab", 20000).then(function (ok) {
+                var r = w.WXRadar && w.WXRadar._state(); if (!r) return;
+                res.radar = "radar " + Math.round(r.ready * 100) + "% loaded, colours " + (r.corsOK ? "smooth" : r.corsOK === false ? "NWS only (no pixel access)" : "unknown") + (r.valid ? ", latest " + Math.round((Date.now() - r.valid) / 60000) + " min old" : ", frame times unavailable");
+                if (r.corsOK === false) res.warns.push("radar tiles don't allow pixel access: smooth colours unavailable");
+                if (!r.valid) res.warns.push("radar frame times unavailable");
+              });
+            })
             .then(function () { return openTab("obs", function () { return d.querySelectorAll("#obscard tr").length >= 3 || /No recent observations/.test(d.getElementById("obscard").textContent); }, "Observations tab"); })
             .then(function () { if (/No recent observations/.test(d.getElementById("obscard").textContent)) res.warns.push("no recent observations"); })
             .then(function () { return sweep ? sweepMaps(d, res) : null; });
@@ -258,7 +268,7 @@
         }).then(function (both) {
           var dr = both[0], fr = both[1], fails = dr.fails.concat(fr ? fr.fails : []), warns = dr.warns.concat(fr ? fr.warns : []);
           var tag = fails.length ? "FAIL" : warns.length ? "WARN" : "PASS"; counts[tag.toLowerCase()]++;
-          line("[" + tag + "] " + L[0] + " · load " + secs(dr.ms) + (dr.sources ? " · " + dr.sources : "") + (fr ? " · tabs " + fr.tabs.join(" ") : ""));
+          line("[" + tag + "] " + L[0] + " · load " + secs(dr.ms) + (dr.sources ? " · " + dr.sources : "") + (fr ? " · tabs " + fr.tabs.join(" ") + (fr.radar ? " · " + fr.radar : "") : ""));
           if (dr.info.length) line("      " + dr.info.join(" · "));
           fails.forEach(function (s) { line("      ✗ " + s); }); warns.forEach(function (s) { line("      ! " + s); });
           if (fr && fr.maps) { line("      MAP PRODUCTS (first/last frame):"); fr.maps.forEach(function (m) { line("        " + m[0] + ": " + m[1].join(" | ")); }); }

@@ -900,7 +900,7 @@
 
   function renderAll() {
     if (doc && doc.loc && doc.loc.tz) TZ = doc.loc.tz;
-    renderFresh(); renderNow(); renderWeek(); if (tab === "hourly") G = renderGraph($("gin")); else G = null; renderTotals(); renderDetail(); renderObs(); renderFoot(); if (tab === "maps") renderMaps();
+    renderFresh(); renderNow(); renderWeek(); if (tab === "hourly") G = renderGraph($("gin")); else G = null; renderTotals(); renderDetail(); renderObs(); renderFoot(); if (tab === "maps") renderMaps(); if (tab === "radar") radarOn();
     activeCard = -1; if (tab === "daily") requestAnimationFrame(syncStrip);
   }
 
@@ -982,6 +982,8 @@
     if (c) s.scrollTo({ left: c.offsetLeft - (s.clientWidth - c.offsetWidth) / 2, behavior: "smooth" });
   }
   window.addEventListener("scroll", function () { if (!syncQueued) { syncQueued = true; requestAnimationFrame(syncStrip); } }, { passive: true });
+  // Radar tab (wx-radar.js): centred on the current location, frame times in the location's time zone
+  function radarOn() { if (window.WXRadar) WXRadar.show($("rmap"), curLoc(), { fmtTime: tm }); }
   function setTopH() { document.documentElement.style.setProperty("--toph", document.querySelector(".top").offsetHeight + "px"); }
   setTopH(); window.addEventListener("resize", setTopH);
   function showTab(t) {
@@ -994,6 +996,7 @@
     });
     if (t === "hourly" && doc && (!G || changed)) G = renderGraph($("gin"));
     if (t === "maps") renderMaps(); else mStop();
+    if (t === "radar") radarOn(); else if (window.WXRadar) WXRadar.hide();
     requestAnimationFrame(equalize);
     if (changed) window.scrollTo(0, 0);
     if (t === "daily") { activeCard = -1; setTopH(); requestAnimationFrame(syncStrip); }
