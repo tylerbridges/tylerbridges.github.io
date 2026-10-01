@@ -195,10 +195,10 @@
               if (MOCK) return null;
               return openTab("radar", function () { var r = w.WXRadar && w.WXRadar._state(); return r && (r.ready >= 1 || r.corsOK === false && r.ready > 0.9); }, "Radar tab", 20000).then(function (ok) {
                 var r = w.WXRadar && w.WXRadar._state(); if (!r) return;
-                res.radar = "radar " + (r.src === "mrms" ? "MRMS (rain/snow)" : r.src === "iem" ? "IEM NEXRAD (no type)" : "?") + " " + Math.round(r.ready * 100) + "% loaded, colours " + (r.corsOK ? "recoloured" : r.corsOK === false ? "NWS only (no pixel access)" : "unknown") + (r.valid ? ", latest " + Math.round((Date.now() - r.valid) / 60000) + " min old" : ", frame times unavailable");
+                res.radar = "radar " + (r.src === "mrms" ? "MRMS (rain/snow)" : r.src === "iemq" ? "MRMS via IEM (QC'd, no type)" : r.src === "iem" ? "IEM NEXRAD (unfiltered, no type)" : "?") + " " + Math.round(r.ready * 100) + "% loaded, colours " + (r.corsOK ? "recoloured" : r.corsOK === false ? "NWS only (no pixel access)" : "unknown") + (r.valid ? ", latest " + Math.round((Date.now() - r.valid) / 60000) + " min old" : ", frame times unavailable");
                 var vm = w.WXVMap; res.radar += ", base map " + (vm && vm.ok() ? "vector (OpenFreeMap)" : vm && vm.failed() ? "raster fallback (Esri)" : "still loading");
                 if (vm && vm.failed()) res.warns.push("vector base map unavailable: using Esri raster tiles");
-                if (r.src === "iem") res.warns.push("radar fell back to IEM: MRMS rain/snow colouring unavailable");
+                if (r.src === "iemq") res.warns.push("radar fell back to MRMS via IEM: rain/snow colouring unavailable"); if (r.src === "iem") res.warns.push("radar fell back to the unfiltered IEM NEXRAD mosaic: birds/insects may show as light rain");
                 if (r.corsOK === false) res.warns.push("radar tiles don't allow pixel access: smooth colours unavailable");
                 if (!r.valid) res.warns.push("radar frame times unavailable");
               });

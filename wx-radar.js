@@ -163,7 +163,16 @@
     IEMC.forEach(function (c) { var d = (r - c[0]) * (r - c[0]) + (g - c[1]) * (g - c[1]) + (b - c[2]) * (b - c[2]); if (d < best) { best = d; v = c[3]; } });
     if (best > 24 * 24) v = null; LIEM.set(k, v); return v;
   }
-  function recolor(im) { return smoothTile(im, iemDbz, null); }
+  // IEM's MRMS tiles (SeamlessHSR, NOAA's quality-controlled lowest-scan reflectivity: birds, insects and ground
+  //   clutter removed) use IEM's gr2ae table: index i = -32 + i/2 dBZ (black = none, grey = missing). From IEM's
+  //   scripts/mrms/mrms_lcref_comp.py and gr2ae.txt.
+  var LCP = "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000a4a4ffa1a1fc9e9ef99a9af69797f29494ef9191ec8e8ee98a8ae68787e38484e08181dc7e7ed97a7ad67777d37474d07171cd6e6ec96a6ac66767c34080ff3e7df93d7af23b76ec3a73e63870df366dd9356ad33366cc3263c63060c02e5db92d5ab32b56ac2a53a62850a0264d99254a9323468d22438620408000f90000f20000ec0000e60000df0000d90000d30000cc0000c60000c00000b90000b30000ac0000a60000a000009900009300008d00008600008000fff900fff200ffec00ffe600ffdf00ffd900ffd300ffcc00ffc600ffc000ffb900ffb300ffac00ffa600ffa000ff9900ff9300ff8d00ff8600ff0000fa0000f50000f10000ec0000e70000e30000de0000d90000d40000cf0000cb0000c60000c10000bd0000b80000b30000ae0000aa0000a50000ff00fff900f9f200f2ec00ece600e6df00dfd900d9d300d3cc00ccc600c6c000c0b900b9b300b3ac00aca600a6a000a09900999300938d008d860086fffffff9f9f9f2f2f2ececece6e6e6dfdfdfd9d9d9d3d3d3ccccccc6c6c6c0c0c0b9b9b9b3b3b3acacaca6a6a6a0a0a09999999393938d8d8d868686808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080909090";
+  var LLC = null;
+  function lcrefDbz(r, g, b) {
+    if (!LLC) { LLC = new Map(); for (var i = 86; i < 226; i++) LLC.set(parseInt(LCP.substr(i * 6, 6), 16), -32 + i / 2); }
+    var v = LLC.get((r << 16) | (g << 8) | b); return v === undefined ? null : v;
+  }
+  function recolor(im, url) { return smoothTile(im, /mrms::lcref/.test(url || "") ? lcrefDbz : iemDbz, null); }
 
   // ---------- tiles ----------
   function get(key, url, radar) {
@@ -182,7 +191,7 @@
     im.onload = function () {
       e.raw = im;
       if (radar && !cors && e.corsFail) corsOK = false; // loads fine without CORS: the server just doesn't allow pixel access
-      if (radar && cors) work(function () { try { e.sm = recolor(im); corsOK = true; } catch (x) { corsOK = false; } e.ok = true; soon(2); });
+      if (radar && cors) work(function () { try { e.sm = recolor(im, url); corsOK = true; } catch (x) { corsOK = false; } e.ok = true; soon(2); });
       else { e.ok = true; soon(radar ? 2 : 5); }
     };
     im.onerror = function () {
@@ -261,6 +270,7 @@
   }
   function radarUrl(f, k, z, x, y) {
     if (f.src === "mrms") return [wms(REF, f.times[k], z, x, y), wms(TYP, f.times[k], z, x, y)];
+    if (f.src === "iemq") return IEM + "mrms::lcref-" + new Date(f.times[k]).toISOString().replace(/[-T:]/g, "").slice(0, 12) + "/" + z + "/" + x + "/" + y + ".png";
     return IEM + f.layers[k] + "/" + z + "/" + x + "/" + y + ".png?b=" + f.bucket;
   }
 
@@ -484,6 +494,17 @@
   }
 
   // ---------- frames and playback ----------
+  // Second choice: NOAA's quality-controlled MRMS reflectivity as served by IEM (latest time from its JSON, then
+  //   6-minute steps back; IEM keeps every even minute)
+  var LCJ = "https://mesonet.agron.iastate.edu/data/gis/images/4326/mrms/lcref.json";
+  function lcrefFrames() {
+    return fetch(LCJ + "?b=" + Math.floor(Date.now() / 60000)).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (j) {
+      var v = Date.parse(j && j.meta && j.meta.start_valid); if (!isFinite(v) || Date.now() - v > 30 * 60000) throw 0;
+      v = Math.floor(v / 120000) * 120000; var times = [];
+      for (var k = 10; k >= 0; k--) times.push(v - k * 6 * 60000);
+      return { src: "iemq", n: times.length, times: times, valid: v, bucket: v };
+    });
+  }
   function iemFrames() {
     var bucket = Math.floor(Date.now() / STEP), layers = [], n = 11;
     for (var k = 0; k < n; k++) { var m = (n - 1 - k) * 5; layers.push("nexrad-n0q-900913" + (m ? "-m" + (m < 10 ? "0" : "") + m + "m" : "")); }
@@ -526,7 +547,7 @@
     }).catch(function (e) { mrmsOK = false; throw e; });
   }
   function loadFrames() {
-    mrmsFrames().catch(function () { return iemFrames(); }).then(function (f) {
+    mrmsFrames().catch(function () { return iemqOK === false ? Promise.reject() : lcrefFrames(); }).catch(function () { return iemFrames(); }).then(function (f) {
       if (!frames) { setFrames(f); preload(); paint(2); } else if (f.bucket !== frames.bucket || f.src !== frames.src) { pending = f; preload(); }
       legend();
     });
@@ -545,7 +566,15 @@
     for (var k = 0; k < f.n; k++) vs.forEach(function (v) { var e = peek(rkey(f, k, v.z, ((v.i % v.n) + v.n) % v.n, v.j)); n++; if (e && (e.ok || e.err)) ok++; });
     return n ? ok / n : 1;
   }
+  // if IEM's MRMS tiles turn out not to load at all, drop to the NEXRAD mosaic
+  var iemqOK = null;
+  function errAll(f) {
+    var vs = at(RV.R, function () { return visible(rz()); }), n = 0, bad = 0;
+    vs.forEach(function (v) { var e = peek(rkey(f, f.n - 1, v.z, ((v.i % v.n) + v.n) % v.n, v.j)); if (e && (e.ok || e.err)) { n++; if (e.err) bad++; } });
+    return n > 0 && bad === n;
+  }
   function checkPending() {
+    if (frames && frames.src === "iemq" && !iemqOK && ready(frames) >= 1) { if (errAll(frames)) { iemqOK = false; setFrames(iemFrames()); preload(); paint(2); legend(); } else iemqOK = true; }
     if (pending && ready(pending) >= 1) { setFrames(pending); pending = null; paint(2); }
     var r = frames ? ready(frames) : 0;
     lastR = r; status(statusText());
@@ -786,7 +815,7 @@
     if (m.kind === "sad") { root.postMessage({ id: m.id, mv: sad(m.A, m.B, m.gw, m.gh, m.R) }); return; }
     // tile: a missing type tile just means "rain"; a missing reflectivity tile is an error
     Promise.all(m.urls.map(function (u, i) { return fetchBitmap(u).catch(function (x) { if (i === 0) throw x; return null; }); })).then(function (ims) {
-      var sm = m.mrms ? compose(ims[0], ims[1]) : recolor(ims[0]), out = { id: m.id, raw: ims[0] }, tr = [ims[0]];
+      var sm = m.mrms ? compose(ims[0], ims[1]) : recolor(ims[0], m.urls[0]), out = { id: m.id, raw: ims[0] }, tr = [ims[0]];
       if (ims[1]) ims[1].close();
       if (sm === EMPTY) out.empty = true; else { out.sm = sm.transferToImageBitmap(); tr.push(out.sm); }
       root.postMessage(out, tr);
