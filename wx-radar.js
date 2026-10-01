@@ -276,10 +276,24 @@
     return out;
   }
   // draw one tile, or the nearest loaded ancestor's matching quarter while it loads
+  // When zooming out, the coarser tiles usually aren't loaded yet but the sharper ones just shown are, so a missing
+  //   tile is first rebuilt from its loaded children (two levels down), then from a loaded ancestor.
+  function drawKids(ctx, v, getE, lv) {
+    var i = ((v.i % v.n) + v.n) % v.n, any = false, wx = (v.x1 - v.x0) / 2, wy = (v.y1 - v.y0) / 2;
+    for (var b = 0; b < 2; b++) for (var a = 0; a < 2; a++) {
+      var c = { i: 2 * i + a, j: 2 * v.j + b, n: v.n * 2, z: v.z + 1, x0: v.x0 + a * wx, y0: v.y0 + b * wy, x1: v.x0 + (a + 1) * wx, y1: v.y0 + (b + 1) * wy };
+      var im = img(getE(c.z, c.i, c.j, false));
+      if (im === EMPTY) { any = true; continue; }
+      if (im) { ctx.drawImage(im, 0, 0, im.width || im.naturalWidth, im.height || im.naturalHeight, c.x0, c.y0, c.x1 - c.x0, c.y1 - c.y0); any = true; }
+      else if (lv > 1 && drawKids(ctx, c, getE, lv - 1)) any = true;
+    }
+    return any;
+  }
   function drawTile(ctx, v, getE) {
     var i = ((v.i % v.n) + v.n) % v.n;
     for (var d = 0; d <= 4 && v.z - d >= 0; d++) {
       var e = getE(v.z - d, i >> d, v.j >> d, d === 0), im = img(e);
+      if (!im && d === 0 && v.z < 12 && drawKids(ctx, v, getE, 2)) return true;
       if (!im) continue;
       if (im === EMPTY) return true;
       var sz = (im.width || im.naturalWidth) / (1 << d), sx = (i - ((i >> d) << d)) * sz, sy = (v.j - ((v.j >> d) << d)) * sz;
@@ -520,7 +534,11 @@
   function setFrames(f) { frames = f; NF = f.n; ui.range.max = NF - 1; if (cur > NF - 1 || !started) cur = NF - 1; }
   // request every frame's visible tiles so playback never waits on the network
   function preload() {
-    [frames, pending].forEach(function (f) { if (!f) return; var vs = at(view, function () { return visible(rz()); }); for (var k = 0; k < f.n; k++) { var g = radarGet(f, k); vs.forEach(function (v) { g(v.z, ((v.i % v.n) + v.n) % v.n, v.j, true); }); } });
+    // the frames on screen first, then the rest of the loop in playback order
+    [frames, pending].forEach(function (f) {
+      if (!f) return; var vs = at(view, function () { return visible(rz()); });
+      for (var q = 0; q < f.n; q++) { var k = (Math.min(cur, f.n - 1) + q) % f.n, g = radarGet(f, k); vs.forEach(function (v) { g(v.z, ((v.i % v.n) + v.n) % v.n, v.j, true); }); }
+    });
   }
   function ready(f) {
     var vs = at(RV.R, function () { return visible(rz()); }), n = 0, ok = 0;

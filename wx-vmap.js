@@ -111,8 +111,9 @@
     if (tiles.size > 400) { var all = Array.from(tiles.entries()).sort(function (a, b) { return a[1].t - b[1].t; }); for (var i = 0; i < 120; i++) tiles.delete(all[i][0]); }
     return e;
   }
-  // vector tiles are designed for 512-px rendering: use one zoom level lower than 256-px tiles would
-  function tileZoom(z) { return Math.max(0, Math.min(maxz, Math.round(z) - 1)); }
+  // Tiles at the view's own zoom (not one lower): OpenMapTiles only includes county lines from tile zoom 7, trunk
+  //   roads from 7, primary from 8 and secondary from 9, so a coarser tile would drop them a whole zoom level early.
+  function tileZoom(z) { return Math.max(0, Math.min(maxz, Math.round(z))); }
 
   // ---------- styling ----------
   var PAL = {
@@ -122,24 +123,39 @@
       road: [ "rgba(0,0,0,.42)", "rgba(0,0,0,.32)", "rgba(0,0,0,.23)", "rgba(0,0,0,.16)" ], text: "#10161e", text2: "#26303c", text3: "#47525e", halo: "rgba(255,255,255,.95)", stateText: "rgba(0,0,0,.55)" }
   };
 
+  // which roads show is mostly decided by what each tile zoom contains; only minor streets are held back
   function roadRank(c) { return c === "motorway" ? 0 : c === "trunk" || c === "primary" ? 1 : c === "secondary" ? 2 : c === "tertiary" || c === "minor" ? 3 : -1; }
-  function roadMinZ(r) { return [5, 7, 9, 11][r]; }
+  function roadMinZ(r) { return [0, 0, 0, 9.5][r]; }
   function roadWidth(r, z) { var b = [1.5, 1.15, 0.9, 0.75][r]; return b * Math.max(0.6, Math.min(3, Math.pow(1.3, z - 8))); }
 
   // Visit the loaded tile (or nearest loaded ancestor) for each visible tile slot, with a transform from tile
   //   units to device pixels and a clip to that slot. cb(layers, s, zt) draws; s = device px per tile unit.
+  // draw one loaded tile's content into a slot rect (tile units → device pixels, clipped to the rect)
+  function put(ctx, L, zt, x0, y0, x1, y1, ox, oy, s, cb) {
+    ctx.save(); ctx.beginPath(); ctx.rect(x0, y0, x1 - x0, y1 - y0); ctx.clip();
+    ctx.setTransform(s, 0, 0, s, ox, oy); cb(L, s, zt); ctx.restore();
+  }
+  // missing tile while zooming out: use its loaded children (two levels down) before falling back to an ancestor
+  function kids(ctx, v, i, cb, lv) {
+    var any = false, w = (v.x1 - v.x0) / 2, h = (v.y1 - v.y0) / 2;
+    for (var b = 0; b < 2; b++) for (var a = 0; a < 2; a++) {
+      var c = { z: v.z + 1, x0: v.x0 + a * w, y0: v.y0 + b * h, x1: v.x0 + (a + 1) * w, y1: v.y0 + (b + 1) * h }, ci = 2 * i + a, cj = 2 * v.j + b;
+      var e = get(c.z, ci, cj, false);
+      if (e && e.ok) { put(ctx, e.L, c.z, c.x0, c.y0, c.x1, c.y1, c.x0, c.y0, w / 4096, cb); any = true; }
+      else if (lv > 1) { c.j = cj; if (kids(ctx, c, ci, cb, lv - 1)) any = true; }
+    }
+    return any;
+  }
   function eachTile(ctx, slots, cb) {
     slots.forEach(function (v) {
-      var i = ((v.i % v.n) + v.n) % v.n;
+      var i = ((v.i % v.n) + v.n) % v.n, e0 = get(v.z, i, v.j, true);
+      if (!(e0 && e0.ok) && v.z < maxz && kids(ctx, v, i, cb, 2)) return;
       for (var d = 0; d <= 5 && v.z - d >= 0; d++) {
         var e = get(v.z - d, i >> d, v.j >> d, d === 0);
         if (!e || !e.ok) continue;
         var w = v.x1 - v.x0, ext = 4096, s = w * (1 << d) / ext;
         var ox = v.x0 - (i - ((i >> d) << d)) * w, oy = v.y0 - (v.j - ((v.j >> d) << d)) * w;
-        ctx.save(); ctx.beginPath(); ctx.rect(v.x0, v.y0, w, v.y1 - v.y0); ctx.clip();
-        ctx.setTransform(s, 0, 0, s, ox, oy);
-        cb(e.L, s, v.z - d);
-        ctx.restore();
+        put(ctx, e.L, v.z - d, v.x0, v.y0, v.x1, v.y1, ox, oy, s, cb);
         return;
       }
     });
@@ -170,7 +186,7 @@
       if (L.boundary) {
         var bl = { 6: [], 4: [], 2: [] };
         L.boundary.f.forEach(function (f) { if (f.t === 2 && f.p.maritime !== 1 && f.p.maritime !== true && bl[+f.p.admin_level]) bl[+f.p.admin_level].push(f); });
-        if (z >= 7) { ctx.strokeStyle = P.county; ctx.lineWidth = 0.8 * d / s; strokeAll(ctx, bl[6]); }
+        if (z >= 6.5) { ctx.strokeStyle = P.county; ctx.lineWidth = 0.8 * d / s; strokeAll(ctx, bl[6]); }
         ctx.strokeStyle = P.state; ctx.lineWidth = (z < 6 ? 1.1 : 1.5) * d / s; strokeAll(ctx, bl[4]);
         ctx.strokeStyle = P.country; ctx.lineWidth = 1.7 * d / s; strokeAll(ctx, bl[2]);
       }
