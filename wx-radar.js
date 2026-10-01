@@ -326,7 +326,7 @@
   function radarGet(f, k) {
     return function (z, x, y, request) { var key = rkey(f, k, z, x, y); return request ? get(key, radarUrl(f, k, z, x, y), true) : peek(key); };
   }
-  function rkey(f, k, z, x, y) { return "r" + f.src + (f.src === "s3" ? boxVer + "|" : "") + (f.times ? f.times[k] : f.bucket + ":" + k) + ":" + z + "/" + x + "/" + y; }
+  function rkey(f, k, z, x, y) { return "r" + f.src + (f.src === "s3" ? boxVer + "|" + (f.flags[k] ? keyTime(f.flags[k]) : "") + "|" : "") + (f.times ? f.times[k] : f.bucket + ":" + k) + ":" + z + "/" + x + "/" + y; }
   function tz() { return Math.max(0, Math.min(16, Math.round(rv.z))); }
   // radar one level coarser than the map (smoother, and MRMS/NEXRAD mosaics are ~1 km anyway), native in NWS colours
   //   (MRMS from NOAA's archive is drawn from the exact 1 km grid, so it can be requested sharper when zoomed in)
@@ -589,7 +589,7 @@
       //   scan may borrow the latest one up to 10 minutes older (type changes slowly) instead of having none
       var fl = pick.map(function (o) { var b = null; F.forEach(function (q) { if (q.t <= o.t + 60000 && o.t - q.t <= 10 * 60000 && (!b || q.t > b.t)) b = q; }); return b ? b.k : null; });
       if (pick.length < 5) throw 0;
-      return { src: "s3", n: pick.length, times: pick.map(function (o) { return o.t; }), refs: pick.map(function (o) { return o.k; }), flags: fl, valid: last, bucket: last };
+      return { src: "s3", n: pick.length, times: pick.map(function (o) { return o.t; }), refs: pick.map(function (o) { return o.k; }), flags: fl, valid: last, bucket: last + ":" + fl[fl.length - 1] };
     });
   }
   // the worker keeps the sharp (0.01°) grid for a 16° box around the view and a 0.04° copy of the whole country
@@ -634,9 +634,27 @@
     s3Frames().catch(function (e) { if (dom.k !== "CONUS") throw e; return mrmsFrames(); }).catch(function () { return iemqOK === false ? Promise.reject() : lcrefFrames(); }).catch(function () { if (dom.k !== "CONUS") throw 0; return iemFrames(); }).then(function (f) {
       if (f.src === "s3") s3Load(f);
       if (!frames) { setFrames(f); preload(); paint(2); } else if (f.bucket !== frames.bucket || f.src !== frames.src) { pending = f; preload(); }
-      legend();
-    }).catch(function () { lastR = 0; ui.msg = "Radar couldn't load right now"; status(statusText()); });
+      legend(); plan();
+    }).catch(function () { lastR = 0; ui.msg = "Radar couldn't load right now"; status(statusText()); plan(60000); });
   }
+  // Refresh as soon as new data exists. NOAA scans every 2 minutes and posts each one ~1 minute after its time
+  //   (its precipitation type ~1.5 minutes after), so check right then and every 15 s until it shows up; other
+  //   sources every 5 minutes.
+  function plan(wait) {
+    clearTimeout(refreshT); refreshT = 0; if (!on) return;
+    var f = pending || frames, now = Date.now();
+    if (wait == null) {
+      if (f && f.src === "s3") {
+        var t = f.times[f.n - 1], fk = f.flags[f.n - 1], at = [t + 2 * 60000 + 62000];
+        if (!fk || keyTime(fk) !== t) at.push(t + 105000); // the newest scan's own type is still to come
+        at = at.filter(function (x) { return x > now; });
+        wait = at.length ? Math.min.apply(null, at) - now : now - t > 10 * 60000 ? 60000 : 15000;
+      } else wait = Math.max(15000, lastLoad + STEP - now);
+    }
+    refreshT = setTimeout(function () { if (on && !pending) loadFrames(); else plan(15000); }, Math.max(1000, wait));
+  }
+  // phones pause timers in the background: catch up as soon as the page is back
+  if (typeof document !== "undefined") document.addEventListener("visibilitychange", function () { if (!document.hidden && on && refreshT) plan(1000); });
   function setFrames(f) { frames = f; NF = f.n; ui.range.max = NF - 1; if (cur > NF - 1 || !started) cur = NF - 1; }
   // request every frame's visible tiles so playback never waits on the network
   function preload() {
@@ -896,11 +914,10 @@
       }
       on = true; size();
       if (!frames || Math.floor(Date.now() / STEP) !== frames.bucket) loadFrames();
-      // MRMS updates every 2 minutes; other sources every 5
-      clearInterval(refreshT); refreshT = setInterval(function () { if (on && !pending && (frames && frames.src === "s3" || Date.now() - lastLoad >= STEP - 1000)) loadFrames(); }, 2 * 60000);
+      else plan();
       paint(7);
     },
-    hide: function () { stopWatch(); if (gpsMode === "wait") gpsMode = "off"; on = false; playing && play(false); started = false; userPaused = false; clearInterval(refreshT); if (raf) cancelAnimationFrame(raf); raf = 0; },
+    hide: function () { stopWatch(); if (gpsMode === "wait") gpsMode = "off"; on = false; playing && play(false); started = false; userPaused = false; clearTimeout(refreshT); if (raf) cancelAnimationFrame(raf); raf = 0; },
     refresh: function () { if (on) loadFrames(); },
     // for the live data check
     _state: function () { return { why: s3Why, dom: dom.k, rvR: RV.R, rdpr: rdpr, SW: SW, SH: SH, times: frames && frames.times, refs: frames && frames.refs, flags: frames && frames.flags, s3OK: s3OK, box: box, wk: !!WK, mv: (MV[mvKey] || []).map(function (m) { return m ? [+(m.x * rscale()).toFixed(1), +(m.y * rscale()).toFixed(1)] : null; }), redraws: redraws, tf: cvL && cvL.style.transform, tfs: LAYERS.map(function (L) { return L.c.style.transform; }), src: frames && frames.src, mrmsOK: mrmsOK, corsOK: corsOK, frames: frames && frames.n, valid: frames && frames.valid, ready: frames ? ready(frames) : 0, view: view, playing: playing, cur: cur, frac: frac }; },
@@ -1015,8 +1032,13 @@
   function fetchGz(url) { return fetch(url).then(function (r) { if (!r.ok) throw new Error("download failed (" + r.status + ")"); return r.arrayBuffer(); }).then(function (b) { return gunzip(b, "gzip").arrayBuffer(); }).then(function (b) { return new Uint8Array(b); }); }
   // frames load one after another (newest first), so the current radar shows as soon as possible
   function gridFrame(f, after) {
-    var fr = G[f.t]; if (fr) return fr.p;
-    fr = G[f.t] = { t: f.t };
+    var fr = G[f.t];
+    if (fr) {
+      // its precipitation type was borrowed from an older scan and its own has now been posted
+      if (f.flag && fr.flagK !== f.flag) { fr.flagK = f.flag; fr.p = fr.p.then(function () { return fetchGz(f.base + f.flag); }).then(function (b) { fr.rawF = b; fr.reBox = null; return fr.fbox === GBOX ? decodeFlag(b, fr) : null; }, function () { return null; }).then(function () { return fr; }); }
+      return fr.p;
+    }
+    fr = G[f.t] = { t: f.t, flagK: f.flag };
     fr.p = (after || Promise.resolve()).then(function () { return Promise.all([fetchGz(f.base + f.ref), f.flag ? fetchGz(f.base + f.flag).catch(function () { return null; }) : null]); }).then(function (b) {
       fr.raw = b[0]; fr.rawF = b[1];
       return Promise.all([decodeRef(b[0], fr), b[1] ? decodeFlag(b[1], fr) : null]);
