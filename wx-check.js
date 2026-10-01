@@ -1,7 +1,7 @@
 // wx-check.js — the live data check behind check.html.
 // For a spread of places it (1) runs the site's own WXLive.load pipeline and checks the result for gaps and odd values,
 // (2) loads the site itself in a hidden frame and opens every tab, watching for script errors and empty tabs, and
-// (3) once, decodes every model map product (HRRR, NAM 3 km, GFS) and checks its values. ?mock=1 swaps in the built-in test scenarios so the checker can be
+// (3) once, decodes every model map product (HRRR, NAM 3 km, GFS, NBM) and checks its values, and sweeps the NWS map images. ?mock=1 swaps in the built-in test scenarios so the checker can be
 // exercised without the network. Nothing here touches the site's saved places (frames run with ?nostore=1).
 (function () {
   "use strict";
@@ -152,6 +152,17 @@
   }
 
   // ---- 2. the site itself, in a hidden frame
+  function mapTry(d, cat, val, area, last) {
+    var chip = d.querySelector('#mcats [data-mcat="' + cat + '"]'); if (chip) chip.click();
+    var sel = d.getElementById("msel"); sel.value = val; sel.dispatchEvent(new Event("change"));
+    if (area) { var b = d.querySelector('#marea [data-marea="' + area + '"]'); if (b) b.click(); }
+    var rg = d.getElementById("irange");
+    if (last && !d.getElementById("ictl").hidden) { rg.value = rg.max; rg.dispatchEvent(new Event("input")); }
+    var im = d.getElementById("mimg");
+    return poll(function () { return !im.classList.contains("ld") && (im.naturalWidth > 0 || !d.getElementById("mmsg").hidden); }, 10000).then(function (settled) {
+      return settled ? (im.naturalWidth > 0 && d.getElementById("mmsg").hidden ? "ok" : "MISSING") : "timeout";
+    });
+  }
   function runFrame(name, lat, lon, sweep) {
     return new Promise(function (resolve) {
       var res = { fails: [], warns: [], tabs: [] }, f = document.createElement("iframe"), d, w;
@@ -194,13 +205,13 @@
             })
             .then(function () { return openTab("obs", function () { return d.querySelectorAll("#obscard tr").length >= 3 || /No recent observations/.test(d.getElementById("obscard").textContent); }, "Observations tab"); })
             .then(function () { if (/No recent observations/.test(d.getElementById("obscard").textContent)) res.warns.push("no recent observations"); })
-            .then(function () { return sweep ? sweepMaps(d, res) : null; });
+            .then(function () { return sweep ? sweepMaps(d, res).then(function () { return sweepImages(d, res); }) : null; });
         }).then(finish, function (e) { res.fails.push("check crashed: " + e.message); finish(); });
       };
     });
   }
   // every model map product, decoded off-screen at one forecast hour, with its values checked for plausibility
-  var MRANGE = { t2: [-80, 135], td2: [-90, 95], t850: [-60, 45], qpf: [0, 40], sn10: [0, 150], snv: [0, 150], frz: [0, 10], ptype: [-40, 85], mslp: [-40, 85],
+  var MRANGE = { p6: [0, 20], p24: [0, 30], s6: [0, 60], s24: [0, 100], i6: [0, 5], maxt: [-60, 135], mint: [-80, 110], feels: [-90, 150], t2: [-80, 135], td2: [-90, 95], t850: [-60, 45], qpf: [0, 40], sn10: [0, 150], snv: [0, 150], frz: [0, 10], ptype: [-40, 85], mslp: [-40, 85],
     nsn: [0, 150], w10: [0, 250], gust: [0, 300], cape: [0, 12000], srh: [-2000, 3000], uh: [0, 2000], h500: [0, 300], j250: [0, 350], pwat: [0, 4], tcc: [0, 100] };
   function sweepMaps(d, res) {
     var W = d.defaultView.WXModels; if (!W || MOCK) return Promise.resolve();
@@ -218,6 +229,28 @@
     });
     return chain.then(function () { res.maps = results; });
   }
+  // every Maps product, first and last frame, local and national where offered
+  function sweepImages(d, res) {
+    d.querySelector('#nav [data-tab="maps"]').click();
+    var cats = [].map.call(d.querySelectorAll("#mcats [data-mcat]"), function (b) { return b.dataset.mcat; }), jobs = [], results = [];
+    cats.forEach(function (c) {
+      d.querySelector('#mcats [data-mcat="' + c + '"]').click();
+      [].forEach.call(d.querySelectorAll("#msel option"), function (o) { jobs.push([c, o.value, o.textContent]); });
+    });
+    var chain = Promise.resolve();
+    jobs.forEach(function (j) {
+      chain = chain.then(function () {
+        d.querySelector('#mcats [data-mcat="' + j[0] + '"]').click();
+        var sel = d.getElementById("msel"); sel.value = j[1]; sel.dispatchEvent(new Event("change"));
+        var areas = d.getElementById("marea").hidden ? [null] : ["local", "conus"], r = [];
+        return areas.reduce(function (pr, a) {
+          return pr.then(function () { return mapTry(d, j[0], j[1], a, false).then(function (x) { return mapTry(d, j[0], j[1], a, true).then(function (y) { r.push((a === "conus" ? "US " : a === "local" ? "local " : "") + (x === "ok" && y === "ok" ? "ok" : "first " + x + ", last " + y)); }); }); });
+        }, Promise.resolve()).then(function () { results.push([j[2], r]); });
+      });
+    });
+    return chain.then(function () { res.images = results; });
+  }
+
   // ---- radar accuracy: what each station is reporting vs what the radar map shows over it
   // A representative spread of airport weather stations (latest weather.gov observation) is compared with the radar
   //   value at the station, as the map draws it, from the radar frame nearest the observation time. Agreement: precip
@@ -344,6 +377,7 @@
           line("[" + tag + "] " + L[0] + " · load " + secs(dr.ms) + (dr.sources ? " · " + dr.sources : "") + (fr ? " · tabs " + fr.tabs.join(" ") + (fr.radar ? " · " + fr.radar : "") + (fr.model ? " · maps " + fr.model : "") : ""));
           if (dr.info.length) line("      " + dr.info.join(" · "));
           fails.forEach(function (s) { line("      ✗ " + s); }); warns.forEach(function (s) { line("      ! " + s); });
+          if (fr && fr.images) { line("      NWS MAP IMAGES (first/last frame):"); fr.images.forEach(function (m) { line("        " + m[0] + ": " + m[1].join(" | ")); }); }
           if (fr && fr.maps) { line("      MODEL MAPS (one hour each, value range):"); fr.maps.forEach(function (m) { line("        " + m[0] + ": " + m[1].join(" | ")); }); }
         });
       });

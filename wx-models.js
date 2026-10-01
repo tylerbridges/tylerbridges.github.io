@@ -141,9 +141,10 @@
       prefix: function (run) { return "gfs." + ymd(run) + "/" + hh(run) + "/atmos/gfs.t" + hh(run) + "z.pgrb2.0p25.f"; },
       file: function (run, h) { return this.prefix(run) + p3(h); }, hourOf: /pgrb2\.0p25\.f(\d+)\.idx$/ },
     // National Blend of Models: what NWS forecasts start from; its snowfall uses NBM's own snow-to-liquid ratios.
-    //   Hourly buckets; snow and ice stop after 48 h, so the viewer stops there too.
+    //   Files: hourly to 36 h, 3-hourly to 192 h, 6-hourly to 264 h. Precip has 1-h buckets to 48 h and 6-h buckets
+    //   every 6 h; snow and ice only 1-h buckets to 48 h; highs end at 00Z and lows at 12Z (12-h max/min).
     nbm: { name: "NBM", full: "National Blend of Models (2.5 km)", base: "https://noaa-nbm-grib2-pds.s3.amazonaws.com/", cycle: 1, step: 1, conus: true, nbm: true,
-      max: function () { return 48; },
+      max: function () { return 264; }, need: 48,
       prefix: function (run) { return "blend." + ymd(run) + "/" + hh(run) + "/core/blend.t" + hh(run) + "z.core.f"; },
       file: function (run, h) { return this.prefix(run) + p3(h) + ".co.grib2"; }, hourOf: /core\.f(\d+)\.co\.grib2\.idx$/ }
   };
@@ -184,13 +185,22 @@
   var EA = ["entire atmosphere", "entire atmosphere (considered as a single layer)"];
   var K2F = function (k) { return (k - 273.15) * 1.8 + 32; }, MS2MPH = 2.23694, MS2KT = 1.94384, MM2IN = 1 / 25.4;
   // accumulations from the start of the run: model-specific buckets, summed through earlier hours where needed
-  function bucket(model, h) { return model === "nam" ? h - (h % 3 || 3) : model === "gfs" ? Math.max(0, h - 6) : model === "nbm" ? h - 1 : 0; }
+  // NBM's 6-h precip buckets only end at 00/06/12/18Z (r0 = the run's UTC hour)
+  function bucket(model, h, id, r0) { return model === "nam" ? h - (h % 3 || 3) : model === "gfs" ? (id === "qpf" ? 0 : Math.max(0, h - 6)) : model === "nbm" ? (id === "qpf" && h >= 6 && (r0 + h) % 6 === 0 ? h - 6 : h - 1) : 0; }
+  // the hours a product exists at for a model (default: every hour the run has)
+  function okHour(p, model, run, h) {
+    var f = p.hrs && p.hrs[model]; if (f) return f(h, new Date(run).getUTCHours());
+    if (p.win && h < p.win) return false;
+    return true;
+  }
+  // a product's calculation: window products (6-/24-hr totals) reuse a total product
+  function calcOf(p, model) { return p.base ? PBY[typeof p.base === "function" ? p.base(model) : p.base] : p; }
   // which products a model has (NBM only carries surface precip/snow/ice and temperature here)
   function has(p, model) { return model === "nbm" ? !!p.nbm : !p.only || p.only.indexOf(model) >= 0; }
   var P = [
     { id: "ptype", g: "Precipitation", name: "Precip type & reflectivity", types: true,
       calc: function (F) { return F.all([C("REFC", EA), C("CRAIN", "surface"), C("CSNOW", "surface"), C("CFRZR", "surface"), C("CICEP", "surface")], [1, 2, 3, 4]).then(ptypeOut); } },
-    { id: "qpf", g: "Precipitation", name: "Total precipitation", sc: "qpf", accum: true, nbm: true,
+    { id: "qpf", g: "Precipitation", name: "Total precipitation", sc: "qpf", accum: true, nbm: true, hrs: { nbm: function (h, r0) { return h <= 48 || (r0 + h) % 6 === 0; } },
       calc: function (F) { return F.total("qpf", function (a, b) { return F.get(C("APCP", "surface", [a, b, "acc"])).then(function (x) { return scale(x, MM2IN); }); }).then(function (v) { return { v: v }; }); } },
     { id: "mslp", g: "Precipitation", name: "MSLP & precip type", types: true, cont: { iv: 4, fmt: "hpa", hl: true },
       calc: function (F) {
@@ -204,11 +214,11 @@
           return F.get(C("WEASD", "surface", [a, b, "acc"])).then(function (x) { return scale(x, 10 * MM2IN); });
         }).then(function (v) { return { v: v }; });
       } },
-    { id: "nsn", g: "Winter", name: "Total snowfall (NBM snow ratios)", sc: "snow", accum: true, nbm: true, only: [],
+    { id: "nsn", g: "Winter", name: "Total snowfall (NBM snow ratios)", sc: "snow", accum: true, nbm: true, only: [], hrs: { nbm: function (h) { return h <= 48; } },
       calc: function (F) { return F.total("nsn", function (a, b) { return F.get(C("ASNOW", "surface", [a, b, "acc"])).then(function (x) { return scale(x, 39.3701); }); }).then(function (v) { return { v: v }; }); } },
     { id: "snv", g: "Winter", name: "Total snowfall (variable density)", sc: "snow", accum: true, only: ["hrrr"],
       calc: function (F) { return F.total("snv", function (a, b) { return F.get(C("ASNOW", "surface", [a, b, "acc"])).then(function (x) { return scale(x, 39.3701); }); }).then(function (v) { return { v: v }; }); } },
-    { id: "frz", g: "Winter", name: "Freezing rain accumulation", sc: "ice", accum: true, nbm: true,
+    { id: "frz", g: "Winter", name: "Freezing rain accumulation", sc: "ice", accum: true, nbm: true, hrs: { nbm: function (h) { return h <= 48; } },
       calc: function (F) {
         return F.total("frz", function (a, b) {
           if (F.model === "nbm") return F.get(C("FICEAC", "surface", [a, b, "acc"])).then(function (x) { return scale(x, MM2IN); }); // flat ice accumulation, kg/m² = mm
@@ -216,6 +226,19 @@
           return Promise.all([F.get(C("APCP", "surface", [a, b, "acc"])), F.get(C("CFRZR", "surface", F.model === "gfs" ? [a, b, "ave"] : "i"))]).then(function (r) { return mul(r[0], r[1], MM2IN); });
         }).then(function (v) { return { v: v }; });
       } },
+    // period totals (what the NWS 6-hour and WPC daily maps show): the total over the last 6 or 24 hours
+    { id: "p6", g: "Precipitation", name: "6-hr precipitation", sc: "qpf", win: 6, base: "qpf", nbm: true, hrs: { nbm: function (h, r0) { return h >= 6 && (h <= 48 || (r0 + h) % 6 === 0); } } },
+    { id: "p24", g: "Precipitation", name: "24-hr precipitation", sc: "qpf", win: 24, base: "qpf", nbm: true, hrs: { nbm: function (h, r0) { return h >= 24 && (h <= 48 || (r0 + h) % 6 === 0); } } },
+    { id: "s6", g: "Winter", name: "6-hr snowfall", sc: "snow", win: 6, base: function (m) { return m === "nbm" ? "nsn" : "sn10"; }, nbm: true, hrs: { nbm: function (h) { return h >= 6 && h <= 48; } } },
+    { id: "s24", g: "Winter", name: "24-hr snowfall", sc: "snow", win: 24, base: function (m) { return m === "nbm" ? "nsn" : "sn10"; }, nbm: true, hrs: { nbm: function (h) { return h >= 24 && h <= 48; } } },
+    { id: "i6", g: "Winter", name: "6-hr ice", sc: "ice", win: 6, base: "frz", nbm: true, hrs: { nbm: function (h) { return h >= 6 && h <= 48; } } },
+    // NBM daytime highs (12-h max ending 00Z) and overnight lows (ending 12Z), like the NWS MaxT/MinT maps
+    { id: "maxt", g: "Temperature", name: "Daytime high", sc: "tF", nbm: true, only: [], day: "max", hrs: { nbm: function (h, r0) { return h >= 12 && (r0 + h) % 24 === 0; } },
+      calc: function (F) { return F.get(C("TMAX", "2 m above ground", [F.h - 12, F.h, "max"])).then(function (x) { return { v: map(x, K2F) }; }); } },
+    { id: "mint", g: "Temperature", name: "Overnight low", sc: "tF", nbm: true, only: [], day: "min", hrs: { nbm: function (h, r0) { return h >= 12 && (r0 + h) % 24 === 12; } },
+      calc: function (F) { return F.get(C("TMIN", "2 m above ground", [F.h - 12, F.h, "min"])).then(function (x) { return { v: map(x, K2F) }; }); } },
+    { id: "feels", g: "Temperature", name: "Feels-like temperature", sc: "tF", nbm: true, only: [],
+      calc: function (F) { return F.get(C("APTMP", "2 m above ground")).then(function (x) { return { v: map(x, K2F) }; }); } },
     { id: "t2", g: "Temperature", name: "2-m temperature", sc: "tF", nbm: true, cont: { levels: [32], fmt: "int", bold: true },
       calc: function (F) { return F.get(C("TMP", "2 m above ground")).then(function (x) { var v = map(x, K2F); return { v: v, c: v }; }); } },
     { id: "td2", g: "Temperature", name: "2-m dew point", sc: "tdF",
@@ -330,7 +353,7 @@
             var key = m.model + m.run + id + "|" + h;
             if (ACC.has(key)) return ACC.get(key);
             var p = h === 0 ? F.zeros() : (function () {
-              var a = bucket(m.model, h);
+              var a = bucket(m.model, h, id, new Date(m.run).getUTCHours());
               return Promise.all([a > 0 ? tot(a) : null, withHour(h, function () { return inc(a, h); })]).then(function (r) {
                 if (!r[0]) return r[1]; var o = new Float32Array(r[1].length); for (var i = 0; i < o.length; i++) o[i] = r[0][i] + (r[1][i] > 0 ? r[1][i] : 0); return o;
               });
@@ -346,7 +369,7 @@
       };
       // run inc() with F.get reading hour h
       function withHour(h, fn) { var keep = F.get; F.get = function (c) { return keep(c, h); }; try { return fn(); } finally { F.get = keep; } }
-      return PBY[m.param].calc(F).then(function (r) {
+      return calcOf(PBY[m.param], m.model).calc(F).then(function (r) {
         if (!g0) return F.get(C("TMP", "2 m above ground")).then(function () { return [r, g0]; });
         return [r, g0];
       }).then(function (x) { return crop(x[0], x[1], m); });
@@ -413,12 +436,17 @@
 
   // ---------- runs and hours ----------
   function listRun(model, run) {
-    var Mo = MODELS[model], pre = Mo.prefix(run);
-    return fetch(Mo.base + "?list-type=2&prefix=" + encodeURIComponent(pre)).then(function (r) { if (!r.ok) throw 0; return r.text(); }).then(function (x) {
-      var hs = [], re = /<Key>([^<]+)<\/Key>/g, k;
-      while ((k = re.exec(x))) { var m = Mo.hourOf.exec(k[1]); if (m && +m[1] % Mo.step === 0 && +m[1] <= Mo.max(run)) hs.push(+m[1]); }
-      return hs.sort(function (a, b) { return a - b; });
-    }).catch(function () { return null; });
+    var Mo = MODELS[model], pre = Mo.prefix(run), hs = [];
+    // S3 lists 1000 keys per page (NBM has 10 files per hour), so follow continuation tokens
+    function page(tok, n) {
+      return fetch(Mo.base + "?list-type=2&prefix=" + encodeURIComponent(pre) + (tok ? "&continuation-token=" + encodeURIComponent(tok) : "")).then(function (r) { if (!r.ok) throw 0; return r.text(); }).then(function (x) {
+        var re = /<Key>([^<]+)<\/Key>/g, k;
+        while ((k = re.exec(x))) { var m = Mo.hourOf.exec(k[1]); if (m && +m[1] % Mo.step === 0 && +m[1] <= Mo.max(run)) hs.push(+m[1]); }
+        var nt = /<NextContinuationToken>([^<]+)</.exec(x);
+        return nt && n < 4 ? page(nt[1].replace(/&amp;/g, "&"), n + 1) : null;
+      });
+    }
+    return page(null, 0).then(function () { return hs.sort(function (a, b) { return a - b; }); }).catch(function () { return null; });
   }
   function findRuns(model) {
     if (runs[model] && Date.now() - runs[model].at < 5 * 60000) return Promise.resolve(runs[model].list);
@@ -433,8 +461,8 @@
     });
   }
   // newest run that's at least half published (a run fills in over 1–5 hours)
-  function pickRun(L) {
-    var full = function (x) { return x.hours.length >= (x.max / MODELS[cur.model].step + 1) * 0.5; };
+  function pickRun(L, model) {
+    var Mo = MODELS[model || cur.model], full = function (x) { return x.hours.length >= (Mo.need || (x.max / Mo.step + 1) * 0.5); };
     return (L.filter(full)[0] || L[0] || null);
   }
   function R() { var L = runs[cur.model] && runs[cur.model].list || []; return L.filter(function (x) { return x.run === cur.run; })[0] || null; }
@@ -444,7 +472,16 @@
     var f = 0; r.hours.forEach(function (h) { if (r.run + h * H <= Date.now() + 10 * 60000) f = h; });
     return f;
   }
-  function hours() { var r = R(); if (!r) return []; var f = fromH(); return f || PBY[cur.param].accum ? r.hours.filter(function (h) { return h > f; }) : r.hours; }
+  function hours() {
+    var r = R(); if (!r) return [];
+    var p = PBY[cur.param], f = fromH(), now = Date.now() - 30 * 60000;
+    return r.hours.filter(function (h) {
+      if (!okHour(p, cur.model, r.run, h)) return false;
+      if (p.accum) return h > f;
+      if (p.win || p.day) return r.run + h * H > now; // periods ending from now on
+      return true;
+    });
+  }
 
   // ---------- workers ----------
   var WK = null, wjobs = {}, wid = 0, Q = [], busy = 0;
@@ -474,7 +511,7 @@
   function request(h, front) {
     var k = fkey(h), f = frames[k];
     if (f && (f.loading || f.err || f.box === BOX)) return;
-    var job = { gen: gen, m: { model: cur.model, run: cur.run, h: h, from: fromH(), param: cur.param, box: BOX, want: Math.round(Math.max(W, HH) * 1.6) }, cb: null };
+    var pp = PBY[cur.param], job = { gen: gen, m: { model: cur.model, run: cur.run, h: h, from: pp.win ? h - pp.win : fromH(), param: cur.param, box: BOX, want: Math.round(Math.max(W, HH) * 1.6) }, cb: null };
     var fr = frames[k] = f || {}; fr.loading = true;
     job.cb = function (r) {
       fr.loading = false;
@@ -786,7 +823,10 @@
     if (!r || h == null) { ui.time.innerHTML = ""; return; }
     var v = r.run + h * H;
     var f0 = fromH();
-    ui.time.innerHTML = "<b>" + fmtT(v, { weekday: "short", hour: "numeric" }) + "</b><span>" + (p.accum ? "Total from " + fmtT(r.run + f0 * H, { hour: "numeric" }) : "Hour " + h) + "</span>";
+    var lab = p.accum ? "Total from " + fmtT(r.run + f0 * H, { hour: "numeric" }) : p.win ? p.win + " hours ending" : "Hour " + h;
+    var big = p.day ? fmtT(v - 6 * H, { weekday: "short" }) + (p.day === "max" ? " day" : " night") : fmtT(v, { weekday: "short", hour: "numeric" });
+    if (p.day) lab = (p.day === "max" ? "High, " : "Low, ") + fmtT(v - 12 * H, { hour: "numeric" }) + "–" + fmtT(v, { hour: "numeric" });
+    ui.time.innerHTML = "<b>" + big + "</b><span>" + lab + "</span>";
     ui.src.innerHTML = MODELS[cur.model].full + " " + hh(r.run) + "Z run · " + fmtT(r.run, { weekday: "short", hour: "numeric", minute: "2-digit" }) + " · NOAA";
   }
   function showHour() { readout = null; ui.ro.hidden = true; uiTime(); loadAround(); paint(6); status(); }
@@ -933,10 +973,12 @@
     _probe: function (model, param, h, o) {
       o = o || {};
       return new Promise(function (ok, no) {
-        var run = o.run ? { run: o.run, hours: [h] } : runs[model] && runs[model].list && pickRun(runs[model].list);
+        var run = o.run ? { run: o.run, hours: [h] } : runs[model] && runs[model].list && pickRun(runs[model].list, model);
         var go = function (rr) {
           var cl = o.lat != null ? o : loc;
-          var job = { keep: true, m: { model: model, run: rr.run, h: h != null ? h : rr.hours[Math.min(rr.hours.length - 1, 6)], from: o.from || 0, param: param, box: { w: cl.lon - 6, e: cl.lon + 6, s: cl.lat - 4, n: cl.lat + 4 }, want: o.want || 200 } };
+          var pp = PBY[param], ok2 = rr.hours.filter(function (x) { return okHour(pp, model, rr.run, x); }), hh2 = h != null ? h : ok2[Math.min(ok2.length - 1, 6)];
+          if (hh2 == null) return no(new Error("no hours for this product"));
+          var job = { keep: true, m: { model: model, run: rr.run, h: hh2, from: pp.win ? hh2 - pp.win : o.from || 0, param: param, box: { w: cl.lon - 6, e: cl.lon + 6, s: cl.lat - 4, n: cl.lat + 4 }, want: o.want || 200 } };
           job.cb = function (r) {
             if (r.err) return no(new Error(r.err));
             if (r.r.empty) return no(new Error("outside this model's area"));
@@ -947,7 +989,7 @@
           };
           Q.unshift(job); pump();
         };
-        if (run) go(run); else findRuns(model).then(function (L) { var x = pickRun(L); if (x) go(x); else no(new Error("no runs found")); });
+        if (run) go(run); else findRuns(model).then(function (L) { var x = pickRun(L, model); if (x) go(x); else no(new Error("no runs found")); });
       });
     },
     MODELS: MODELS, PARAMS: P, has: has

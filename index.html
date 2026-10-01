@@ -469,6 +469,7 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
 .mctl .rbtn{width:32px;height:32px}
 .mctl .rbtn svg{width:16px;height:16px;stroke:var(--ink2);fill:none}
 #mplay svg{fill:var(--ink2);stroke:none}
+.mctl .rbtn svg.fill{fill:var(--ink2);stroke:none}
 .mtime{display:flex;flex-direction:column;align-items:flex-end;min-width:84px;line-height:1.15;white-space:nowrap}
 .mtime b{font-size:13px;font-weight:600;color:var(--ink)}
 .mtime span{font-size:10.5px;color:var(--muted)}
@@ -483,6 +484,25 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
 .mlrow{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--ink2)}
 .mlrow span{width:78px;flex:none}.mlrow i{display:block;height:7px;border-radius:3px;flex:1}
 .msrc{padding:6px 12px 0;font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* NWS / WPC / CPC map images */
+.mcats{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin-inline:-16px;padding-inline:16px}
+.marea{display:flex;gap:4px;flex:none}
+.marea .chip{padding:5px 9px}
+.mimg{position:relative;background:#fff;min-height:200px;display:flex;align-items:center;justify-content:center;cursor:zoom-in}
+.mimg img{display:block;width:100%;height:auto}
+.mimg img.ld{opacity:.55}
+.mmsg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px;font-size:13px;color:#555;background:#fff}
+.mfr{position:absolute;left:6px;top:6px;font:600 12px var(--sans);background:rgba(0,0,0,.62);color:#fff;border-radius:6px;padding:3px 7px;pointer-events:none}
+.mhint{position:absolute;right:6px;bottom:6px;font-size:10.5px;background:rgba(0,0,0,.55);color:#fff;border-radius:6px;padding:2px 6px;pointer-events:none}
+#mfull{position:fixed;inset:0;z-index:70;background:#000;display:flex;flex-direction:column}
+#mfull[hidden]{display:none}
+.mfsc{flex:1;overflow:auto;display:flex;align-items:center;-webkit-overflow-scrolling:touch}
+.mfsc img{display:block;width:100%;height:auto;margin:auto;background:#fff;cursor:zoom-in}
+.mfsc.z{align-items:flex-start}
+.mfsc.z img{width:250%;max-width:none;cursor:zoom-out}
+.mfx{position:absolute;top:calc(env(safe-area-inset-top,0px) + 8px);right:10px;z-index:2;width:40px;height:40px;border-radius:50%;border:0;background:rgba(255,255,255,.9);color:#000;font-size:26px;line-height:1;cursor:pointer}
+.mfhint{color:#bbb;font-size:12px;text-align:center;padding:8px 0 calc(env(safe-area-inset-bottom,0px) + 10px)}
+.mimgcard{margin-top:10px}
 /* test scenarios */
 .testbar{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12.5px;color:var(--ink2);background:color-mix(in srgb,var(--accent) 14%,var(--surface));border:1px solid color-mix(in srgb,var(--accent) 45%,var(--line));border-radius:10px;padding:5px 6px 5px 10px}
 .testbar .chip{padding:4px 10px}
@@ -589,6 +609,19 @@ body:has(#testbar:not([hidden])) .sec{scroll-margin-top:140px}
       <div class="mleg" id="mleg"></div>
       <div class="msrc" id="msrc"></div>
     </div>
+    <div class="sec-h"><h2>NWS maps</h2><span class="meta">Official forecasts and outlooks</span></div>
+    <div class="mcats" id="mcats"></div>
+    <div class="card mview mimgcard">
+      <div class="mhead"><select id="msel" class="msel" aria-label="Map"></select><div class="marea" id="marea"></div></div>
+      <div class="mimg" id="mimgbox"><img id="mimg" alt="" decoding="async"><div class="mmsg" id="mmsg" hidden></div><span class="mfr num" id="mfr"></span><span class="mhint">Tap to enlarge</span></div>
+      <div class="mctl" id="ictl">
+        <button type="button" class="rbtn" id="iprev" aria-label="Previous"><svg viewBox="0 0 24 24" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button>
+        <button type="button" class="rbtn" id="iplay" aria-label="Play"></button>
+        <input type="range" id="irange" min="0" max="0" value="0" aria-label="Forecast time">
+        <button type="button" class="rbtn" id="inext" aria-label="Next"><svg viewBox="0 0 24 24" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button>
+      </div>
+      <div class="msrc" id="isrc"></div>
+    </div>
     <div class="sec-h"><h2>Storm totals</h2><span class="meta" id="mtotloc"></span></div>
     <div class="card tot" id="tot"></div>
   </section>
@@ -608,6 +641,7 @@ body:has(#testbar:not([hidden])) .sec{scroll-margin-top:140px}
   <footer class="foot" id="foot"></footer>
 </div>
 <div id="toast" hidden></div>
+<div id="mfull" hidden><button type="button" class="mfx" id="mfx" aria-label="Close">&times;</button><div class="mfsc" id="mfsc"><img id="mfimg" alt=""></div><div class="mfhint">Tap map to zoom in/out</div></div>
 <div id="locsheet" hidden>
   <div class="ls-back" data-close></div>
   <div class="ls-card" role="dialog" aria-label="Change location">
@@ -622,12 +656,12 @@ body:has(#testbar:not([hidden])) .sec{scroll-margin-top:140px}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=81"></script>
-<script src="wx-live.js?v=81"></script>
-<script src="wx-scenarios.js?v=81"></script>
-<script src="wx-vmap.js?v=81"></script>
-<script src="wx-radar.js?v=81"></script>
-<script src="wx-models.js?v=81"></script>
-<script src="app.js?v=81"></script>
+<script src="wx-normalize.js?v=82"></script>
+<script src="wx-live.js?v=82"></script>
+<script src="wx-scenarios.js?v=82"></script>
+<script src="wx-vmap.js?v=82"></script>
+<script src="wx-radar.js?v=82"></script>
+<script src="wx-models.js?v=82"></script>
+<script src="app.js?v=82"></script>
 </body>
 </html>
