@@ -50,7 +50,7 @@
   // display palettes by precipitation type: dBZ, r, g, b, alpha (the lightest returns fade in)
   var RAIN = [[10, 120, 214, 120, 0], [15, 120, 214, 120, 0.5], [20, 76, 190, 88, 0.76], [28, 34, 156, 62, 0.89], [35, 18, 118, 48, 0.94],
     [40, 246, 214, 52, 0.96], [45, 255, 156, 32, 0.97], [50, 236, 58, 40, 0.98], [56, 178, 18, 40, 1], [62, 222, 44, 196, 1], [70, 255, 222, 255, 1]];
-  var SNOW = [[5, 236, 246, 255, 0], [10, 236, 246, 255, 0.58], [18, 196, 226, 255, 0.8], [26, 132, 188, 250, 0.91], [33, 78, 138, 238, 0.96], [42, 44, 88, 206, 1]];
+  var SNOW = [[5, 236, 246, 255, 0.32], [10, 236, 246, 255, 0.58], [18, 196, 226, 255, 0.8], [26, 132, 188, 250, 0.91], [33, 78, 138, 238, 0.96], [42, 44, 88, 206, 1]];
   var HAIL = [[30, 18, 118, 48, 0.94], [45, 255, 156, 32, 0.97], [52, 236, 58, 40, 1], [58, 222, 44, 196, 1], [70, 255, 222, 255, 1]];
   var MINDBZ = 10; // below this is mostly clutter and drizzle-level noise: not drawn in the smooth style
   function pack(c) { return [Math.round(c[0]), Math.round(c[1]), Math.round(c[2]), Math.round(c[3] * 255)]; }
@@ -567,7 +567,9 @@
         if (b && (!pick.length || pick[pick.length - 1].t !== b.t)) pick.push(b);
       }
       pick.push(R[R.length - 1]);
-      var fl = pick.map(function (o) { var b = null; F.forEach(function (q) { if (q.t <= o.t + 60000 && o.t - q.t <= 4 * 60000 && (!b || q.t > b.t)) b = q; }); return b ? b.k : null; });
+      // precipitation type for each scan; NOAA publishes it a couple of minutes after the reflectivity, so the newest
+      //   scan may borrow the latest one up to 10 minutes older (type changes slowly) instead of having none
+      var fl = pick.map(function (o) { var b = null; F.forEach(function (q) { if (q.t <= o.t + 60000 && o.t - q.t <= 10 * 60000 && (!b || q.t > b.t)) b = q; }); return b ? b.k : null; });
       if (pick.length < 5) throw 0;
       return { src: "s3", n: pick.length, times: pick.map(function (o) { return o.t; }), refs: pick.map(function (o) { return o.k; }), flags: fl, valid: last, bucket: last };
     });
@@ -880,8 +882,8 @@
     hide: function () { stopWatch(); if (gpsMode === "wait") gpsMode = "off"; on = false; playing && play(false); started = false; userPaused = false; clearInterval(refreshT); if (raf) cancelAnimationFrame(raf); raf = 0; },
     refresh: function () { if (on) loadFrames(); },
     // for the live data check
-    _state: function () { return { s3OK: s3OK, box: box, wk: !!WK, mv: (MV[mvKey] || []).map(function (m) { return m ? [+(m.x * rscale()).toFixed(1), +(m.y * rscale()).toFixed(1)] : null; }), redraws: redraws, tf: cvL && cvL.style.transform, tfs: LAYERS.map(function (L) { return L.c.style.transform; }), src: frames && frames.src, mrmsOK: mrmsOK, corsOK: corsOK, frames: frames && frames.n, valid: frames && frames.valid, ready: frames ? ready(frames) : 0, view: view, playing: playing, cur: cur, frac: frac }; },
-    _dbz: toDbz, _iem: iemDbz, _test: function (im) { return recolor(im); }
+    _state: function () { return { rvR: RV.R, rdpr: rdpr, SW: SW, SH: SH, times: frames && frames.times, refs: frames && frames.refs, flags: frames && frames.flags, s3OK: s3OK, box: box, wk: !!WK, mv: (MV[mvKey] || []).map(function (m) { return m ? [+(m.x * rscale()).toFixed(1), +(m.y * rscale()).toFixed(1)] : null; }), redraws: redraws, tf: cvL && cvL.style.transform, tfs: LAYERS.map(function (L) { return L.c.style.transform; }), src: frames && frames.src, mrmsOK: mrmsOK, corsOK: corsOK, frames: frames && frames.n, valid: frames && frames.valid, ready: frames ? ready(frames) : 0, view: view, playing: playing, cur: cur, frac: frac }; },
+    _pal: function () { return pal(); }, _dbz: toDbz, _iem: iemDbz, _test: function (im) { return recolor(im); }
   };
   if (!INW) { root.WXRadar = api; return; }
   // ---------- worker side ----------
@@ -950,17 +952,24 @@
   }
   // reflectivity → bytes q = (dBZ + 10)·2 (0 = none); type → 0 none, 1 rain, 2 snow, 3 hail
   function decodeRef(buf, fr) {
-    var g = grib(buf), sc = Math.pow(2, g.E), dd = Math.pow(10, g.D), bx = GBOX, lut = new Uint8Array(65536);
-    for (var X = 0; X < 65536; X++) { var v = (g.R + X * sc) / dd; lut[X] = v < 0 ? 0 : v > 117 ? 254 : Math.round((v + 10) * 2); }
-    var r0 = bx.r0, c0 = bx.c0, c1 = c0 + FB, fine = new Uint8Array(FB * FB), CW = NI >> 2, coarse = new Uint8Array(CW * (NJ >> 2));
+    var g = grib(buf), sc = Math.pow(2, g.E), dd = Math.pow(10, g.D), bx = GBOX, lut = new Uint8Array(65536), lin = new Float32Array(65536);
+    for (var X = 0; X < 65536; X++) { var v = (g.R + X * sc) / dd; lut[X] = v < 0 ? 0 : v > 117 ? 254 : Math.round((v + 10) * 2); lin[X] = Math.pow(10, Math.max(-10, Math.min(117, v)) / 10); }
+    // zoomed-out copy: each 4×4 block is the average of its reflectivity in linear units (what a 4 km pixel really
+    //   contains). Taking the block maximum instead made rain areas ~15% too big and doubled the area of 40+ dBZ
+    //   cores in a test against the full grid.
+    var r0 = bx.r0, c0 = bx.c0, c1 = c0 + FB, fine = new Uint8Array(FB * FB), CW = NI >> 2, CH = NJ >> 2, acc = new Float64Array(CW * CH);
     return pngRows(g.png, function (r, row) {
       var fo = (r - r0) * FB - c0, inF = r >= r0 && r < r0 + FB, co = (r >> 2) * CW;
       for (var c = 0; c < NI; c++) {
-        var q = lut[(row[2 * c] << 8) | row[2 * c + 1]]; if (!q) continue;
-        if (inF && c >= c0 && c < c1) fine[fo + c] = q;
-        var ci = co + (c >> 2); if (q > coarse[ci]) coarse[ci] = q;
+        var X = (row[2 * c] << 8) | row[2 * c + 1], q = lut[X];
+        acc[co + (c >> 2)] += lin[X];
+        if (q && inF && c >= c0 && c < c1) fine[fo + c] = q;
       }
-    }).then(function () { fr.fine = fine; fr.coarse = coarse; fr.fbox = bx; });
+    }).then(function () {
+      var coarse = new Uint8Array(CW * CH);
+      for (var i = 0; i < coarse.length; i++) { var db = 10 * Math.log10(acc[i] / 16); coarse[i] = db < -9.75 ? 0 : Math.min(254, Math.round((db + 10) * 2)); }
+      fr.fine = fine; fr.coarse = coarse; fr.fbox = bx;
+    });
   }
   function decodeFlag(buf, fr) {
     var g = grib(buf), bx = GBOX, r0 = bx.r0, c0 = bx.c0, c1 = c0 + FB, H = FB / 2, ft = new Uint8Array(H * H), CW = NI >> 2, ct = new Uint8Array(CW * (NJ >> 2));
@@ -1016,7 +1025,8 @@
             v = ((fr.coarse[a] * (1 - fx) + fr.coarse[a + 1] * fx) * (1 - fy) + (fr.coarse[a + CW] * (1 - fx) + fr.coarse[a + CW + 1] * fx) * fy) / 2 - 10;
             tk = fr.ct ? fr.ct[Math.round(cr) * CW + Math.round(cc)] : 1;
           }
-          if (v < MINDBZ) continue;
+          // light snow is often only 5–10 dBZ: shown from 5 where NOAA's type grid says snow, rain from 10
+          if (v < (tk === 2 ? 5 : MINDBZ)) continue;
           d32[oy * M + ox] = L[tk === 2 ? 2 : tk === 3 ? 3 : 1][Math.min(199, (v * 2) | 0)]; any = true;
         }
       }
