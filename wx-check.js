@@ -1,7 +1,7 @@
 // wx-check.js — the live data check behind check.html.
 // For a spread of places it (1) runs the site's own WXLive.load pipeline and checks the result for gaps and odd values,
 // (2) loads the site itself in a hidden frame and opens every tab, watching for script errors and empty tabs, and
-// (3) once, sweeps every Maps product for dead images. ?mock=1 swaps in the built-in test scenarios so the checker can be
+// (3) once, decodes every model map product (HRRR, NAM 3 km, GFS) and checks its values. ?mock=1 swaps in the built-in test scenarios so the checker can be
 // exercised without the network. Nothing here touches the site's saved places (frames run with ?nostore=1).
 (function () {
   "use strict";
@@ -152,17 +152,6 @@
   }
 
   // ---- 2. the site itself, in a hidden frame
-  function mapTry(d, cat, val, area, last) {
-    var chip = d.querySelector('#mcats [data-mcat="' + cat + '"]'); if (chip) chip.click();
-    var sel = d.getElementById("msel"); sel.value = val; sel.dispatchEvent(new Event("change"));
-    if (area) { var b = d.querySelector('#marea [data-marea="' + area + '"]'); if (b) b.click(); }
-    var rg = d.getElementById("mrange");
-    if (last && !d.getElementById("mctl").hidden) { rg.value = rg.max; rg.dispatchEvent(new Event("input")); }
-    var im = d.getElementById("mimg");
-    return poll(function () { return !im.classList.contains("ld") && (im.naturalWidth > 0 || !d.getElementById("mmsg").hidden); }, 10000).then(function (settled) {
-      return settled ? (im.naturalWidth > 0 && d.getElementById("mmsg").hidden ? "ok" : "MISSING") : "timeout";
-    });
-  }
   function runFrame(name, lat, lon, sweep) {
     return new Promise(function (resolve) {
       var res = { fails: [], warns: [], tabs: [] }, f = document.createElement("iframe"), d, w;
@@ -183,12 +172,12 @@
           res.tabs.push("now✓"); wide("now");
           return openTab("daily", function () { return d.querySelectorAll("#strip2 .ccard").length >= 6; }, "Daily tab")
             .then(function () { return openTab("hourly", function () { return d.querySelectorAll("#gin .pan").length >= 4; }, "Hourly tab"); })
-            .then(function () { return openTab("maps", function () { return d.getElementById("mimg").naturalWidth > 0 || !d.getElementById("mmsg").hidden; }, "Maps tab", 10000); })
+            // Maps tab: the model map (wx-models.js) draws its first frame from NOAA's model files
+            .then(function () { return MOCK ? null : openTab("maps", function () { var m = w.WXModels && w.WXModels._state(); return m && (m.ready || m.err); }, "Maps tab", 30000); })
             .then(function () {
-              var im = d.getElementById("mimg");
-              if (!(im.naturalWidth > 0)) res.warns.push("first map image didn't load");
-              // this place's local NWS sector: does the snowfall map exist for its office?
-              return mapTry(d, "precip", "ndfd-SnowAmt", "local", false).then(function (r) { res.sector = r; if (r !== "ok") res.warns.push("local snowfall map: " + r); });
+              var m = !MOCK && w.WXModels && w.WXModels._state(); if (!m) return;
+              res.model = m.model.toUpperCase() + " " + m.param + (m.ready ? " drawn" : " failed: " + (m.err || "timeout"));
+              if (!m.ready) res.warns.push("model map didn't draw (" + (m.err || "timeout") + ")");
             })
             // Radar tab: frames load, and whether the tile server allows pixel access (needed for the smooth colours)
             .then(function () {
@@ -210,28 +199,25 @@
       };
     });
   }
-  // every Maps product, first and last frame, local and national where offered
+  // every model map product, decoded off-screen at one forecast hour, with its values checked for plausibility
+  var MRANGE = { t2: [-80, 135], td2: [-90, 95], t850: [-60, 45], qpf: [0, 40], sn10: [0, 150], snv: [0, 150], frz: [0, 10], ptype: [-40, 85], mslp: [-40, 85],
+    w10: [0, 250], gust: [0, 300], cape: [0, 12000], srh: [-2000, 3000], uh: [0, 2000], h500: [0, 300], j250: [0, 350], pwat: [0, 4], tcc: [0, 100] };
   function sweepMaps(d, res) {
-    d.querySelector('#nav [data-tab="maps"]').click();
-    var cats = [].map.call(d.querySelectorAll("#mcats [data-mcat]"), function (b) { return b.dataset.mcat; }), jobs = [], results = [];
-    cats.forEach(function (c) {
-      d.querySelector('#mcats [data-mcat="' + c + '"]').click();
-      [].forEach.call(d.querySelectorAll("#msel option"), function (o) { jobs.push([c, o.value, o.textContent]); });
-    });
-    var chain = Promise.resolve();
+    var W = d.defaultView.WXModels; if (!W || MOCK) return Promise.resolve();
+    var jobs = [], results = [], chain = Promise.resolve();
+    Object.keys(W.MODELS).forEach(function (m) { W.PARAMS.forEach(function (p) { if (!p.only || p.only.indexOf(m) >= 0) jobs.push([m, p]); }); });
     jobs.forEach(function (j) {
       chain = chain.then(function () {
-        d.querySelector('#mcats [data-mcat="' + j[0] + '"]').click();
-        var sel = d.getElementById("msel"); sel.value = j[1]; sel.dispatchEvent(new Event("change"));
-        var areas = d.getElementById("marea").hidden ? [null] : ["local", "conus"], r = [];
-        return areas.reduce(function (pr, a) {
-          return pr.then(function () { return mapTry(d, j[0], j[1], a, false).then(function (x) { return mapTry(d, j[0], j[1], a, true).then(function (y) { r.push((a === "conus" ? "US " : a === "local" ? "local " : "") + (x === "ok" && y === "ok" ? "ok" : "first " + x + ", last " + y)); }); }); });
-        }, Promise.resolve()).then(function () { results.push([j[2], r]); });
+        var M = W.MODELS[j[0]], lim = MRANGE[j[1].id] || [-1e9, 1e9];
+        return Promise.race([W._probe(j[0], j[1].id), new Promise(function (_, no) { setTimeout(function () { no(new Error("timeout")); }, 45000); })]).then(function (r) {
+          var bad = r.nan > 0.5 ? "mostly missing" : r.min < lim[0] || r.max > lim[1] ? "values out of range (" + r.min.toFixed(1) + " to " + r.max.toFixed(1) + ")" : "";
+          if (bad) res.warns.push(M.name + " " + j[1].name + ": " + bad);
+          results.push([M.name + " · " + j[1].name, [(bad || "ok") + " (hour " + r.h + ", " + +r.min.toFixed(1) + " to " + +r.max.toFixed(1) + ")"]]);
+        }, function (e) { res.warns.push(M.name + " " + j[1].name + ": " + e.message); results.push([M.name + " · " + j[1].name, ["FAILED: " + e.message]]); });
       });
     });
     return chain.then(function () { res.maps = results; });
   }
-
   // ---- radar accuracy: what each station is reporting vs what the radar map shows over it
   // A representative spread of airport weather stations (latest weather.gov observation) is compared with the radar
   //   value at the station, as the map draws it, from the radar frame nearest the observation time. Agreement: precip
@@ -355,10 +341,10 @@
         }).then(function (both) {
           var dr = both[0], fr = both[1], fails = dr.fails.concat(fr ? fr.fails : []), warns = dr.warns.concat(fr ? fr.warns : []);
           var tag = fails.length ? "FAIL" : warns.length ? "WARN" : "PASS"; counts[tag.toLowerCase()]++;
-          line("[" + tag + "] " + L[0] + " · load " + secs(dr.ms) + (dr.sources ? " · " + dr.sources : "") + (fr ? " · tabs " + fr.tabs.join(" ") + (fr.radar ? " · " + fr.radar : "") : ""));
+          line("[" + tag + "] " + L[0] + " · load " + secs(dr.ms) + (dr.sources ? " · " + dr.sources : "") + (fr ? " · tabs " + fr.tabs.join(" ") + (fr.radar ? " · " + fr.radar : "") + (fr.model ? " · maps " + fr.model : "") : ""));
           if (dr.info.length) line("      " + dr.info.join(" · "));
           fails.forEach(function (s) { line("      ✗ " + s); }); warns.forEach(function (s) { line("      ! " + s); });
-          if (fr && fr.maps) { line("      MAP PRODUCTS (first/last frame):"); fr.maps.forEach(function (m) { line("        " + m[0] + ": " + m[1].join(" | ")); }); }
+          if (fr && fr.maps) { line("      MODEL MAPS (one hour each, value range):"); fr.maps.forEach(function (m) { line("        " + m[0] + ": " + m[1].join(" | ")); }); }
         });
       });
     });

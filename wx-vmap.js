@@ -6,7 +6,7 @@
 (function (root) {
   "use strict";
   var TILEJSON = "https://tiles.openfreemap.org/planet";
-  var tmpl = null, maxz = 14, state = "idle", onReady = null, onTile = null;
+  var tmpl = null, maxz = 14, state = "idle", onReady = [], onTile = [];
   var tiles = new Map(), tick = 0;
   // tiles are fetched and decoded by a background worker (this same file) so decoding never stalls the map
   var INW = typeof document === "undefined", SELF = !INW && document.currentScript ? document.currentScript.src : null;
@@ -87,13 +87,16 @@
 
   // ---------- tiles ----------
   function init(cb, tileCb) {
-    onReady = cb; onTile = tileCb;
-    if (state !== "idle") { if (state === "ok" && cb) cb(true); return; }
+    // shared by the radar and the model maps: each registers its own callbacks
+    if (tileCb && onTile.indexOf(tileCb) < 0) onTile.push(tileCb);
+    if (state === "ok" || state === "fail") { if (cb) cb(state === "ok"); return; }
+    if (cb) onReady.push(cb);
+    if (state !== "idle") return;
     state = "loading";
     fetch(TILEJSON).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (j) {
       tmpl = j && j.tiles && j.tiles[0]; maxz = Math.min(14, j.maxzoom || 14); if (!tmpl) throw 0;
-      state = "ok"; if (onReady) onReady(true);
-    }).catch(function () { state = "fail"; if (onReady) onReady(false); });
+      state = "ok"; onReady.forEach(function (f) { f(true); });
+    }).catch(function () { state = "fail"; onReady.forEach(function (f) { f(false); }); });
   }
   var WK = null, wid = 0, wjobs = {};
   function worker() {
@@ -115,7 +118,7 @@
     if (e) { e.t = ++tick; return e; }
     if (!request || state !== "ok") return null;
     e = { t: ++tick }; tiles.set(k, e);
-    fetchTile(tmpl.replace("{z}", z).replace("{x}", x).replace("{y}", y), function (L) { if (L) { e.L = L; e.ok = true; if (onTile) onTile(); } else e.err = true; });
+    fetchTile(tmpl.replace("{z}", z).replace("{x}", x).replace("{y}", y), function (L) { if (L) { e.L = L; e.ok = true; onTile.forEach(function (f) { f(); }); } else e.err = true; });
     if (tiles.size > 400) { var all = Array.from(tiles.entries()).sort(function (a, b) { return a[1].t - b[1].t; }); for (var i = 0; i < 120; i++) tiles.delete(all[i][0]); }
     return e;
   }

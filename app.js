@@ -1121,150 +1121,17 @@
     clearTimeout(rw); rw = setTimeout(function () { if (doc && tab === "hourly") renderGraph(); }, 200);
   });
 
-  // ---------- forecast maps ----------
-  // Public-domain NWS/NOAA map images. "Local" maps are the NWS forecast office's own sector (from the location's
-  //   office code); the WPC/CPC maps are national. Each product is a list of frames stepped like a model viewer.
-  var WPC = "https://www.wpc.ncep.noaa.gov/", CPC = "https://www.cpc.ncep.noaa.gov/products/predictions/";
-  // Frame labels are real days/times in the location's time zone, worked out when shown (products
-  //   roll forward on their own schedule). The exact valid time is still printed on each map.
-  var D24 = 24 * H;
-  function wd(ms) { return fmt(ms, { weekday: "short" }); }
-  function dayKey(ms) { return fmt(ms, { year: "numeric", month: "numeric", day: "numeric" }); }
-  function rel(ms) { var k = dayKey(ms); return k === dayKey(Date.now()) ? "Today" : k === dayKey(Date.now() + D24) ? "Tomorrow" : wd(ms); }
-  function span(a, b) { return wd(a) + " " + hr(a) + "–" + (dayKey(a) === dayKey(b) ? "" : wd(b) + " ") + hr(b); }
-  function md(ms) { return fmt(ms, { month: "short", day: "numeric" }); }
-  function mdRange(a, b) { return md(a) + "–" + (fmt(a, { month: "short" }) === fmt(b, { month: "short" }) ? fmt(b, { day: "numeric" }) : md(b)); }
-  // WPC day 1 starts at its latest 00Z/12Z cycle (allowing ~4 h for it to be issued); day N follows in 24-hour steps
-  function wpcDay(d) { var c = Math.floor((Date.now() - 4 * H) / (12 * H)) * 12 * H + (d - 1) * D24; return span(c, c + D24); }
-  // NDFD 6-hour periods end at 00/06/12/18Z; frame 1 is the period in progress
-  function six(i) { var e = Math.ceil((Date.now() + 1) / (6 * H)) * 6 * H + (i - 1) * 6 * H; return span(e - 6 * H, e); }
-  // CPC outlooks are issued each afternoon Eastern time and count days from the issue date
-  function cpc(a, b) { var et = +new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "numeric", hourCycle: "h23" }).format(new Date()); var t = Date.now() - (et < 15 ? D24 : 0); return mdRange(t + a * D24, t + b * D24); }
-  function highs(i) { return rel(Date.now() + (hourNum(Date.now()) >= 18 ? i : i - 1) * D24); }
-  function lows(i) { var early = hourNum(Date.now()) < 7; if (early && i === 1) return "This morning"; var t = Date.now() + (early ? i - 2 : i - 1) * D24, r = rel(t); return r === "Today" ? "Tonight" : (r === "Tomorrow" ? wd(t) : r) + " night"; }
-  // NDFD temperature images step every 3 hours for the first days (approximate, so marked ≈)
-  function three(i) { var t = Math.ceil(Date.now() / (3 * H)) * 3 * H + (i - 1) * 3 * H; return "≈ " + wd(t) + " " + hr(t); }
-  function lab(fr) { return typeof fr.l === "function" ? fr.l() : fr.l; }
-  function ndfd(el, name, note, n, lb, src) {
-    var f = []; for (var i = 1; i <= (n || 12); i++) f.push({ l: (lb || six).bind(null, i), u: el + i });
-    return { id: "ndfd-" + el, name: name, area: true, el: el, frames: f, src: src || "NWS National Digital Forecast Database (official forecast, 6-hour amounts)", note: note,
-      link: function (a) { return "https://graphical.weather.gov/sectors/" + a + ".php?element=" + el; } };
-  }
-  function days(name, pat, n0, n1, src, link, pre) {
-    var f = []; for (var d = n0; d <= n1; d++) f.push({ l: wpcDay.bind(null, d), u: pat.replace("{d}", d) });
-    return { id: pat, name: name, frames: f, src: src, link: link };
-  }
-  function grp(g, p) { p.g = g; return p; }
-  var MCATS = [
-    { id: "precip", name: "Precipitation", prods: [
-      grp("Totals", { id: "wpc-qpf", name: "Precip totals, 1–7 days", src: "NWS Weather Prediction Center (liquid equivalent, rain + melted snow)", link: WPC + "qpf/qpf2.shtml",
-        frames: [{ l: wpcDay.bind(null, 1), u: WPC + "qpf/fill_94qwbg.gif" }, { l: wpcDay.bind(null, 2), u: WPC + "qpf/fill_98qwbg.gif" }, { l: wpcDay.bind(null, 3), u: WPC + "qpf/fill_99qwbg.gif" },
-          { l: "Next 2 days", u: WPC + "qpf/d12_fill.gif" }, { l: "Next 5 days", u: WPC + "qpf/p120i.gif" }, { l: "Next 7 days", u: WPC + "qpf/p168i.gif" }] }),
-      grp("Totals", ndfd("QPF", "6-hr precip forecast", "Each frame is 6 hours of liquid precipitation; the valid time is printed on the map.")),
-      grp("Snow", ndfd("SnowAmt", "6-hr snowfall forecast", "Each frame is 6 hours of snow; the valid time is printed on the map.")),
-      grp("Snow", days("Chance of 4\"+ snow", WPC + "wwd/day{d}_psnow_gt_04_conus.gif", 1, 3, "NWS Weather Prediction Center (24-hour periods)", WPC + "wwd/winter_wx.shtml")),
-      grp("Snow", days("Chance of 8\"+ snow", WPC + "wwd/day{d}_psnow_gt_08_conus.gif", 1, 3, "NWS Weather Prediction Center (24-hour periods)", WPC + "wwd/winter_wx.shtml")),
-      grp("Snow", days("Chance of 12\"+ snow", WPC + "wwd/day{d}_psnow_gt_12_conus.gif", 1, 3, "NWS Weather Prediction Center (24-hour periods)", WPC + "wwd/winter_wx.shtml")),
-      grp("Snow", days("Days 4–7 snow outlook", WPC + "wwd/pwpf_d47/gif/prbww_sn25_DAY{d}.gif", 4, 7, "NWS Weather Prediction Center: chance of 0.25\"+ liquid as snow/sleet", WPC + "wwd/pwpf_d47/pwpf_medr.php")),
-      grp("Ice", ndfd("IceAccum", "6-hr ice forecast", "Each frame is 6 hours of freezing rain ice; the valid time is printed on the map.")),
-      grp("Ice", days("Chance of 0.25\"+ ice", WPC + "wwd/day{d}_pice_gt_25_conus.gif", 1, 3, "NWS Weather Prediction Center (24-hour periods)", WPC + "wwd/winter_wx.shtml")),
-      grp("Snow & ice", days("Snow & ice odds, days 1–3", WPC + "wwd/day{d}_composite_conus.gif", 1, 3, "NWS Weather Prediction Center: 4/8/12\" snow and 0.25\" ice chances", WPC + "wwd/winter_wx.shtml"))
-    ] },
-    { id: "temp", name: "Temperature", prods: [
-      ndfd("MaxT", "Daytime highs", "The date is printed on the map.", 7, highs, "NWS National Digital Forecast Database (official forecast)"),
-      ndfd("MinT", "Overnight lows", "The date is printed on the map.", 7, lows, "NWS National Digital Forecast Database (official forecast)"),
-      ndfd("T", "Temperature by time", "Frames step forward in time; the valid time is printed on the map.", 24, three, "NWS National Digital Forecast Database (official forecast)"),
-      ndfd("ApparentT", "Feels-like temperature", "Wind chill or heat index. Frames step forward in time; the valid time is printed on the map.", 24, three, "NWS National Digital Forecast Database (official forecast)"),
-      { id: "cpc-t", name: "6–14 day outlook", src: "NOAA Climate Prediction Center: chance of above/below normal", link: "https://www.cpc.ncep.noaa.gov/",
-        frames: [{ l: cpc.bind(null, 6, 10), u: CPC + "610day/610temp.new.gif" }, { l: cpc.bind(null, 8, 14), u: CPC + "814day/814temp.new.gif" }] }
-    ] },
-    { id: "outlook", name: "Outlooks", prods: [
-      { id: "cpc-p", name: "6–14 day precip outlook", src: "NOAA Climate Prediction Center", link: "https://www.cpc.ncep.noaa.gov/",
-        frames: [{ l: cpc.bind(null, 6, 10), u: CPC + "610day/610prcp.new.gif" }, { l: cpc.bind(null, 8, 14), u: CPC + "814day/814prcp.new.gif" }] },
-      { id: "cpc-snow", name: "Week 2 heavy snow risk", src: "NOAA Climate Prediction Center", link: "https://www.cpc.ncep.noaa.gov/products/predictions/threats/threats.php",
-        frames: [{ l: cpc.bind(null, 8, 14), u: CPC + "threats/snow_probhazards_d8_14_contours.png" }] }
-    ] }
-  ];
-  var winterNow = [10, 11, 0, 1, 2, 3].indexOf(new Date().getMonth()) >= 0;
-  var M = store("wx-map") || { cat: "precip", id: winterNow ? "ndfd-SnowAmt" : "wpc-qpf", area: "local" };
-  if (M.cat === "winter") M.cat = "precip";
-  M.f = 0; var mTimer = null, mPre = {};
-  function mCat() { return MCATS.filter(function (c) { return c.id === M.cat; })[0] || MCATS[0]; }
-  function mProd() { var c = mCat(); return c.prods.filter(function (p) { return p.id === M.id; })[0] || c.prods[0]; }
-  function mOffice() { var o = doc && doc.loc && doc.loc.office; return o ? String(o).toLowerCase() : null; }
-  function mSector(p) { return p.area && M.area === "local" && mOffice() ? mOffice() : "conus"; }
-  function mUrl(p, fr) {
-    var bust = "?t=" + Math.floor(Date.now() / 9e5); // new images every 15 min at most
-    if (p.el) { var s = mSector(p); return "https://graphical.weather.gov/images/" + s + "/" + fr.u + "_" + s + ".png" + bust; }
-    return fr.u + bust;
-  }
-  var PLAY = '<svg class="fill" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z"/></svg>', PAUSE = '<svg class="fill" viewBox="0 0 24 24"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg>';
-  function mStop() { clearInterval(mTimer); mTimer = null; if ($("mplay")) { $("mplay").innerHTML = PLAY; $("mplay").setAttribute("aria-label", "Play"); } }
-  function mSave() { store("wx-map", { cat: M.cat, id: M.id, area: M.area }); }
+  // ---------- model maps (wx-models.js) ----------
+  // Pivotal Weather–style maps drawn in the browser from NOAA model output (HRRR, NAM 3 km, GFS), centred on the
+  //   current location, times in its time zone. The NWS storm totals card stays below them.
   function renderMaps() {
-    if (!$("maps")) return;
-    if (!mTimer) $("mplay").innerHTML = PLAY;
     $("mtotloc").textContent = (doc && doc.loc && doc.loc.label) || "";
-    var c = mCat(), p = mProd(); M.id = p.id;
-    if (M.f >= p.frames.length) M.f = 0;
-    $("mcats").innerHTML = MCATS.map(function (x) { return '<button type="button" class="chip' + (x.id === c.id ? " on" : "") + '" data-mcat="' + x.id + '">' + x.name + "</button>"; }).join("");
-    // one dropdown of maps, grouped like Pivotal Weather's parameter menu
-    var gs = []; c.prods.forEach(function (x) { var k = x.g || ""; if (!gs.length || gs[gs.length - 1].k !== k) gs.push({ k: k, l: [] }); gs[gs.length - 1].l.push(x); });
-    var opt = function (x) { return '<option value="' + esc(x.id) + '"' + (x.id === p.id ? " selected" : "") + ">" + esc(x.name) + "</option>"; };
-    $("msel").innerHTML = gs.map(function (gr) { return gr.k ? '<optgroup label="' + esc(gr.k) + '">' + gr.l.map(opt).join("") + "</optgroup>" : gr.l.map(opt).join(""); }).join("");
-    var off = mOffice();
-    $("marea").hidden = !p.area || !off;
-    $("marea").innerHTML = p.area && off ? '<button type="button" data-marea="local" class="chip' + (M.area === "local" ? " on" : "") + '" title="NWS ' + off.toUpperCase() + ' forecast office area">Local</button>' +
-      '<button type="button" data-marea="conus" class="chip' + (M.area !== "local" ? " on" : "") + '">US</button>' : "";
-    $("mctl").hidden = p.frames.length < 2;
-    $("mrange").max = p.frames.length - 1;
-    var lk = typeof p.link === "function" ? p.link(mSector(p)) : p.link;
-    var who = p.el ? "NWS official forecast" : /wpc\./.test(lk) ? "NWS Weather Prediction Center" : "NOAA Climate Prediction Center";
-    $("msrc").title = p.src + (p.note ? ". " + p.note : "");
-    $("msrc").innerHTML = esc(who) + ' · <a href="' + esc(lk) + '" target="_blank" rel="noopener">Source</a>';
-    mShow();
+    if (window.WXModels) WXModels.show($("mmap"), curLoc(), { fmt: fmt });
   }
-  function mShow() {
-    var p = mProd(), fr = p.frames[M.f], img = $("mimg"), url = mUrl(p, fr);
-    $("mrange").value = M.f;
-    $("mfr").textContent = lab(fr);
-    // warm the next and previous frames (all of them while playing) so stepping doesn't flash, without downloading
-    //   every frame of every product up front
-    (mTimer ? p.frames : [p.frames[M.f + 1], p.frames[M.f - 1]]).forEach(function (f2) { if (f2 && !mPre[mUrl(p, f2)]) { mPre[mUrl(p, f2)] = 1; new Image().src = mUrl(p, f2); } });
-    img.alt = p.name + ", " + lab(fr);
-    if (img.getAttribute("src") === url) return;
-    $("mmsg").hidden = true; img.classList.add("ld");
-    img.onload = function () { img.classList.remove("ld"); };
-    img.onerror = function () { img.classList.remove("ld"); $("mmsg").hidden = false; $("mmsg").textContent = "This map isn't available right now. Try another time step or open the source."; };
-    img.src = url;
-  }
-  function mStep(d) { var n = mProd().frames.length; M.f = (M.f + d + n) % n; mShow(); }
-  $("maps").addEventListener("click", function (e) {
-    var b;
-    if ((b = e.target.closest("[data-mcat]"))) { mStop(); M.cat = b.dataset.mcat; M.id = null; M.f = 0; renderMaps(); mSave(); return; }
-    if ((b = e.target.closest("[data-marea]"))) { M.area = b.dataset.marea; mSave(); renderMaps(); return; }
-    if (e.target.closest("#mprev")) { mStop(); mStep(-1); return; }
-    if (e.target.closest("#mnext")) { mStop(); mStep(1); return; }
-    if (e.target.closest("#mplay")) {
-      if (mTimer) { mStop(); mShow(); return; }
-      $("mplay").innerHTML = PAUSE; $("mplay").setAttribute("aria-label", "Pause");
-      mTimer = setInterval(function () { mStep(1); }, 900); mShow(); return;
-    }
-    if (e.target.closest("#mimgbox") && $("mmsg").hidden) { $("mfimg").src = $("mimg").src; $("mfimg").alt = $("mimg").alt; $("mfsc").classList.remove("z"); $("mfull").hidden = false; }
-  });
-  $("msel").addEventListener("change", function () { mStop(); M.id = this.value; M.f = 0; mSave(); renderMaps(); });
-  $("mrange").addEventListener("input", function () { mStop(); M.f = +this.value; mShow(); });
-  // full-screen viewer: tap zooms to 2.5x centred on where you tapped (local maps are centred on the forecast office)
-  $("mfimg").addEventListener("click", function (e) {
-    var sc = $("mfsc"), im = this, r = im.getBoundingClientRect(), fx = (e.clientX - r.left) / r.width, fy = (e.clientY - r.top) / r.height;
-    sc.classList.toggle("z");
-    if (sc.classList.contains("z")) { sc.scrollLeft = fx * im.clientWidth - sc.clientWidth / 2; sc.scrollTop = fy * im.clientHeight - sc.clientHeight / 2; }
-  });
-  $("mfx").addEventListener("click", function () { $("mfull").hidden = true; });
+  function mStop() { if (window.WXModels) WXModels.hide(); }
   document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape" && !$("mfull").hidden) { $("mfull").hidden = true; return; }
-    if (tab !== "maps" || !$("locsheet").hidden || /INPUT|TEXTAREA/.test((e.target.tagName || "")) && e.target.type !== "range") return;
-    if (e.key === "ArrowLeft") { mStop(); mStep(-1); } else if (e.key === "ArrowRight") { mStop(); mStep(1); }
+    if (tab !== "maps" || !$("locsheet").hidden || /INPUT|TEXTAREA|SELECT/.test((e.target.tagName || "")) && e.target.type !== "range") return;
+    if (e.key === "ArrowLeft") $("mprev").click(); else if (e.key === "ArrowRight") $("mnext").click();
   });
 
   // ---------- location ----------
