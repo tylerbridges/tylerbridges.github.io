@@ -48,10 +48,13 @@
   var NWS = [[5, 4, 233, 231], [10, 1, 159, 244], [15, 3, 0, 244], [20, 2, 253, 2], [25, 1, 197, 1], [30, 0, 142, 0], [35, 253, 248, 2],
     [40, 229, 188, 0], [45, 253, 149, 0], [50, 253, 0, 0], [55, 212, 0, 0], [60, 188, 0, 0], [65, 248, 0, 253], [70, 152, 84, 198], [75, 253, 253, 253]];
   // display palettes by precipitation type: dBZ, r, g, b, alpha (the lightest returns fade in)
-  var RAIN = [[10, 120, 214, 120, 0], [15, 120, 214, 120, 0.5], [20, 76, 190, 88, 0.76], [28, 34, 156, 62, 0.89], [35, 18, 118, 48, 0.94],
-    [40, 246, 214, 52, 0.96], [45, 255, 156, 32, 0.97], [50, 236, 58, 40, 0.98], [56, 178, 18, 40, 1], [62, 222, 44, 196, 1], [70, 255, 222, 255, 1]];
+  //   rain follows the NWS/RadarScope breakpoints: greens to 34, yellow from 35, orange from 45, red from 50,
+  //   dark red from 55, magenta from 60 (moderate-to-heavy bands used to stay dark green until 40)
+  var RAIN = [[10, 120, 214, 120, 0], [15, 120, 214, 120, 0.5], [20, 76, 190, 88, 0.76], [25, 40, 165, 64, 0.86], [30, 22, 132, 52, 0.92],
+    [34, 18, 118, 48, 0.93], [35, 246, 214, 52, 0.95], [40, 255, 176, 40, 0.97], [45, 255, 128, 32, 0.98], [50, 236, 58, 40, 1],
+    [55, 178, 18, 40, 1], [60, 222, 44, 196, 1], [70, 255, 222, 255, 1]];
   var SNOW = [[5, 236, 246, 255, 0.32], [10, 236, 246, 255, 0.58], [18, 196, 226, 255, 0.8], [26, 132, 188, 250, 0.91], [33, 78, 138, 238, 0.96], [42, 44, 88, 206, 1]];
-  var HAIL = [[30, 18, 118, 48, 0.94], [45, 255, 156, 32, 0.97], [52, 236, 58, 40, 1], [58, 222, 44, 196, 1], [70, 255, 222, 255, 1]];
+  var HAIL = [[30, 22, 132, 52, 0.94], [34, 18, 118, 48, 0.95], [35, 246, 214, 52, 0.97], [45, 255, 128, 32, 0.98], [50, 236, 58, 40, 1], [55, 178, 18, 40, 1], [58, 222, 44, 196, 1], [70, 255, 222, 255, 1]];
   var MINDBZ = 10; // below this is mostly clutter and drizzle-level noise: not drawn in the smooth style
   function pack(c) { return [Math.round(c[0]), Math.round(c[1]), Math.round(c[2]), Math.round(c[3] * 255)]; }
   function ramp(P, v) {
@@ -537,7 +540,7 @@
     return pick.length >= 2 ? pick : null;
   }
   // First choice: MRMS straight from NOAA's public archive on AWS (noaa-mrms-pds, open to browsers, ~2 min behind
-  //   real time): MergedBaseReflectivityQC (quality-controlled, so birds/insects/clutter removed) plus PrecipFlag
+  //   real time): SeamlessHSR (quality-controlled lowest clean scan: birds/insects/clutter removed) plus PrecipFlag
   //   for rain/snow/hail. The GRIB2 files are decoded in the background worker (PNG-packed grids) and tiles are drawn
   //   from the exact values — no colour decoding, no map server in between.
   var S3 = "https://noaa-mrms-pds.s3.amazonaws.com/";
@@ -569,7 +572,10 @@
     if (!workers()) { s3Why = "this browser can't run the background decoder"; return Promise.reject(); }
     if (typeof DecompressionStream === "undefined") { s3Why = "this browser can't unzip the files"; return Promise.reject(); }
     var since = Date.now() - 75 * 60000;
-    return Promise.all([s3List(dom.k + "/MergedBaseReflectivityQC_00.50/", since), s3List(dom.k + "/PrecipFlag_00.00/", since)]).catch(function (e) { s3Why = "couldn't list NOAA's files"; throw e; }).then(function (L) {
+    // SeamlessHSR: the lowest clean scan at each spot (closest to a single radar's base scan). Against Level II it
+    //   kept heavy cores the merged base product softened (40+ dBZ cores shown as 40+: 66% vs 0% south of Rochester,
+    //   93% vs 82% near Oklahoma City) with the same bird/insect filtering.
+    return Promise.all([s3List(dom.k + "/SeamlessHSR_00.00/", since), s3List(dom.k + "/PrecipFlag_00.00/", since)]).catch(function (e) { s3Why = "couldn't list NOAA's files"; throw e; }).then(function (L) {
       var R = L[0], F = L[1]; if (R.length < 5) { s3Why = "too few recent scans in NOAA's archive"; throw 0; }
       var last = R[R.length - 1].t, step = 6 * 60000, base = Math.floor(last / step) * step, pick = [];
       // the newest scan, then scans nearest to fixed 6-minute marks (stable across refreshes, so only new ones load)
