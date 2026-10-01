@@ -48,7 +48,15 @@
         if (id === 1) { cur = [x, y]; out.push(cur); } else if (cur) cur.push(x, y);
       }
     }
-    return out.map(function (r) { return new Int16Array(r); }); // compact, and cheap to hand over from the worker
+    // drop points closer than 3/4096 of the tile to the last kept one (well under a screen pixel at any zoom this
+    //   tile is drawn at) — detailed borders and coastlines lose most of their points, with no visible change
+    return out.map(function (r) {
+      if (r.length <= 4) return new Int16Array(r);
+      var o = [r[0], r[1]], lx = r[0], ly = r[1];
+      for (var k = 2; k < r.length - 2; k += 2) { var px = r[k], py = r[k + 1]; if (Math.abs(px - lx) >= 3 || Math.abs(py - ly) >= 3) { o.push(px, py); lx = px; ly = py; } }
+      o.push(r[r.length - 2], r[r.length - 1]);
+      return new Int16Array(o); // compact, and cheap to hand over from the worker
+    });
   }
   var WANT = { water: 1, waterway: 1, boundary: 1, transportation: 1, place: 1, water_name: 0 };
   function decode(buf) {
@@ -113,7 +121,9 @@
   }
   // Tiles at the view's own zoom (not one lower): OpenMapTiles only includes county lines from tile zoom 7, trunk
   //   roads from 7, primary from 8 and secondary from 9, so a coarser tile would drop them a whole zoom level early.
-  function tileZoom(z) { return Math.max(0, Math.min(maxz, Math.round(z))); }
+  //   Past zoom 7 tiles drop back one level (drawn at 512 px, about a quarter as many to draw); county lines and
+  //   trunk roads are already in those, primary roads then show from zoom 9 and secondary from 10.
+  function tileZoom(z) { var r = Math.round(z); return Math.max(0, Math.min(maxz, Math.max(r - 1, Math.min(7, r)))); }
 
   // ---------- styling ----------
   var PAL = {
