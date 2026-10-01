@@ -34,6 +34,9 @@
     } else if (t === 0) {
       g.nx = u32(s, 30); g.ny = u32(s, 34); g.la1 = s32(s, 46) / 1e6; g.lo1 = s32(s, 50) / 1e6; g.rf = s[54];
       g.dx = u32(s, 63) / 1e6; g.dy = u32(s, 67) / 1e6; g.scan = s[71];
+    } else if (t === 32769) { // NCEP rotated lat/lon (RAP): corners in true lat/lon, rotated so the centre is (0, 0)
+      g.nx = u32(s, 30); g.ny = u32(s, 34); g.la1 = s32(s, 46) / 1e6; g.lo1 = s32(s, 50) / 1e6; g.rf = s[54];
+      g.lac = s32(s, 55) / 1e6; g.loc = s32(s, 59) / 1e6; g.scan = s[71]; g.la2 = s32(s, 72) / 1e6; g.lo2 = s32(s, 76) / 1e6;
     } else throw new Error("unsupported grid " + t);
     return g;
   }
@@ -108,6 +111,7 @@
       inv: function (i, j, o) { o[0] = g.la1 + sj * j * g.dy; o[1] = g.lo1 + i * g.dx; if (o[1] > 180) o[1] -= 360; },
       rot: null
     };
+    if (g.t === 32769) return rotProj(g, sj);
     var p1 = g.l1 * D2R, p2 = g.l2 * D2R, Q = Math.PI / 4;
     var n = Math.abs(p1 - p2) < 1e-9 ? Math.sin(p1) : Math.log(Math.cos(p1) / Math.cos(p2)) / Math.log(Math.tan(Q + p2 / 2) / Math.tan(Q + p1 / 2));
     var RF = g.R * Math.cos(p1) * Math.pow(Math.tan(Q + p1 / 2), n) / n, l0 = g.lov * D2R;
@@ -119,6 +123,34 @@
       // grid-relative winds (resolution flag bit 4) turn by n·(λ − λ0) to earth-relative
       rot: g.rf & 8 ? function (lon) { var dl = lon * D2R - l0; dl -= 2 * Math.PI * Math.round(dl / (2 * Math.PI)); return n * dl; } : null
     };
+  }
+
+  // rotated lat/lon: rotate so the grid centre sits at (0°, 0°); spacing comes from the two corners (the file's Di/Dj
+  //   use NCEP's own scaling). Checked: both corners land symmetric (±50.743°, ±57.992°) at 0.121833° steps.
+  function rotProj(g, sj) {
+    var s0 = Math.sin(g.lac * D2R), c0 = Math.cos(g.lac * D2R), l0 = g.loc;
+    function fw(lat, lon, o) {
+      var cl = Math.cos(lat * D2R), dl = (lon - l0) * D2R, x = cl * Math.cos(dl), y = cl * Math.sin(dl), z = Math.sin(lat * D2R);
+      o[0] = Math.atan2(y, x * c0 + z * s0) / D2R; o[1] = Math.asin(Math.max(-1, Math.min(1, -x * s0 + z * c0))) / D2R; // rotated lon, lat
+    }
+    var A = [0, 0], B = [0, 0]; fw(g.la1, g.lo1, A); fw(g.la2, g.lo2, B);
+    var di = (B[0] - A[0]) / (g.nx - 1), dj = (B[1] - A[1]) / (g.ny - 1) * sj, q = [0, 0];
+    var P2 = {
+      fwd: function (lat, lon, o) { fw(lat, lon, q); o[0] = (q[0] - A[0]) / di; o[1] = (q[1] - A[1]) / dj; },
+      inv: function (i, j, o) {
+        var rl = (A[0] + i * di) * D2R, rp = (A[1] + j * dj) * D2R, xr = Math.cos(rp) * Math.cos(rl), y = Math.cos(rp) * Math.sin(rl), zr = Math.sin(rp);
+        var x = xr * c0 - zr * s0, z = xr * s0 + zr * c0;
+        o[0] = Math.asin(Math.max(-1, Math.min(1, z))) / D2R; o[1] = ((l0 + Math.atan2(y, x) / D2R) + 540) % 360 - 180;
+      },
+      rot: null
+    };
+    // grid-relative winds: the angle of the grid's x axis from east, found numerically
+    if (g.rf & 8) P2.rot = function (lon, lat) {
+      var a = [0, 0], b = [0, 0]; P2.fwd(lat, lon, a); P2.inv(a[0] + 0.5, a[1], b);
+      var de = (((b[1] - lon) + 540) % 360 - 180) * Math.cos(lat * D2R), dn = b[0] - lat;
+      return -Math.atan2(dn, de);
+    };
+    return P2;
   }
 
   // ---------- models ----------
@@ -136,6 +168,17 @@
       max: function () { return 60; },
       prefix: function (run) { return "nam." + ymd(run) + "/nam.t" + hh(run) + "z.conusnest.hiresf"; },
       file: function (run, h) { return this.prefix(run) + p2(h) + ".tm00.grib2"; }, hourOf: /hiresf(\d+)\.tm00\.grib2\.idx$/ },
+    nam12: { name: "NAM 12 km", full: "NAM 12 km", base: "https://noaa-nam-pds.s3.amazonaws.com/", cycle: 6, step: 1, conus: true,
+      max: function () { return 84; },
+      prefix: function (run) { return "nam." + ymd(run) + "/nam.t" + hh(run) + "z.awphys"; },
+      file: function (run, h) { return this.prefix(run) + p2(h) + ".tm00.grib2"; }, hourOf: /awphys(\d+)\.tm00\.grib2\.idx$/ },
+    // RAP: NOAA's AWS copy sends no CORS header, so it's read from Google Cloud's public mirror through the JSON API
+    //   (CORS-open, byte ranges); its 13 km Lambert files are JPEG2000-packed, so the native rotated grid is used
+    rap: { name: "RAP", full: "RAP (13 km)", base: "https://storage.googleapis.com/storage/v1/b/rapid-refresh/o", gcs: true, cycle: 1, step: 1, conus: false,
+      covers: function (l) { return l.lat > 15 && l.lon < -50; },
+      max: function (run) { return [3, 9, 15, 21].indexOf(new Date(run).getUTCHours()) >= 0 ? 51 : 21; },
+      prefix: function (run) { return "rap." + ymd(run) + "/rap.t" + hh(run) + "z.wrfprsf"; },
+      file: function (run, h) { return this.prefix(run) + p2(h) + ".grib2"; }, hourOf: /wrfprsf(\d+)\.grib2\.idx$/ },
     gfs: { name: "GFS", full: "GFS (0.25°)", base: "https://noaa-gfs-bdp-pds.s3.amazonaws.com/", cycle: 6, step: 6, conus: false,
       max: function () { return 384; },
       prefix: function (run) { return "gfs." + ymd(run) + "/" + hh(run) + "/atmos/gfs.t" + hh(run) + "z.pgrb2.0p25.f"; },
@@ -148,6 +191,9 @@
       prefix: function (run) { return "blend." + ymd(run) + "/" + hh(run) + "/core/blend.t" + hh(run) + "z.core.f"; },
       file: function (run, h) { return this.prefix(run) + p3(h) + ".co.grib2"; }, hourOf: /core\.f(\d+)\.co\.grib2\.idx$/ }
   };
+
+  // S3 objects by path; Google Cloud through its JSON API (one URL per object, ?alt=media for the bytes)
+  function fileUrl(M, path) { return M.gcs ? M.base + "/" + encodeURIComponent(path) + "?alt=media" : M.base + path; }
 
   // ---------- colour scales ----------
   function rgb(h, a) { return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16), a == null ? 1 : a]; }
@@ -185,8 +231,9 @@
   var EA = ["entire atmosphere", "entire atmosphere (considered as a single layer)"];
   var K2F = function (k) { return (k - 273.15) * 1.8 + 32; }, MS2MPH = 2.23694, MS2KT = 1.94384, MM2IN = 1 / 25.4;
   // accumulations from the start of the run: model-specific buckets, summed through earlier hours where needed
-  // NBM's 6-h precip buckets only end at 00/06/12/18Z (r0 = the run's UTC hour)
-  function bucket(model, h, id, r0) { return model === "nam" ? h - (h % 3 || 3) : model === "gfs" ? (id === "qpf" ? 0 : Math.max(0, h - 6)) : model === "nbm" ? (id === "qpf" && h >= 6 && (r0 + h) % 6 === 0 ? h - 6 : h - 1) : 0; }
+  // NBM's 6-h precip buckets only end at 00/06/12/18Z; NAM 12 km uses 0–12 h then 12-h buckets on 00/12Z runs and
+  //   3-h buckets on 06/18Z runs (r0 = the run's UTC hour)
+  function bucket(model, h, id, r0) { return model === "nam12" ? (r0 % 12 ? h - (h % 3 || 3) : h <= 12 ? 0 : h % 12 ? h - h % 12 : h - 12) : model === "nam" ? h - (h % 3 || 3) : model === "gfs" ? (id === "qpf" ? 0 : Math.max(0, h - 6)) : model === "nbm" ? (id === "qpf" && h >= 6 && (r0 + h) % 6 === 0 ? h - 6 : h - 1) : 0; }
   // the hours a product exists at for a model (default: every hour the run has)
   function okHour(p, model, run, h) {
     var f = p.hrs && p.hrs[model]; if (f) return f(h, new Date(run).getUTCHours());
@@ -216,13 +263,13 @@
       } },
     { id: "nsn", g: "Winter", name: "Total snowfall (NBM snow ratios)", sc: "snow", accum: true, nbm: true, only: [], hrs: { nbm: function (h) { return h <= 48; } },
       calc: function (F) { return F.total("nsn", function (a, b) { return F.get(C("ASNOW", "surface", [a, b, "acc"])).then(function (x) { return scale(x, 39.3701); }); }).then(function (v) { return { v: v }; }); } },
-    { id: "snv", g: "Winter", name: "Total snowfall (variable density)", sc: "snow", accum: true, only: ["hrrr"],
+    { id: "snv", g: "Winter", name: "Total snowfall (variable density)", sc: "snow", accum: true, only: ["hrrr", "rap"],
       calc: function (F) { return F.total("snv", function (a, b) { return F.get(C("ASNOW", "surface", [a, b, "acc"])).then(function (x) { return scale(x, 39.3701); }); }).then(function (v) { return { v: v }; }); } },
     { id: "frz", g: "Winter", name: "Freezing rain accumulation", sc: "ice", accum: true, nbm: true, hrs: { nbm: function (h) { return h <= 48; } },
       calc: function (F) {
         return F.total("frz", function (a, b) {
           if (F.model === "nbm") return F.get(C("FICEAC", "surface", [a, b, "acc"])).then(function (x) { return scale(x, MM2IN); }); // flat ice accumulation, kg/m² = mm
-          if (F.model === "hrrr") return F.get(C("FRZR", "surface", [a, b, "acc"])).then(function (x) { return scale(x, MM2IN); });
+          if (F.model === "hrrr" || F.model === "rap") return F.get(C("FRZR", "surface", [a, b, "acc"])).then(function (x) { return scale(x, MM2IN); });
           return Promise.all([F.get(C("APCP", "surface", [a, b, "acc"])), F.get(C("CFRZR", "surface", F.model === "gfs" ? [a, b, "ave"] : "i"))]).then(function (r) { return mul(r[0], r[1], MM2IN); });
         }).then(function (v) { return { v: v }; });
       } },
@@ -286,7 +333,7 @@
     // range reads are kept in the Cache API (published files never change), so reopening and re-cropping are free
     cache.then(function (c) {
       if (!c) return;
-      c.keys().then(function (ks) { ks.forEach(function (q) { var m = /\.(\d{8})\/(?:conus\/hrrr\.t|nam\.t|\d\d\/atmos\/gfs\.t)(\d\d)z/.exec(q.url); var t = m ? Date.UTC(+m[1].slice(0, 4), +m[1].slice(4, 6) - 1, +m[1].slice(6, 8), +m[2]) : 0; if (Date.now() - t > 30 * H) c.delete(q); }); });
+      c.keys().then(function (ks) { ks.forEach(function (q) { var m = /\.(\d{8})\/.*?\.t(\d\d)z/.exec(decodeURIComponent(q.url)); var t = m ? Date.UTC(+m[1].slice(0, 4), +m[1].slice(4, 6) - 1, +m[1].slice(6, 8), +m[2]) : 0; if (Date.now() - t > 30 * H) c.delete(q); }); });
     });
     var getRange = function (url, a, b) {
       var key = url + "?bytes=" + a + "-" + (b == null ? "" : b);
@@ -307,7 +354,7 @@
     };
     var getIdx = function (url) {
       if (IDX[url]) return IDX[url];
-      var p = IDX[url] = fetch(url + ".idx").then(function (r) { if (!r.ok) throw new Error("hour not published yet"); return r.text(); }).then(function (tx) {
+      var p = IDX[url] = fetch(url).then(function (r) { if (!r.ok) throw new Error("hour not published yet"); return r.text(); }).then(function (tx) {
         // "303.2" = second field of the message at that offset; a message ends where the next one starts
         var L = tx.trim().split("\n").map(function (s) { var f = s.split(":"); return { a: +f[1], sub: +(String(f[0]).split(".")[1] || 1), v: f[3], l: f[4], t: f[5], x: f.slice(6).join(":") }; });
         L.forEach(function (e, i) { var k = i + 1; while (k < L.length && L[k].a <= e.a) k++; e.b = k < L.length ? L[k].a - 1 : null; });
@@ -324,9 +371,9 @@
     };
     var FCACHE = new Map();
     var fieldGrid = function (model, run, h, c) {
-      var M = MODELS[model], url = M.base + M.file(run, h), ts = timeStr(c.t, h), key = url + "|" + c.v + "|" + c.l + "|" + ts[0];
+      var M = MODELS[model], path = M.file(run, h), url = fileUrl(M, path), ts = timeStr(c.t, h), key = url + "|" + c.v + "|" + c.l + "|" + ts[0];
       if (FCACHE.has(key)) { var hit = FCACHE.get(key); FCACHE.delete(key); FCACHE.set(key, hit); return hit; }
-      var p = getIdx(url).then(function (L) {
+      var p = getIdx(fileUrl(M, path + ".idx")).then(function (L) {
         var e = null;
         for (var a = 0; a < c.v.length && !e; a++) for (var b = 0; b < c.l.length && !e; b++) for (var k = 0; k < ts.length && !e; k++)
           // the plain field only: NBM lists probabilities/percentiles under the same name and time ("prob >0.254")
@@ -438,10 +485,19 @@
   function listRun(model, run) {
     var Mo = MODELS[model], pre = Mo.prefix(run), hs = [];
     // S3 lists 1000 keys per page (NBM has 10 files per hour), so follow continuation tokens
+    function add(k) { var m = Mo.hourOf.exec(k); if (m && +m[1] % Mo.step === 0 && +m[1] <= Mo.max(run)) hs.push(+m[1]); }
+    // Google Cloud's JSON API lists names as JSON, also in pages
+    function gpage(tok, n) {
+      return fetch(Mo.base + "?prefix=" + encodeURIComponent(pre) + "&fields=items(name),nextPageToken&maxResults=1000" + (tok ? "&pageToken=" + encodeURIComponent(tok) : "")).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (j) {
+        (j.items || []).forEach(function (o) { add(o.name); });
+        return j.nextPageToken && n < 4 ? gpage(j.nextPageToken, n + 1) : null;
+      });
+    }
     function page(tok, n) {
+      if (Mo.gcs) return gpage(tok, n);
       return fetch(Mo.base + "?list-type=2&prefix=" + encodeURIComponent(pre) + (tok ? "&continuation-token=" + encodeURIComponent(tok) : "")).then(function (r) { if (!r.ok) throw 0; return r.text(); }).then(function (x) {
         var re = /<Key>([^<]+)<\/Key>/g, k;
-        while ((k = re.exec(x))) { var m = Mo.hourOf.exec(k[1]); if (m && +m[1] % Mo.step === 0 && +m[1] <= Mo.max(run)) hs.push(+m[1]); }
+        while ((k = re.exec(x))) add(k[1]);
         var nt = /<NextContinuationToken>([^<]+)</.exec(x);
         return nt && n < 4 ? page(nt[1].replace(/&amp;/g, "&"), n + 1) : null;
       });
@@ -698,6 +754,7 @@
   function barbs(c, r, dk) {
     var U = r.u, Wd = r.w, N = nodes(r, U), sp = 40, s = scaleZ(drawn.z), o = [0, 0];
     c.strokeStyle = dk ? "rgba(255,255,255,.9)" : "rgba(10,14,20,.88)"; c.fillStyle = c.strokeStyle; c.lineWidth = 1.2; c.lineCap = "round";
+    c.shadowColor = dk ? "rgba(0,0,0,.85)" : "rgba(255,255,255,.9)"; c.shadowBlur = 2.5;
     for (var py = M + sp / 2; py < SH - M; py += sp) for (var px = M + sp / 2; px < SW - M; px += sp) {
       var lat = latOf(drawn.y + (py - SH / 2) / s), lon = lonOf(drawn.x + (px - SW / 2) / s);
       r.P.p.fwd(lat, lon, o);
@@ -705,9 +762,10 @@
       var x0 = fi | 0, y0 = fj | 0, fx = fi - x0, fy = fj - y0, k = y0 * U.nx + x0;
       var bl = function (A) { return (A[k] * (1 - fx) + A[k + 1] * fx) * (1 - fy) + (A[k + U.nx] * (1 - fx) + A[k + U.nx + 1] * fx) * fy; };
       var u = bl(U.a), v = bl(Wd.a);
-      if (r.P.p.rot) { var al = r.P.p.rot(lon), ca = Math.cos(al), sa = Math.sin(al), ue = u * ca + v * sa; v = -u * sa + v * ca; u = ue; }
+      if (r.P.p.rot) { var al = r.P.p.rot(lon, lat), ca = Math.cos(al), sa = Math.sin(al), ue = u * ca + v * sa; v = -u * sa + v * ca; u = ue; }
       barb(c, px, py, u, v);
     }
+    c.shadowBlur = 0; c.shadowColor = "transparent";
     void N;
   }
   function barb(c, x, y, u, v) {
@@ -775,7 +833,7 @@
     [cvB, cvT, cvO].forEach(function (c) { c.width = Math.round(SW * dpr); c.height = Math.round(SH * dpr); });
     paint(31);
   }
-  function modelOk(m) { return !MODELS[m].conus || !loc || inConus(loc); }
+  function modelOk(m) { var Mo = MODELS[m]; return !loc || (Mo.covers ? Mo.covers(loc) : !Mo.conus || inConus(loc)); }
   function uiModels() {
     ui.model.innerHTML = Object.keys(MODELS).map(function (m) { return '<button type="button" class="chip' + (m === cur.model ? " on" : "") + '" data-m="' + m + '"' + (modelOk(m) ? "" : " disabled") + ">" + MODELS[m].name + "</button>"; }).join("");
   }

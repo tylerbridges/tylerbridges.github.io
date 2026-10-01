@@ -446,6 +446,7 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
 .mview{padding:10px 0 8px;overflow:hidden}
 .mmodel{display:flex;gap:6px;padding:0 10px 8px;overflow-x:auto;scrollbar-width:none}
 .mmodel .chip:disabled{opacity:.4;cursor:default}
+#mmodel{flex-wrap:wrap;overflow:visible}
 .mquick{padding-top:0}.mquick .chip{font-weight:600}
 .mhead{display:flex;align-items:center;gap:8px;padding:0 10px 8px}
 .msel{flex:1;min-width:0;appearance:none;-webkit-appearance:none;border:1px solid var(--line);border-radius:999px;background:var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 10px center/14px;padding:6px 30px 6px 12px;font:600 15px var(--sans);color:var(--ink);text-overflow:ellipsis;cursor:pointer}
@@ -484,6 +485,18 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
 .mlrow{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--ink2)}
 .mlrow span{width:78px;flex:none}.mlrow i{display:block;height:7px;border-radius:3px;flex:1}
 .msrc{padding:6px 12px 0;font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* official NWS precipitation (Forecast tab) */
+.offq{padding:10px 0 8px;overflow:hidden}
+.offq .oqh{display:flex;gap:6px;padding:0 10px 8px}
+.offq .oqimg{position:relative;background:#fff;cursor:zoom-in;min-height:160px}
+.offq .oqimg img{display:block;width:100%;height:auto}
+.offq .oqimg .mfr{left:6px;top:6px}
+.oqamt{display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:6px;padding:10px 12px 0}
+.oqamt div{background:var(--sunk);border-radius:8px;padding:6px 8px}
+.oqamt b{display:block;font-size:16px;font-weight:700;color:var(--ink)}
+.oqamt span{font-size:11px;color:var(--muted)}
+.oqnote{padding:6px 12px 0;font-size:11.5px;color:var(--muted)}
+.oqnote a{color:var(--accent)}
 /* NWS / WPC / CPC map images */
 .mcats{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin-inline:-16px;padding-inline:16px}
 .marea{display:flex;gap:4px;flex:none}
@@ -560,7 +573,7 @@ body:has(#testbar:not([hidden])) .sec{scroll-margin-top:140px}
       <button class="rbtn" id="rbtn" type="button" aria-label="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button>
     </div>
     <nav class="nav" id="nav">
-      <button type="button" class="chip on" data-tab="now">Now</button><button type="button" class="chip" data-tab="daily">Daily</button><button type="button" class="chip" data-tab="hourly">Hourly</button><button type="button" class="chip" data-tab="radar">Radar</button><button type="button" class="chip" data-tab="maps">Maps</button><button type="button" class="chip" data-tab="obs">Observations</button>
+      <button type="button" class="chip on" data-tab="now">Now</button><button type="button" class="chip" data-tab="daily">Daily</button><button type="button" class="chip" data-tab="hourly">Hourly</button><button type="button" class="chip" data-tab="radar">Radar</button><button type="button" class="chip" data-tab="maps">Forecast</button><button type="button" class="chip" data-tab="obs">Observations</button>
     </nav>
     <div class="testbar" id="testbar" hidden><span>Test: <b id="testname"></b> · sample data, not a real forecast</span><button type="button" class="chip" id="testx">Exit</button></div>
   </header>
@@ -593,6 +606,9 @@ body:has(#testbar:not([hidden])) .sec{scroll-margin-top:140px}
   </section>
 
   <section id="maps" class="sec" data-tab="maps" hidden>
+    <div class="sec-h"><h2>Official precipitation</h2><span class="meta">National Weather Service</span></div>
+    <div class="card offq" id="offq"></div>
+    <div class="sec-h"><h2>Forecast models</h2></div>
     <div class="card mview">
       <div class="mmodel" id="mmodel" role="group" aria-label="Model"></div>
       <div class="mmodel mquick" id="mquick" role="group" aria-label="Map"></div>
@@ -656,12 +672,12 @@ body:has(#testbar:not([hidden])) .sec{scroll-margin-top:140px}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=82"></script>
-<script src="wx-live.js?v=82"></script>
-<script src="wx-scenarios.js?v=82"></script>
-<script src="wx-vmap.js?v=82"></script>
-<script src="wx-radar.js?v=82"></script>
-<script src="wx-models.js?v=82"></script>
-<script src="app.js?v=82"></script>
+<script src="wx-normalize.js?v=83"></script>
+<script src="wx-live.js?v=83"></script>
+<script src="wx-scenarios.js?v=83"></script>
+<script src="wx-vmap.js?v=83"></script>
+<script src="wx-radar.js?v=83"></script>
+<script src="wx-models.js?v=83"></script>
+<script src="app.js?v=83"></script>
 </body>
 </html>
