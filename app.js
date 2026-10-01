@@ -1133,24 +1133,40 @@
   // Official NWS precipitation: the Weather Prediction Center's 24- and 48-hour forecasts (the human-issued national
   //   forecast the NWS grids are built from; images, as WPC's data isn't browser-readable) plus this place's official
   //   amounts from its weather.gov forecast grid for the next 24 and 48 hours.
-  var OQ = store("wx-oq") || 24;
+  // Kinds: precipitation (WPC's official 24-h Day 1 and 48-h Days 1–2 amounts), snow and ice (WPC's official winter
+  //   forecasts: chance of 4/8/12" snow or 0.25" ice for Day 1 = next 24 h and Day 2 = 24–48 h). Under each map, this
+  //   place's official rain/snow/ice for the next 24 or 48 hours from weather.gov.
+  var OQ = store("wx-oq2") || { k: "qpf", p: 24, th: "04" };
   function renderOfficial() {
     var el = $("offq"); if (!el) return;
-    var c = Math.floor((Date.now() - 4 * H) / (12 * H)) * 12 * H, img = OQ === 48 ? WPC + "qpf/d12_fill.gif" : WPC + "qpf/fill_94qwbg.gif";
-    var per = OQ === 48 ? span(c, c + 2 * D24) : span(c, c + D24), g = doc && doc.grid, now = Date.now(), amt = "";
-    if (g) {
-      var end = now + OQ * H, row = [["Rain / liquid", sumRange(g.qpf, now, end)], ["Snow", sumRange(g.snow, now, end)], ["Ice", sumRange(g.ice, now, end)]];
-      amt = '<div class="oqamt">' + row.filter(function (r, i) { return i === 0 || r[1] >= (i === 1 ? 0.05 : 0.005); }).map(function (r) {
-        return "<div><b>" + (r[1] < 0.005 ? "0" : r[1] < 1 ? r[1].toFixed(2).replace(/^0/, "") : r[1].toFixed(1)) + ' in</b><span>' + r[0] + "</span></div>";
-      }).join("") + "</div>" + '<div class="oqnote">' + esc((doc.loc && doc.loc.label) || "This location") + ", next " + OQ + " hours, from the official weather.gov forecast</div>";
+    var c = Math.floor((Date.now() - 4 * H) / (12 * H)) * 12 * H, d = OQ.p === 48 ? 2 : 1, img, per, cap;
+    if (OQ.k === "qpf") {
+      img = OQ.p === 48 ? WPC + "qpf/d12_fill.gif" : WPC + "qpf/fill_94qwbg.gif"; per = span(c, c + OQ.p * H);
+      cap = "Official " + OQ.p + "-hour precipitation forecast (liquid: rain + melted snow)";
+    } else {
+      per = span(c + (d - 1) * D24, c + d * D24);
+      img = WPC + "wwd/day" + d + (OQ.k === "snow" ? "_psnow_gt_" + OQ.th : "_pice_gt_25") + "_conus.gif";
+      cap = "Official chance of " + (OQ.k === "snow" ? +OQ.th + '"+ snow' : '0.25"+ ice') + ", Day " + d + (d === 1 ? " (next 24 hours)" : " (24–48 hours out)");
     }
+    var g = doc && doc.grid, now = Date.now(), amt = "";
+    if (g) {
+      var end = now + OQ.p * H, row = [["qpf", "Rain / liquid", sumRange(g.qpf, now, end)], ["snow", "Snow", sumRange(g.snow, now, end)], ["ice", "Ice", sumRange(g.ice, now, end)]];
+      amt = '<div class="oqamt">' + row.map(function (r) {
+        return '<div' + (r[0] === OQ.k ? ' class="on"' : "") + "><b>" + (r[2] < 0.005 ? "0" : r[2] < 1 ? r[2].toFixed(2).replace(/^0/, "") : r[2].toFixed(1)) + " in</b><span>" + r[1] + "</span></div>";
+      }).join("") + "</div>" + '<div class="oqnote">' + esc((doc.loc && doc.loc.label) || "This location") + ", next " + OQ.p + " hours, from the official weather.gov forecast</div>";
+    }
+    var chip = function (attr, v, label, on) { return '<button type="button" class="chip' + (on ? " on" : "") + '" ' + attr + '="' + v + '">' + label + "</button>"; };
     var bust = "?t=" + Math.floor(Date.now() / 9e5);
-    el.innerHTML = '<div class="oqh"><button type="button" class="chip' + (OQ === 24 ? " on" : "") + '" data-oq="24">Next 24 hr</button><button type="button" class="chip' + (OQ === 48 ? " on" : "") + '" data-oq="48">Next 48 hr</button></div>' +
-      '<div class="oqimg" id="oqimg"><img src="' + img + bust + '" alt="NWS ' + OQ + '-hour precipitation forecast"><span class="mfr num">' + esc(per) + "</span></div>" + amt +
-      '<div class="oqnote">NWS Weather Prediction Center official ' + OQ + '-hour forecast (liquid: rain + melted snow) · <a href="' + WPC + 'qpf/qpf2.shtml" target="_blank" rel="noopener">Source</a></div>';
+    el.innerHTML = '<div class="oqh">' + chip("data-oqk", "qpf", "Precip", OQ.k === "qpf") + chip("data-oqk", "snow", "Snow", OQ.k === "snow") + chip("data-oqk", "ice", "Ice", OQ.k === "ice") + "</div>" +
+      '<div class="oqh">' + chip("data-oqp", 24, "Next 24 hr", OQ.p === 24) + chip("data-oqp", 48, OQ.k === "qpf" ? "Next 48 hr" : "24–48 hr", OQ.p === 48) +
+      "</div>" + (OQ.k === "snow" ? '<div class="oqh"><span class="oqlab">Chance of</span>' + ["04", "08", "12"].map(function (t) { return chip("data-oqt", t, +t + '"+', OQ.th === t); }).join("") + "</div>" : "") +
+      '<div class="oqimg" id="oqimg"><img src="' + img + bust + '" alt="' + esc(cap) + '"><span class="mfr num">' + esc(per) + "</span></div>" +
+      '<div class="oqnote"><b>' + esc(cap) + "</b> · NWS Weather Prediction Center · " + '<a href="' + WPC + (OQ.k === "qpf" ? "qpf/qpf2.shtml" : "wwd/winter_wx.shtml") + '" target="_blank" rel="noopener">Source</a></div>' + amt;
+    var im = el.querySelector("img"); im.onerror = function () { im.parentNode.innerHTML = '<div class="mmsg">This map isn\'t available right now.</div>'; };
   }
   $("offq").addEventListener("click", function (e) {
-    var b = e.target.closest("[data-oq]"); if (b) { OQ = +b.dataset.oq; store("wx-oq", OQ); renderOfficial(); return; }
+    var b = e.target.closest("[data-oqk],[data-oqp],[data-oqt]");
+    if (b) { if (b.dataset.oqk) OQ.k = b.dataset.oqk; if (b.dataset.oqp) OQ.p = +b.dataset.oqp; if (b.dataset.oqt) OQ.th = b.dataset.oqt; store("wx-oq2", OQ); renderOfficial(); return; }
     var im = e.target.closest("#oqimg img"); if (im) { $("mfimg").src = im.src; $("mfimg").alt = im.alt; $("mfsc").classList.remove("z"); $("mfull").hidden = false; }
   });
   function mStop() { if (window.WXModels) WXModels.hide(); iStop(); }
