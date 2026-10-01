@@ -904,7 +904,7 @@
     ui.leg.querySelector(".lr span").textContent = sm ? "Rain" : "Radar";
     ui.leg.querySelector(".ls").hidden = !typed;
     ui.leg.querySelector(".ls i").style.background = grad(SNOW);
-    ui.leg.querySelector("em").textContent = !sm ? "NWS colours" + (corsOK === false ? "" : " · tap to switch back") : frames && frames.src === "s3" ? "Light → heavy" : "Light → heavy · tap for NWS colours";
+    ui.leg.querySelector("em").textContent = !sm ? "NWS colours" + (corsOK === false ? "" : " · tap to switch back") : frames && frames.src === "s3" ? "" : "Tap for NWS colours";
   }
   function size() {
     var r = el.getBoundingClientRect(); if (!r.width) return;
