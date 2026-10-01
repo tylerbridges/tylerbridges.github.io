@@ -541,7 +541,7 @@
   //   for rain/snow/hail. The GRIB2 files are decoded in the background worker (PNG-packed grids) and tiles are drawn
   //   from the exact values — no colour decoding, no map server in between.
   var S3 = "https://noaa-mrms-pds.s3.amazonaws.com/", S3R = "CONUS/MergedBaseReflectivityQC_00.50/", S3F = "CONUS/PrecipFlag_00.00/";
-  var s3OK = null, boxVer = 0, box = null;
+  var s3OK = null, boxVer = 0, box = null, s3Why = "", wErr = "";
   function ymd(t) { return new Date(t).toISOString().slice(0, 10).replace(/-/g, ""); }
   function keyTime(k) { var m = /(\d{8})-(\d{2})(\d{2})(\d{2})\.grib2/.exec(k); return m ? Date.UTC(+m[1].slice(0, 4), +m[1].slice(4, 6) - 1, +m[1].slice(6, 8), +m[2], +m[3], +m[4]) : NaN; }
   function s3List(prod, since) {
@@ -553,10 +553,12 @@
     })).then(function (ls) { return [].concat.apply([], ls).map(function (k) { return { k: k, t: keyTime(k) }; }).filter(function (o) { return isFinite(o.t); }).sort(function (a, b) { return a.t - b.t; }); });
   }
   function s3Frames() {
-    if (s3OK === false || !workers() || typeof DecompressionStream === "undefined") return Promise.reject();
+    if (s3OK === false) return Promise.reject();
+    if (!workers()) { s3Why = "this browser can't run the background decoder"; return Promise.reject(); }
+    if (typeof DecompressionStream === "undefined") { s3Why = "this browser can't unzip the files"; return Promise.reject(); }
     var since = Date.now() - 75 * 60000;
-    return Promise.all([s3List(S3R, since), s3List(S3F, since)]).then(function (L) {
-      var R = L[0], F = L[1]; if (R.length < 5) throw 0;
+    return Promise.all([s3List(S3R, since), s3List(S3F, since)]).catch(function (e) { s3Why = "couldn't list NOAA's files"; throw e; }).then(function (L) {
+      var R = L[0], F = L[1]; if (R.length < 5) { s3Why = "too few recent scans in NOAA's archive"; throw 0; }
       var last = R[R.length - 1].t, step = 6 * 60000, base = Math.floor(last / step) * step, pick = [];
       // the newest scan, then scans nearest to fixed 6-minute marks (stable across refreshes, so only new ones load)
       for (var k = 9; k >= 0; k--) {
@@ -587,7 +589,7 @@
   function loadGT(e, u) {
     if (!WK) { e.err = true; soon(0); return; }
     toWi(s3W[u.t] || 0, { kind: "gtile", t: u.t, z: u.z, x: u.x, y: u.y, v: u.v }, function (r, redo) {
-      if (redo || r.err) { e.err = true; soon(0); return; }
+      if (redo || r.err) { if (r && r.msg) wErr = r.msg; e.err = true; soon(0); return; }
       e.sm = r.empty ? EMPTY : r.sm; e.raw = e.sm; corsOK = true; e.ok = true; soon(2);
     });
   }
@@ -605,7 +607,9 @@
       return { src: "mrms", n: times.length, times: times, valid: times[times.length - 1], bucket: times[times.length - 1] };
     }).catch(function (e) { mrmsOK = false; throw e; });
   }
+  var lastLoad = 0;
   function loadFrames() {
+    lastLoad = Date.now();
     s3Frames().catch(function () { return mrmsFrames(); }).catch(function () { return iemqOK === false ? Promise.reject() : lcrefFrames(); }).catch(function () { return iemFrames(); }).then(function (f) {
       if (f.src === "s3") s3Load(f);
       if (!frames) { setFrames(f); preload(); paint(2); } else if (f.bucket !== frames.bucket || f.src !== frames.src) { pending = f; preload(); }
@@ -636,7 +640,8 @@
   }
   function checkPending() {
     if (frames && frames.src === "iemq" && !iemqOK && ready(frames) >= 1) { if (errAll(frames)) { iemqOK = false; setFrames(iemFrames()); preload(); paint(2); legend(); } else iemqOK = true; }
-    if (frames && frames.src === "s3" && !s3OK && ready(frames) >= 1) { if (errAll(frames)) { s3OK = false; frames = null; loadFrames(); return; } else s3OK = true; }
+    if (frames && frames.src === "s3" && !s3OK && ready(frames) >= 1) { if (errAll(frames)) { s3OK = false; s3Why = "couldn't decode NOAA's files" + (wErr ? " (" + wErr + ")" : ""); frames = null; loadFrames(); return; } else s3OK = true; }
+    nowLine();
     if (pending && ready(pending) >= 1) { setFrames(pending); pending = null; paint(2); }
     var r = frames ? ready(frames) : 0;
     lastR = r; status(statusText());
@@ -677,6 +682,19 @@
     var ago = t ? Math.max(0, Math.round((Date.now() - t) / 60000)) : (NF - 1 - k) * 5;
     var abs = t ? (opts.fmtTime ? opts.fmtTime(t) : new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })) : "";
     var tt = (abs ? abs + " · " : "") + (k === NF - 1 && ago < 12 ? "Latest" : ago + " min ago"); if (ui.time.textContent !== tt) ui.time.textContent = tt;
+  }
+  // what's on screen, in plain words, under the map: which source, how fresh, and (if a backup) why
+  var nowEl = null, nowTxt = "";
+  function nowLine() {
+    nowEl = nowEl || document.getElementById("rnow"); if (!nowEl || !frames) return;
+    var t = frames.times ? frames.times[frames.n - 1] : frames.valid, ago = t ? Math.max(0, Math.round((Date.now() - t) / 60000)) : null;
+    var when = t ? " · newest scan " + (opts.fmtTime ? opts.fmtTime(t) : new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })) + " (" + (ago < 1 ? "just now" : ago + " min ago") + ")" + (ago > 15 ? " — this feed is running behind" : "") : "";
+    var why = frames.src !== "s3" && s3Why ? " NOAA's archive didn't load here: " + s3Why + "." : "";
+    var h = frames.src === "s3" ? "<b>NOAA MRMS</b> · quality-controlled: birds, insects and ground clutter removed" + when
+      : frames.src === "mrms" ? "<b>NOAA MRMS</b> via NCEP · quality-controlled" + when + "." + why
+      : frames.src === "iemq" ? "<b>NOAA MRMS</b> via Iowa State · quality-controlled, no rain/snow split" + when + "." + why
+      : "<b>Unfiltered NEXRAD mosaic</b> (Iowa State) — birds and insects can look like light rain, mostly at night" + when + "." + why;
+    if (h === nowTxt) return; nowTxt = h; nowEl.innerHTML = h; nowEl.classList.toggle("warn", frames.src === "iem" || ago > 15);
   }
   function status(t) { if (ui.stat.textContent !== t) { ui.stat.textContent = t; ui.stat.hidden = !t; } }
 
@@ -855,7 +873,8 @@
       outUS = !(loc.lat > 24 && loc.lat < 50.5 && loc.lon > -126 && loc.lon < -66);
       on = true; size();
       if (!frames || Math.floor(Date.now() / STEP) !== frames.bucket) loadFrames();
-      clearInterval(refreshT); refreshT = setInterval(function () { if (on && !pending) loadFrames(); }, STEP);
+      // MRMS updates every 2 minutes; other sources every 5
+      clearInterval(refreshT); refreshT = setInterval(function () { if (on && !pending && (frames && frames.src === "s3" || Date.now() - lastLoad >= STEP - 1000)) loadFrames(); }, 2 * 60000);
       paint(7);
     },
     hide: function () { stopWatch(); if (gpsMode === "wait") gpsMode = "off"; on = false; playing && play(false); started = false; userPaused = false; clearInterval(refreshT); if (raf) cancelAnimationFrame(raf); raf = 0; },
@@ -955,18 +974,19 @@
       }
     }).then(function () { fr.ft = ft; fr.ct = ct; });
   }
-  function fetchGz(url) { return fetch(url).then(function (r) { if (!r.ok) throw 0; return r.arrayBuffer(); }).then(function (b) { return gunzip(b, "gzip").arrayBuffer(); }).then(function (b) { return new Uint8Array(b); }); }
-  function gridFrame(f) {
+  function fetchGz(url) { return fetch(url).then(function (r) { if (!r.ok) throw new Error("download failed (" + r.status + ")"); return r.arrayBuffer(); }).then(function (b) { return gunzip(b, "gzip").arrayBuffer(); }).then(function (b) { return new Uint8Array(b); }); }
+  // frames load one after another (newest first), so the current radar shows as soon as possible
+  function gridFrame(f, after) {
     var fr = G[f.t]; if (fr) return fr.p;
     fr = G[f.t] = { t: f.t };
-    fr.p = Promise.all([fetchGz(f.base + f.ref), f.flag ? fetchGz(f.base + f.flag).catch(function () { return null; }) : null]).then(function (b) {
+    fr.p = (after || Promise.resolve()).then(function () { return Promise.all([fetchGz(f.base + f.ref), f.flag ? fetchGz(f.base + f.flag).catch(function () { return null; }) : null]); }).then(function (b) {
       fr.raw = b[0]; fr.rawF = b[1];
       return Promise.all([decodeRef(b[0], fr), b[1] ? decodeFlag(b[1], fr) : null]);
     }).then(function () { return fr; });
-    fr.p.catch(function () { delete G[f.t]; });
+    fr.p.catch(function (e) { delete G[f.t]; GERR[f.t] = String(e && e.message || e); });
     return fr.p;
   }
-  var FR = {}, LASTK = {};
+  var FR = {}, LASTK = {}, GERR = {};
   function gtile(m) {
     var fr = G[m.t]; if (!fr) return Promise.reject();
     return fr.p.then(function () {
@@ -1013,13 +1033,14 @@
     if (m.grid === "box") { GBOX = boxFor(m.box); return; }
     if (m.grid === "load") {
       // keep this set and the previous one (still on screen until the new one is ready)
-      var keep = {}; m.frames.forEach(function (f) { f.base = m.base; FR[f.t] = f; keep[f.t] = 1; gridFrame(f).catch(function () {}); });
+      var keep = {}, prev = Promise.resolve();
+      m.frames.forEach(function (f) { f.base = m.base; FR[f.t] = f; keep[f.t] = 1; prev = gridFrame(f, prev).catch(function () {}); });
       Object.keys(G).forEach(function (t) { if (!keep[t] && !LASTK[t]) { delete G[t]; delete FR[t]; } }); LASTK = keep;
       return;
     }
     if (m.kind === "gtile") {
       if (!can2d) { root.postMessage({ id: m.id, nosupport: true }); return; }
-      var fr = G[m.t]; (fr ? fr.p : Promise.reject()).then(function () { return gtile(m); }).then(function (r) { r.id = m.id; root.postMessage(r, r.sm ? [r.sm] : []); }, function () { root.postMessage({ id: m.id, err: true }); });
+      var fr = G[m.t]; (fr ? fr.p : Promise.reject(new Error(GERR[m.t] || "frame not loaded"))).then(function () { return gtile(m); }).then(function (r) { r.id = m.id; root.postMessage(r, r.sm ? [r.sm] : []); }, function (e) { root.postMessage({ id: m.id, err: true, msg: String(e && e.message || e || "error").slice(0, 80) }); });
       return;
     }
     if (m.cfg) { REFP = m.cfg.REFP; TYPC = m.cfg.TYPC; LREF.clear(); LTYP.clear(); return; }

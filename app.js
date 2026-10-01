@@ -933,7 +933,7 @@
   }
 
   // ---------- interactions ----------
-  $("rbtn").addEventListener("click", function () { refresh(true); });
+  $("rbtn").addEventListener("click", function () { checkVersion(true); refresh(true); });
   function stripClick(e) {
     var c = e.target.closest("[data-i]"); if (!c) return;
     showTab("daily");
@@ -1092,8 +1092,22 @@
   }
   window.addEventListener("scroll", guardTop, { passive: true }); guardTop();
 
+  // A phone keeps the page in memory for hours, and the refresh button only refetches weather data, so check for a
+  //   newer published version (the ?v= number on app.js in index.html) when the page comes back, on manual refresh
+  //   and every 10 minutes, and reload if there is one.
+  var lastVer = 0;
+  function checkVersion(force) {
+    if (!force && Date.now() - lastVer < 2 * 60000) return; lastVer = Date.now();
+    var me = /app\.js\?v=(\d+)/.exec((document.querySelector('script[src*="app.js?v="]') || {}).src || "");
+    if (!me) return;
+    fetch(location.pathname + "?vcheck=" + Date.now(), { cache: "no-store" }).then(function (r) { return r.ok ? r.text() : ""; }).then(function (h) {
+      var m = /app\.js\?v=(\d+)/.exec(h); if (m && +m[1] > +me[1]) location.reload();
+    }).catch(function () {});
+  }
+  setInterval(function () { if (!document.hidden) checkVersion(); }, 10 * 60000);
   document.addEventListener("visibilitychange", function () {
     if (document.hidden) { touchTab(); return; }
+    checkVersion();
     if (tabStale() && tab !== "now") showTab("now"); // reopened hours later (an installed app resumes without reloading)
     if (follow && Date.now() - lastFix > 10 * 60000) locateQuietly();
     else touchTab();
