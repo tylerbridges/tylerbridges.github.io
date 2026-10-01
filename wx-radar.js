@@ -185,6 +185,7 @@
     return e;
   }
   function load(e, url, radar, cors) {
+    if (url && url.s3) return loadGT(e, url);
     if (radar && cors && workers()) return loadW(e, url);
     if (Array.isArray(url)) return loadMrms(e, url);
     var im = new Image(); im.decoding = "async"; if (cors) im.crossOrigin = "anonymous";
@@ -226,6 +227,7 @@
     return WK;
   }
   function cfgW() { if (WK && REFP) WK.forEach(function (w) { w.postMessage({ cfg: { REFP: REFP, TYPC: TYPC } }); }); }
+  function toWi(i, m, cb) { m.id = ++wid; wjobs[m.id] = { cb: cb, m: m }; WK[i % WK.length].postMessage(m); }
   function toW(m, cb, tr) { m.id = ++wid; wjobs[m.id] = { cb: cb, m: m }; WK[wkI++ % WK.length].postMessage(m, tr || []); }
   function fromW(ev) {
     var r = ev.data, j = wjobs[r.id]; if (!j) return; delete wjobs[r.id];
@@ -260,7 +262,7 @@
     while (jobs.length && performance.now() - t0 < 10) jobs.shift()();
     if (jobs.length) jobT = setTimeout(runJobs, 0);
   }
-  function img(e) { return !e || !e.ok ? null : style === "smooth" && e.sm ? e.sm : e.raw; }
+  function img(e) { return !e || !e.ok ? null : (style === "smooth" || frames && frames.src === "s3") && e.sm ? e.sm : e.raw; }
   function baseUrl(kind, z, x, y) { return ESRI + (dark() ? "World_Dark_Gray_" : "World_Light_Gray_") + kind + "/MapServer/tile/" + z + "/" + y + "/" + x; }
   var E = 20037508.342789244;
   function wms(layer, time, z, x, y) {
@@ -269,6 +271,7 @@
       "&width=256&height=256&bbox=" + [x0, y1 - sz, x0 + sz, y1].map(function (v) { return v.toFixed(1); }).join(",") + "&time=" + new Date(time).toISOString().replace(".000Z", "Z");
   }
   function radarUrl(f, k, z, x, y) {
+    if (f.src === "s3") return { s3: true, t: f.times[k], z: z, x: x, y: y, v: boxVer };
     if (f.src === "mrms") return [wms(REF, f.times[k], z, x, y), wms(TYP, f.times[k], z, x, y)];
     if (f.src === "iemq") return IEM + "mrms::lcref-" + new Date(f.times[k]).toISOString().replace(/[-T:]/g, "").slice(0, 12) + "/" + z + "/" + x + "/" + y + ".png";
     return IEM + f.layers[k] + "/" + z + "/" + x + "/" + y + ".png?b=" + f.bucket;
@@ -320,10 +323,11 @@
   function radarGet(f, k) {
     return function (z, x, y, request) { var key = rkey(f, k, z, x, y); return request ? get(key, radarUrl(f, k, z, x, y), true) : peek(key); };
   }
-  function rkey(f, k, z, x, y) { return "r" + f.src + (f.times ? f.times[k] : f.bucket + ":" + k) + ":" + z + "/" + x + "/" + y; }
+  function rkey(f, k, z, x, y) { return "r" + f.src + (f.src === "s3" ? boxVer + "|" : "") + (f.times ? f.times[k] : f.bucket + ":" + k) + ":" + z + "/" + x + "/" + y; }
   function tz() { return Math.max(0, Math.min(16, Math.round(rv.z))); }
   // radar one level coarser than the map (smoother, and MRMS/NEXRAD mosaics are ~1 km anyway), native in NWS colours
-  function rz() { return Math.max(MINZ, Math.min(RMAX, Math.round(rv.z) - (style === "smooth" ? 1 : 0))); }
+  //   (MRMS from NOAA's archive is drawn from the exact 1 km grid, so it can be requested sharper when zoomed in)
+  function rz() { var s3 = frames && frames.src === "s3"; return Math.max(MINZ, Math.min(s3 ? 10 : RMAX, Math.round(rv.z) - (style === "smooth" || s3 ? 1 : 0))); }
 
   // ---------- drawing ----------
   function paint(bits) { need |= bits == null ? 7 : bits; if (on && !raf) raf = requestAnimationFrame(frame); }
@@ -532,6 +536,61 @@
     }
     return pick.length >= 2 ? pick : null;
   }
+  // First choice: MRMS straight from NOAA's public archive on AWS (noaa-mrms-pds, open to browsers, ~2 min behind
+  //   real time): MergedBaseReflectivityQC (quality-controlled, so birds/insects/clutter removed) plus PrecipFlag
+  //   for rain/snow/hail. The GRIB2 files are decoded in the background worker (PNG-packed grids) and tiles are drawn
+  //   from the exact values — no colour decoding, no map server in between.
+  var S3 = "https://noaa-mrms-pds.s3.amazonaws.com/", S3R = "CONUS/MergedBaseReflectivityQC_00.50/", S3F = "CONUS/PrecipFlag_00.00/";
+  var s3OK = null, boxVer = 0, box = null;
+  function ymd(t) { return new Date(t).toISOString().slice(0, 10).replace(/-/g, ""); }
+  function keyTime(k) { var m = /(\d{8})-(\d{2})(\d{2})(\d{2})\.grib2/.exec(k); return m ? Date.UTC(+m[1].slice(0, 4), +m[1].slice(4, 6) - 1, +m[1].slice(6, 8), +m[2], +m[3], +m[4]) : NaN; }
+  function s3List(prod, since) {
+    var days = [ymd(since), ymd(Date.now())].filter(function (d, i, a) { return a.indexOf(d) === i; });
+    return Promise.all(days.map(function (d) {
+      var pre = prod + d + "/", name = prod.split("/")[1], sa = pre + "MRMS_" + name + "_" + (d === ymd(since) ? new Date(since).toISOString().slice(0, 16).replace(/[-:]/g, "").replace("T", "-") : d + "-0000");
+      return fetch(S3 + "?list-type=2&prefix=" + encodeURIComponent(pre) + "&start-after=" + encodeURIComponent(sa)).then(function (r) { if (!r.ok) throw 0; return r.text(); })
+        .then(function (x) { var out = [], re = /<Key>([^<]+)<\/Key>/g, m; while ((m = re.exec(x))) out.push(m[1]); return out; });
+    })).then(function (ls) { return [].concat.apply([], ls).map(function (k) { return { k: k, t: keyTime(k) }; }).filter(function (o) { return isFinite(o.t); }).sort(function (a, b) { return a.t - b.t; }); });
+  }
+  function s3Frames() {
+    if (s3OK === false || !workers() || typeof DecompressionStream === "undefined") return Promise.reject();
+    var since = Date.now() - 75 * 60000;
+    return Promise.all([s3List(S3R, since), s3List(S3F, since)]).then(function (L) {
+      var R = L[0], F = L[1]; if (R.length < 5) throw 0;
+      var last = R[R.length - 1].t, step = 6 * 60000, base = Math.floor(last / step) * step, pick = [];
+      // the newest scan, then scans nearest to fixed 6-minute marks (stable across refreshes, so only new ones load)
+      for (var k = 9; k >= 0; k--) {
+        var want = base - k * step, b = null;
+        R.forEach(function (o) { if (Math.abs(o.t - want) <= 3 * 60000 && o.t < last - 60000 && (!b || Math.abs(o.t - want) < Math.abs(b.t - want))) b = o; });
+        if (b && (!pick.length || pick[pick.length - 1].t !== b.t)) pick.push(b);
+      }
+      pick.push(R[R.length - 1]);
+      var fl = pick.map(function (o) { var b = null; F.forEach(function (q) { if (q.t <= o.t + 60000 && o.t - q.t <= 4 * 60000 && (!b || q.t > b.t)) b = q; }); return b ? b.k : null; });
+      if (pick.length < 5) throw 0;
+      return { src: "s3", n: pick.length, times: pick.map(function (o) { return o.t; }), refs: pick.map(function (o) { return o.k; }), flags: fl, valid: last, bucket: last };
+    });
+  }
+  // the worker keeps the sharp (0.01°) grid for a 16° box around the view and a 0.04° copy of the whole country
+  function needBox() {
+    var lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * view.y))) * 180 / Math.PI, lon = view.x * 360 - 180;
+    if (box && Math.abs(lat - box.lat) < 4.5 && Math.abs(lon - box.lon) < 4.5) return false;
+    box = { lat: lat, lon: lon, v: ++boxVer }; if (WK) WK.forEach(function (w) { w.postMessage({ grid: "box", box: box }); }); return true;
+  }
+  // frames are shared out between the two workers (each decodes and draws its own), newest first
+  var s3W = {};
+  function s3Load(f) {
+    needBox();
+    var lists = WK.map(function () { return []; });
+    for (var i = f.n - 1, j = 0; i >= 0; i--, j++) { var w = s3W[f.times[i]] != null ? s3W[f.times[i]] : j % WK.length; s3W[f.times[i]] = w; lists[w].push({ t: f.times[i], ref: f.refs[i], flag: f.flags[i] }); }
+    WK.forEach(function (w, k) { w.postMessage({ grid: "load", base: S3, frames: lists[k] }); });
+  }
+  function loadGT(e, u) {
+    if (!WK) { e.err = true; soon(0); return; }
+    toWi(s3W[u.t] || 0, { kind: "gtile", t: u.t, z: u.z, x: u.x, y: u.y, v: u.v }, function (r, redo) {
+      if (redo || r.err) { e.err = true; soon(0); return; }
+      e.sm = r.empty ? EMPTY : r.sm; e.raw = e.sm; corsOK = true; e.ok = true; soon(2);
+    });
+  }
   // try MRMS (needs NCEP to allow cross-origin reads: legends, capabilities and tile pixels); otherwise the IEM mosaic
   var mrmsOK = null;
   function mrmsFrames() {
@@ -547,7 +606,8 @@
     }).catch(function (e) { mrmsOK = false; throw e; });
   }
   function loadFrames() {
-    mrmsFrames().catch(function () { return iemqOK === false ? Promise.reject() : lcrefFrames(); }).catch(function () { return iemFrames(); }).then(function (f) {
+    s3Frames().catch(function () { return mrmsFrames(); }).catch(function () { return iemqOK === false ? Promise.reject() : lcrefFrames(); }).catch(function () { return iemFrames(); }).then(function (f) {
+      if (f.src === "s3") s3Load(f);
       if (!frames) { setFrames(f); preload(); paint(2); } else if (f.bucket !== frames.bucket || f.src !== frames.src) { pending = f; preload(); }
       legend();
     });
@@ -555,6 +615,7 @@
   function setFrames(f) { frames = f; NF = f.n; ui.range.max = NF - 1; if (cur > NF - 1 || !started) cur = NF - 1; }
   // request every frame's visible tiles so playback never waits on the network
   function preload() {
+    if (frames && frames.src === "s3" && view.z >= 5.5 && needBox()) paint(2);
     // the frames on screen first, then the rest of the loop in playback order
     [frames, pending].forEach(function (f) {
       if (!f) return; var vs = at(view, function () { return visible(rz()); });
@@ -575,6 +636,7 @@
   }
   function checkPending() {
     if (frames && frames.src === "iemq" && !iemqOK && ready(frames) >= 1) { if (errAll(frames)) { iemqOK = false; setFrames(iemFrames()); preload(); paint(2); legend(); } else iemqOK = true; }
+    if (frames && frames.src === "s3" && !s3OK && ready(frames) >= 1) { if (errAll(frames)) { s3OK = false; frames = null; loadFrames(); return; } else s3OK = true; }
     if (pending && ready(pending) >= 1) { setFrames(pending); pending = null; paint(2); }
     var r = frames ? ready(frames) : 0;
     lastR = r; status(statusText());
@@ -611,9 +673,10 @@
     var pos = cur + frac, k = Math.round(pos) % NF;
     var rvv = String(+(pos > NF - 1 ? NF - 1 : pos).toFixed(2)); if (ui.range.value !== rvv) ui.range.value = rvv;
     var t = !frames ? null : frames.times ? frames.times[k] : frames.valid ? frames.valid - (NF - 1 - k) * 5 * 60000 : null;
-    var ago = frames && frames.times ? Math.round((frames.valid - t) / 60000) : (NF - 1 - k) * 5;
+    // minutes before now (so a feed that has fallen behind says so), "Latest" only when it really is recent
+    var ago = t ? Math.max(0, Math.round((Date.now() - t) / 60000)) : (NF - 1 - k) * 5;
     var abs = t ? (opts.fmtTime ? opts.fmtTime(t) : new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })) : "";
-    var tt = (abs ? abs + " · " : "") + (k === NF - 1 ? "Latest" : ago + " min ago"); if (ui.time.textContent !== tt) ui.time.textContent = tt;
+    var tt = (abs ? abs + " · " : "") + (k === NF - 1 && ago < 12 ? "Latest" : ago + " min ago"); if (ui.time.textContent !== tt) ui.time.textContent = tt;
   }
   function status(t) { if (ui.stat.textContent !== t) { ui.stat.textContent = t; ui.stat.hidden = !t; } }
 
@@ -745,7 +808,7 @@
     ui.loc = el.querySelector(".rloc:not(.rhome)"); ui.home = el.querySelector(".rhome"); ui.msg = "";
     ui.loc.addEventListener("click", locate); ui.home.addEventListener("click", toForecast);
     ui.leg.addEventListener("click", function () {
-      if (corsOK === false) return;
+      if (corsOK === false || frames && frames.src === "s3") return; // drawn from exact values: no source colours to show
       style = style === "smooth" ? "nws" : "smooth"; try { localStorage.setItem("wx-radar-style", style); } catch (e) {}
       legend(); paint(2); preload();
     });
@@ -757,12 +820,12 @@
   function grad(P) { return "linear-gradient(90deg," + P.filter(function (s) { return s[4] == null || s[4] > 0; }).map(function (s) { return "rgba(" + s[1] + "," + s[2] + "," + s[3] + "," + Math.max(0.45, s[4] == null ? 1 : s[4]) + ")"; }).join(",") + ")"; }
   function legend() {
     if (!ui.leg) return;
-    var sm = style === "smooth" && corsOK !== false, typed = sm && frames && frames.src === "mrms";
+    var sm = (style === "smooth" || frames && frames.src === "s3") && corsOK !== false, typed = sm && frames && (frames.src === "mrms" || frames.src === "s3");
     ui.leg.querySelector(".lr i").style.background = grad(sm ? RAIN : NWS);
     ui.leg.querySelector(".lr span").textContent = sm ? "Rain" : "Radar";
     ui.leg.querySelector(".ls").hidden = !typed;
     ui.leg.querySelector(".ls i").style.background = grad(SNOW);
-    ui.leg.querySelector("em").textContent = !sm ? "NWS colours" + (corsOK === false ? "" : " · tap to switch back") : "Light → heavy · tap for NWS colours";
+    ui.leg.querySelector("em").textContent = !sm ? "NWS colours" + (corsOK === false ? "" : " · tap to switch back") : frames && frames.src === "s3" ? "Light → heavy" : "Light → heavy · tap for NWS colours";
   }
   function size() {
     var r = el.getBoundingClientRect(); if (!r.width) return;
@@ -798,7 +861,7 @@
     hide: function () { stopWatch(); if (gpsMode === "wait") gpsMode = "off"; on = false; playing && play(false); started = false; userPaused = false; clearInterval(refreshT); if (raf) cancelAnimationFrame(raf); raf = 0; },
     refresh: function () { if (on) loadFrames(); },
     // for the live data check
-    _state: function () { return { wk: !!WK, mv: (MV[mvKey] || []).map(function (m) { return m ? [+(m.x * rscale()).toFixed(1), +(m.y * rscale()).toFixed(1)] : null; }), redraws: redraws, tf: cvL && cvL.style.transform, tfs: LAYERS.map(function (L) { return L.c.style.transform; }), src: frames && frames.src, mrmsOK: mrmsOK, corsOK: corsOK, frames: frames && frames.n, valid: frames && frames.valid, ready: frames ? ready(frames) : 0, view: view, playing: playing, cur: cur, frac: frac }; },
+    _state: function () { return { s3OK: s3OK, box: box, wk: !!WK, mv: (MV[mvKey] || []).map(function (m) { return m ? [+(m.x * rscale()).toFixed(1), +(m.y * rscale()).toFixed(1)] : null; }), redraws: redraws, tf: cvL && cvL.style.transform, tfs: LAYERS.map(function (L) { return L.c.style.transform; }), src: frames && frames.src, mrmsOK: mrmsOK, corsOK: corsOK, frames: frames && frames.n, valid: frames && frames.valid, ready: frames ? ready(frames) : 0, view: view, playing: playing, cur: cur, frac: frac }; },
     _dbz: toDbz, _iem: iemDbz, _test: function (im) { return recolor(im); }
   };
   if (!INW) { root.WXRadar = api; return; }
@@ -808,8 +871,157 @@
     return fetch(u, { mode: "cors", credentials: "omit" }).then(function (r) { if (!r.ok) throw 0; return r.blob(); })
       .then(function (b) { return createImageBitmap(b, { colorSpaceConversion: "none" }); });
   }
+  // ----- MRMS grids from NOAA's archive (GRIB2, PNG-packed) -----
+  var G = {}, GBOX = null, NI = 7000, NJ = 3500, LAT0 = 54.995, LON0 = -129.995, FB = 1600, CS = 4;
+  function gunzip(buf, fmt) { return new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream(fmt))); }
+  // GRIB2 → { R, E, D, png } (template 5.41: value = (R + X·2^E) / 10^D, X from a greyscale PNG)
+  function grib(u8) {
+    var dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength), p = 16, out = {};
+    function s16(o) { var v = dv.getUint16(o); return v & 0x8000 ? -(v & 0x7fff) : v; }
+    while (p + 5 <= u8.length && !(u8[p] === 55 && u8[p + 1] === 55 && u8[p + 2] === 55 && u8[p + 3] === 55)) {
+      var len = dv.getUint32(p), sec = u8[p + 4];
+      if (sec === 3) { out.ni = dv.getUint32(p + 30); out.nj = dv.getUint32(p + 34); }
+      if (sec === 5) { out.R = dv.getFloat32(p + 11); out.E = s16(p + 15); out.D = s16(p + 17); out.bits = u8[p + 19]; }
+      if (sec === 7) out.png = u8.subarray(p + 5, p + len);
+      p += len;
+    }
+    return out;
+  }
+  // PNG row unfiltering, one tight loop per filter type
+  function unfilter(row, cur, prev, n, bpp) {
+    var ft = row[0], x, a, b, c, p, pa, pb, pc;
+    if (ft === 0) { for (x = 0; x < n; x++) cur[x] = row[x + 1]; }
+    else if (ft === 1) { for (x = 0; x < bpp; x++) cur[x] = row[x + 1]; for (x = bpp; x < n; x++) cur[x] = (row[x + 1] + cur[x - bpp]) & 255; }
+    else if (ft === 2) { for (x = 0; x < n; x++) cur[x] = (row[x + 1] + prev[x]) & 255; }
+    else if (ft === 3) { for (x = 0; x < bpp; x++) cur[x] = (row[x + 1] + (prev[x] >> 1)) & 255; for (x = bpp; x < n; x++) cur[x] = (row[x + 1] + ((cur[x - bpp] + prev[x]) >> 1)) & 255; }
+    else {
+      for (x = 0; x < bpp; x++) cur[x] = (row[x + 1] + prev[x]) & 255;
+      for (x = bpp; x < n; x++) {
+        a = cur[x - bpp]; b = prev[x]; c = prev[x - bpp]; p = a + b - c;
+        pa = p > a ? p - a : a - p; pb = p > b ? p - b : b - p; pc = p > c ? p - c : c - p;
+        cur[x] = (row[x + 1] + (pa <= pb && pa <= pc ? a : pb <= pc ? b : c)) & 255;
+      }
+    }
+  }
+  // stream-decode a greyscale PNG row by row (rows are unfiltered as they arrive; only two rows kept)
+  function pngRows(png, onRow) {
+    var dv = new DataView(png.buffer, png.byteOffset, png.byteLength), p = 8, w = 0, bpp = 1, idat = [], n = 0;
+    while (p < png.length) {
+      var len = dv.getUint32(p), type = String.fromCharCode(png[p + 4], png[p + 5], png[p + 6], png[p + 7]);
+      if (type === "IHDR") { w = dv.getUint32(p + 8); bpp = png[p + 16] === 16 ? 2 : 1; }
+      if (type === "IDAT") { idat.push(png.subarray(p + 8, p + 8 + len)); n += len; }
+      p += 12 + len;
+    }
+    var stride = w * bpp, row = new Uint8Array(stride + 1), cur = new Uint8Array(stride), prev = new Uint8Array(stride), fill = 0, r = 0;
+    var reader = new Blob(idat).stream().pipeThrough(new DecompressionStream("deflate")).getReader();
+    function pump() {
+      return reader.read().then(function (res) {
+        if (res.done) return r;
+        var c = res.value, i = 0;
+        while (i < c.length) {
+          var take = Math.min(c.length - i, stride + 1 - fill); row.set(c.subarray(i, i + take), fill); fill += take; i += take;
+          if (fill === stride + 1) { unfilter(row, cur, prev, stride, bpp);
+            onRow(r++, cur, bpp); var t = prev; prev = cur; cur = t; fill = 0;
+          }
+        }
+        return pump();
+      });
+    }
+    return pump();
+  }
+  // reflectivity → bytes q = (dBZ + 10)·2 (0 = none); type → 0 none, 1 rain, 2 snow, 3 hail
+  function decodeRef(buf, fr) {
+    var g = grib(buf), sc = Math.pow(2, g.E), dd = Math.pow(10, g.D), bx = GBOX, lut = new Uint8Array(65536);
+    for (var X = 0; X < 65536; X++) { var v = (g.R + X * sc) / dd; lut[X] = v < 0 ? 0 : v > 117 ? 254 : Math.round((v + 10) * 2); }
+    var r0 = bx.r0, c0 = bx.c0, c1 = c0 + FB, fine = new Uint8Array(FB * FB), CW = NI >> 2, coarse = new Uint8Array(CW * (NJ >> 2));
+    return pngRows(g.png, function (r, row) {
+      var fo = (r - r0) * FB - c0, inF = r >= r0 && r < r0 + FB, co = (r >> 2) * CW;
+      for (var c = 0; c < NI; c++) {
+        var q = lut[(row[2 * c] << 8) | row[2 * c + 1]]; if (!q) continue;
+        if (inF && c >= c0 && c < c1) fine[fo + c] = q;
+        var ci = co + (c >> 2); if (q > coarse[ci]) coarse[ci] = q;
+      }
+    }).then(function () { fr.fine = fine; fr.coarse = coarse; fr.fbox = bx; });
+  }
+  function decodeFlag(buf, fr) {
+    var g = grib(buf), bx = GBOX, r0 = bx.r0, c0 = bx.c0, c1 = c0 + FB, H = FB / 2, ft = new Uint8Array(H * H), CW = NI >> 2, ct = new Uint8Array(CW * (NJ >> 2));
+    var lut = new Uint8Array(65536); for (var X = 0; X < 65536; X++) { var v = Math.round(g.R + X); lut[X] = v === 3 ? 2 : v === 7 ? 3 : v > 0 ? 1 : 0; }
+    return pngRows(g.png, function (r, row, bpp) {
+      var inF = r >= r0 && r < r0 + FB, fo = ((r - r0) >> 1) * H, top = (r & 3) === 0, co = (r >> 2) * CW, c, k;
+      for (c = 0; c < NI; c++) {
+        k = lut[bpp === 2 ? (row[2 * c] << 8) | row[2 * c + 1] : row[c]]; if (!k) continue;
+        if (inF && c >= c0 && c < c1) ft[fo + ((c - c0) >> 1)] = k;
+        if (top && (c & 3) === 0) ct[co + (c >> 2)] = k;
+      }
+    }).then(function () { fr.ft = ft; fr.ct = ct; });
+  }
+  function fetchGz(url) { return fetch(url).then(function (r) { if (!r.ok) throw 0; return r.arrayBuffer(); }).then(function (b) { return gunzip(b, "gzip").arrayBuffer(); }).then(function (b) { return new Uint8Array(b); }); }
+  function gridFrame(f) {
+    var fr = G[f.t]; if (fr) return fr.p;
+    fr = G[f.t] = { t: f.t };
+    fr.p = Promise.all([fetchGz(f.base + f.ref), f.flag ? fetchGz(f.base + f.flag).catch(function () { return null; }) : null]).then(function (b) {
+      fr.raw = b[0]; fr.rawF = b[1];
+      return Promise.all([decodeRef(b[0], fr), b[1] ? decodeFlag(b[1], fr) : null]);
+    }).then(function () { return fr; });
+    fr.p.catch(function () { delete G[f.t]; });
+    return fr.p;
+  }
+  var FR = {}, LASTK = {};
+  function gtile(m) {
+    var fr = G[m.t]; if (!fr) return Promise.reject();
+    return fr.p.then(function () {
+      if (fr.fbox === GBOX) return fr;
+      // the view moved to a new area: re-decode the sharp grid for it from the kept file (once per area)
+      if (fr.reBox !== GBOX) { fr.reBox = GBOX; fr.re = Promise.all([decodeRef(fr.raw, fr), fr.rawF ? decodeFlag(fr.rawF, fr) : null]); }
+      return fr.re.then(function () { return fr; });
+    }).then(function (fr) {
+      var M = 512, n = Math.pow(2, m.z), c = new OffscreenCanvas(M, M), cx = c.getContext("2d"), img = cx.createImageData(M, M), d32 = new Uint32Array(img.data.buffer), L = pal(), any = false;
+      var b = fr.fbox, CW = NI / CS, CH = NJ / CS, H = FB / 2, degPx = 360 / (n * M), useFine = degPx < 0.02;
+      var col = new Float64Array(M);
+      for (var ox = 0; ox < M; ox++) col[ox] = (((m.x + (ox + 0.5) / M) / n) * 360 - 180 - LON0) / 0.01;
+      for (var oy = 0; oy < M; oy++) {
+        var wy = (m.y + (oy + 0.5) / M) / n, lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * wy))) * 180 / Math.PI, gr = (LAT0 - lat) / 0.01;
+        if (gr < -1 || gr > NJ) continue;
+        for (ox = 0; ox < M; ox++) {
+          var gc = col[ox], v, tk, fx, fy, x0, y0, a;
+          if (gc < -1 || gc > NI) continue;
+          var lr = gr - b.r0, lc = gc - b.c0;
+          if (useFine && lr >= 0 && lr < FB - 1 && lc >= 0 && lc < FB - 1) {
+            y0 = lr | 0; x0 = lc | 0; fy = lr - y0; fx = lc - x0; a = y0 * FB + x0;
+            v = ((fr.fine[a] * (1 - fx) + fr.fine[a + 1] * fx) * (1 - fy) + (fr.fine[a + FB] * (1 - fx) + fr.fine[a + FB + 1] * fx) * fy) / 2 - 10;
+            tk = fr.ft ? fr.ft[(Math.round(lr) >> 1) * H + (Math.round(lc) >> 1)] : 1;
+          } else {
+            var cr = gr / CS - 0.375, cc = gc / CS - 0.375; if (cr < 0) cr = 0; if (cc < 0) cc = 0; if (cr > CH - 1.001) cr = CH - 1.001; if (cc > CW - 1.001) cc = CW - 1.001;
+            y0 = cr | 0; x0 = cc | 0; fy = cr - y0; fx = cc - x0; a = y0 * CW + x0;
+            v = ((fr.coarse[a] * (1 - fx) + fr.coarse[a + 1] * fx) * (1 - fy) + (fr.coarse[a + CW] * (1 - fx) + fr.coarse[a + CW + 1] * fx) * fy) / 2 - 10;
+            tk = fr.ct ? fr.ct[Math.round(cr) * CW + Math.round(cc)] : 1;
+          }
+          if (v < MINDBZ) continue;
+          d32[oy * M + ox] = L[tk === 2 ? 2 : tk === 3 ? 3 : 1][Math.min(199, (v * 2) | 0)]; any = true;
+        }
+      }
+      if (!any) return { empty: true };
+      cx.putImageData(img, 0, 0); return { sm: c.transferToImageBitmap() };
+    });
+  }
+  function boxFor(bx) {
+    var r = Math.round((LAT0 - bx.lat) / 0.01) - FB / 2, c = Math.round((bx.lon - LON0) / 0.01) - FB / 2;
+    return { r0: Math.max(0, Math.min(NJ - FB, r)), c0: Math.max(0, Math.min(NI - FB, c)), v: bx.v };
+  }
   root.onmessage = function (ev) {
     var m = ev.data;
+    if (m.grid === "box") { GBOX = boxFor(m.box); return; }
+    if (m.grid === "load") {
+      // keep this set and the previous one (still on screen until the new one is ready)
+      var keep = {}; m.frames.forEach(function (f) { f.base = m.base; FR[f.t] = f; keep[f.t] = 1; gridFrame(f).catch(function () {}); });
+      Object.keys(G).forEach(function (t) { if (!keep[t] && !LASTK[t]) { delete G[t]; delete FR[t]; } }); LASTK = keep;
+      return;
+    }
+    if (m.kind === "gtile") {
+      if (!can2d) { root.postMessage({ id: m.id, nosupport: true }); return; }
+      var fr = G[m.t]; (fr ? fr.p : Promise.reject()).then(function () { return gtile(m); }).then(function (r) { r.id = m.id; root.postMessage(r, r.sm ? [r.sm] : []); }, function () { root.postMessage({ id: m.id, err: true }); });
+      return;
+    }
     if (m.cfg) { REFP = m.cfg.REFP; TYPC = m.cfg.TYPC; LREF.clear(); LTYP.clear(); return; }
     if (!can2d) { root.postMessage({ id: m.id, nosupport: true }); return; }
     if (m.kind === "sad") { root.postMessage({ id: m.id, mv: sad(m.A, m.B, m.gw, m.gh, m.R) }); return; }
