@@ -446,6 +446,7 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
 .mview{padding:10px 0 8px;overflow:hidden}
 .mmodel{display:flex;gap:6px;padding:0 10px 8px;overflow-x:auto;scrollbar-width:none}
 .mmodel .chip:disabled{opacity:.4;cursor:default}
+.mquick{padding-top:0}.mquick .chip{font-weight:600}
 .mhead{display:flex;align-items:center;gap:8px;padding:0 10px 8px}
 .msel{flex:1;min-width:0;appearance:none;-webkit-appearance:none;border:1px solid var(--line);border-radius:999px;background:var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 10px center/14px;padding:6px 30px 6px 12px;font:600 15px var(--sans);color:var(--ink);text-overflow:ellipsis;cursor:pointer}
 .msel.mrun{flex:none;width:auto;max-width:42%}
@@ -574,7 +575,8 @@ body:has(#testbar:not([hidden])) .sec{scroll-margin-top:140px}
   <section id="maps" class="sec" data-tab="maps" hidden>
     <div class="card mview">
       <div class="mmodel" id="mmodel" role="group" aria-label="Model"></div>
-      <div class="mhead"><select id="mparam" class="msel" aria-label="Map"></select><select id="mrun" class="msel mrun" aria-label="Model run"></select></div>
+      <div class="mmodel mquick" id="mquick" role="group" aria-label="Map"></div>
+      <div class="mhead"><select id="mparam" class="msel" aria-label="All maps"></select><select id="mrun" class="msel mrun" aria-label="Model run"></select></div>
       <div class="mmapw"><div id="mmap"></div></div>
       <div class="mtitle" id="mtitle"></div>
       <div class="mctl">
@@ -620,12 +622,12 @@ body:has(#testbar:not([hidden])) .sec{scroll-margin-top:140px}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=80"></script>
-<script src="wx-live.js?v=80"></script>
-<script src="wx-scenarios.js?v=80"></script>
-<script src="wx-vmap.js?v=80"></script>
-<script src="wx-radar.js?v=80"></script>
-<script src="wx-models.js?v=80"></script>
-<script src="app.js?v=80"></script>
+<script src="wx-normalize.js?v=81"></script>
+<script src="wx-live.js?v=81"></script>
+<script src="wx-scenarios.js?v=81"></script>
+<script src="wx-vmap.js?v=81"></script>
+<script src="wx-radar.js?v=81"></script>
+<script src="wx-models.js?v=81"></script>
+<script src="app.js?v=81"></script>
 </body>
 </html>

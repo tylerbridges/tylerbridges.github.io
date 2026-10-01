@@ -201,11 +201,11 @@
   }
   // every model map product, decoded off-screen at one forecast hour, with its values checked for plausibility
   var MRANGE = { t2: [-80, 135], td2: [-90, 95], t850: [-60, 45], qpf: [0, 40], sn10: [0, 150], snv: [0, 150], frz: [0, 10], ptype: [-40, 85], mslp: [-40, 85],
-    w10: [0, 250], gust: [0, 300], cape: [0, 12000], srh: [-2000, 3000], uh: [0, 2000], h500: [0, 300], j250: [0, 350], pwat: [0, 4], tcc: [0, 100] };
+    nsn: [0, 150], w10: [0, 250], gust: [0, 300], cape: [0, 12000], srh: [-2000, 3000], uh: [0, 2000], h500: [0, 300], j250: [0, 350], pwat: [0, 4], tcc: [0, 100] };
   function sweepMaps(d, res) {
     var W = d.defaultView.WXModels; if (!W || MOCK) return Promise.resolve();
     var jobs = [], results = [], chain = Promise.resolve();
-    Object.keys(W.MODELS).forEach(function (m) { W.PARAMS.forEach(function (p) { if (!p.only || p.only.indexOf(m) >= 0) jobs.push([m, p]); }); });
+    Object.keys(W.MODELS).forEach(function (m) { W.PARAMS.forEach(function (p) { if (W.has(p, m)) jobs.push([m, p]); }); });
     jobs.forEach(function (j) {
       chain = chain.then(function () {
         var M = W.MODELS[j[0]], lim = MRANGE[j[1].id] || [-1e9, 1e9];

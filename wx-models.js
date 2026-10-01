@@ -94,7 +94,9 @@
       for (i = 0; i < n; i++) out[i] = ms && ms[i] ? NaN : (R + v[i] * bs) * ds;
     } else throw new Error("unsupported packing 5." + t);
     var N = m.g.nx * m.g.ny;
-    if (m.bm) { var full = new Float32Array(N), q = 0; for (i = 0; i < N; i++) full[i] = m.bm[i >> 3] >> (7 - (i & 7)) & 1 ? out[q++] : NaN; return full; }
+    if (m.bm) { var full = new Float32Array(N), q = 0; for (i = 0; i < N; i++) full[i] = m.bm[i >> 3] >> (7 - (i & 7)) & 1 ? out[q++] : NaN; out = full; }
+    // scanning mode bit 0x10 (NBM): every other row runs the opposite way, so flip those rows back
+    if (m.g.scan & 0x10) { var nx = m.g.nx; for (var r = 1; r < m.g.ny; r += 2) out.subarray(r * nx, r * nx + nx).reverse(); }
     return out;
   }
   // grid index (fractional, file order) <-> lat/lon
@@ -137,7 +139,13 @@
     gfs: { name: "GFS", full: "GFS (0.25°)", base: "https://noaa-gfs-bdp-pds.s3.amazonaws.com/", cycle: 6, step: 6, conus: false,
       max: function () { return 384; },
       prefix: function (run) { return "gfs." + ymd(run) + "/" + hh(run) + "/atmos/gfs.t" + hh(run) + "z.pgrb2.0p25.f"; },
-      file: function (run, h) { return this.prefix(run) + p3(h); }, hourOf: /pgrb2\.0p25\.f(\d+)\.idx$/ }
+      file: function (run, h) { return this.prefix(run) + p3(h); }, hourOf: /pgrb2\.0p25\.f(\d+)\.idx$/ },
+    // National Blend of Models: what NWS forecasts start from; its snowfall uses NBM's own snow-to-liquid ratios.
+    //   Hourly buckets; snow and ice stop after 48 h, so the viewer stops there too.
+    nbm: { name: "NBM", full: "National Blend of Models (2.5 km)", base: "https://noaa-nbm-grib2-pds.s3.amazonaws.com/", cycle: 1, step: 1, conus: true, nbm: true,
+      max: function () { return 48; },
+      prefix: function (run) { return "blend." + ymd(run) + "/" + hh(run) + "/core/blend.t" + hh(run) + "z.core.f"; },
+      file: function (run, h) { return this.prefix(run) + p3(h) + ".co.grib2"; }, hourOf: /core\.f(\d+)\.co\.grib2\.idx$/ }
   };
 
   // ---------- colour scales ----------
@@ -176,11 +184,13 @@
   var EA = ["entire atmosphere", "entire atmosphere (considered as a single layer)"];
   var K2F = function (k) { return (k - 273.15) * 1.8 + 32; }, MS2MPH = 2.23694, MS2KT = 1.94384, MM2IN = 1 / 25.4;
   // accumulations from the start of the run: model-specific buckets, summed through earlier hours where needed
-  function bucket(model, h) { return model === "nam" ? h - (h % 3 || 3) : model === "gfs" ? Math.max(0, h - 6) : 0; }
+  function bucket(model, h) { return model === "nam" ? h - (h % 3 || 3) : model === "gfs" ? Math.max(0, h - 6) : model === "nbm" ? h - 1 : 0; }
+  // which products a model has (NBM only carries surface precip/snow/ice and temperature here)
+  function has(p, model) { return model === "nbm" ? !!p.nbm : !p.only || p.only.indexOf(model) >= 0; }
   var P = [
     { id: "ptype", g: "Precipitation", name: "Precip type & reflectivity", types: true,
       calc: function (F) { return F.all([C("REFC", EA), C("CRAIN", "surface"), C("CSNOW", "surface"), C("CFRZR", "surface"), C("CICEP", "surface")], [1, 2, 3, 4]).then(ptypeOut); } },
-    { id: "qpf", g: "Precipitation", name: "Total precipitation", sc: "qpf", accum: true,
+    { id: "qpf", g: "Precipitation", name: "Total precipitation", sc: "qpf", accum: true, nbm: true,
       calc: function (F) { return F.total("qpf", function (a, b) { return F.get(C("APCP", "surface", [a, b, "acc"])).then(function (x) { return scale(x, MM2IN); }); }).then(function (v) { return { v: v }; }); } },
     { id: "mslp", g: "Precipitation", name: "MSLP & precip type", types: true, cont: { iv: 4, fmt: "hpa", hl: true },
       calc: function (F) {
@@ -194,16 +204,19 @@
           return F.get(C("WEASD", "surface", [a, b, "acc"])).then(function (x) { return scale(x, 10 * MM2IN); });
         }).then(function (v) { return { v: v }; });
       } },
+    { id: "nsn", g: "Winter", name: "Total snowfall (NBM snow ratios)", sc: "snow", accum: true, nbm: true, only: [],
+      calc: function (F) { return F.total("nsn", function (a, b) { return F.get(C("ASNOW", "surface", [a, b, "acc"])).then(function (x) { return scale(x, 39.3701); }); }).then(function (v) { return { v: v }; }); } },
     { id: "snv", g: "Winter", name: "Total snowfall (variable density)", sc: "snow", accum: true, only: ["hrrr"],
       calc: function (F) { return F.total("snv", function (a, b) { return F.get(C("ASNOW", "surface", [a, b, "acc"])).then(function (x) { return scale(x, 39.3701); }); }).then(function (v) { return { v: v }; }); } },
-    { id: "frz", g: "Winter", name: "Freezing rain accumulation", sc: "ice", accum: true,
+    { id: "frz", g: "Winter", name: "Freezing rain accumulation", sc: "ice", accum: true, nbm: true,
       calc: function (F) {
         return F.total("frz", function (a, b) {
+          if (F.model === "nbm") return F.get(C("FICEAC", "surface", [a, b, "acc"])).then(function (x) { return scale(x, MM2IN); }); // flat ice accumulation, kg/m² = mm
           if (F.model === "hrrr") return F.get(C("FRZR", "surface", [a, b, "acc"])).then(function (x) { return scale(x, MM2IN); });
           return Promise.all([F.get(C("APCP", "surface", [a, b, "acc"])), F.get(C("CFRZR", "surface", F.model === "gfs" ? [a, b, "ave"] : "i"))]).then(function (r) { return mul(r[0], r[1], MM2IN); });
         }).then(function (v) { return { v: v }; });
       } },
-    { id: "t2", g: "Temperature", name: "2-m temperature", sc: "tF", cont: { levels: [32], fmt: "int", bold: true },
+    { id: "t2", g: "Temperature", name: "2-m temperature", sc: "tF", nbm: true, cont: { levels: [32], fmt: "int", bold: true },
       calc: function (F) { return F.get(C("TMP", "2 m above ground")).then(function (x) { var v = map(x, K2F); return { v: v, c: v }; }); } },
     { id: "td2", g: "Temperature", name: "2-m dew point", sc: "tdF",
       calc: function (F) { return F.get(C("DPT", "2 m above ground")).then(function (x) { return { v: map(x, K2F) }; }); } },
@@ -273,7 +286,7 @@
       if (IDX[url]) return IDX[url];
       var p = IDX[url] = fetch(url + ".idx").then(function (r) { if (!r.ok) throw new Error("hour not published yet"); return r.text(); }).then(function (tx) {
         // "303.2" = second field of the message at that offset; a message ends where the next one starts
-        var L = tx.trim().split("\n").map(function (s) { var f = s.split(":"); return { a: +f[1], sub: +(String(f[0]).split(".")[1] || 1), v: f[3], l: f[4], t: f[5] }; });
+        var L = tx.trim().split("\n").map(function (s) { var f = s.split(":"); return { a: +f[1], sub: +(String(f[0]).split(".")[1] || 1), v: f[3], l: f[4], t: f[5], x: f.slice(6).join(":") }; });
         L.forEach(function (e, i) { var k = i + 1; while (k < L.length && L[k].a <= e.a) k++; e.b = k < L.length ? L[k].a - 1 : null; });
         return L;
       });
@@ -293,7 +306,8 @@
       var p = getIdx(url).then(function (L) {
         var e = null;
         for (var a = 0; a < c.v.length && !e; a++) for (var b = 0; b < c.l.length && !e; b++) for (var k = 0; k < ts.length && !e; k++)
-          e = L.filter(function (x) { return x.v === c.v[a] && x.l === c.l[b] && x.t === ts[k]; })[0] || null;
+          // the plain field only: NBM lists probabilities/percentiles under the same name and time ("prob >0.254")
+          e = L.filter(function (x) { return x.v === c.v[a] && x.l === c.l[b] && x.t === ts[k] && !x.x; })[0] || null;
         if (!e) throw new Error("no " + c.v[0] + " " + c.l[0] + " " + ts[0]);
         return getRange(url, e.a, e.b).then(function (buf) { return [buf, e.sub]; });
       }).then(function (x) {
@@ -325,7 +339,9 @@
             if (ACC.size > 8) ACC.delete(ACC.keys().next().value);
             return p;
           }
-          return tot(m.h);
+          // upcoming totals: from the hour now (m.from) to this hour
+          if (!m.from) return tot(m.h);
+          return Promise.all([tot(m.h), tot(m.from)]).then(function (r) { var o = new Float32Array(r[0].length); for (var i = 0; i < o.length; i++) { var d = r[0][i] - r[1][i]; o[i] = d > 0 ? d : 0; } return o; });
         }
       };
       // run inc() with F.get reading hour h
@@ -384,6 +400,7 @@
   var st = (function () { try { return JSON.parse(localStorage.getItem("wx-model") || "null"); } catch (e) { return null; } })() || {};
   var winter = [10, 11, 0, 1, 2, 3].indexOf(new Date().getMonth()) >= 0;
   var cur = { model: st.model || "hrrr", param: st.param || (winter ? "sn10" : "qpf"), run: null, k: 0 }, userRun = false;
+  if (!PBY[cur.param] || !has(PBY[cur.param], cur.model)) cur.param = "qpf";
   var runs = {}, frames = {}, gen = 0, playing = false, playT = 0, readout = null;
   function save() { try { localStorage.setItem("wx-model", JSON.stringify({ model: cur.model, param: cur.param })); } catch (e) {} }
   function dark() { var t = document.documentElement.dataset.theme; return t ? t === "dark" : !!(root.matchMedia && root.matchMedia("(prefers-color-scheme: dark)").matches); }
@@ -421,7 +438,13 @@
     return (L.filter(full)[0] || L[0] || null);
   }
   function R() { var L = runs[cur.model] && runs[cur.model].list || []; return L.filter(function (x) { return x.run === cur.run; })[0] || null; }
-  function hours() { var r = R(); return r ? r.hours : []; }
+  // accumulations count from the hour now (upcoming totals), so their slider starts after it
+  function fromH() {
+    var r = R(); if (!r || !PBY[cur.param].accum) return 0;
+    var f = 0; r.hours.forEach(function (h) { if (r.run + h * H <= Date.now() + 10 * 60000) f = h; });
+    return f;
+  }
+  function hours() { var r = R(); if (!r) return []; var f = fromH(); return f || PBY[cur.param].accum ? r.hours.filter(function (h) { return h > f; }) : r.hours; }
 
   // ---------- workers ----------
   var WK = null, wjobs = {}, wid = 0, Q = [], busy = 0;
@@ -439,7 +462,7 @@
       j.m.id = ++wid; wjobs[j.m.id] = j; busy++; WK[j.m.id % WK.length].postMessage(j.m);
     }
   }
-  function fkey(h) { return cur.model + "|" + cur.run + "|" + cur.param + "|" + h; }
+  function fkey(h) { return cur.model + "|" + cur.run + "|" + cur.param + "|" + fromH() + "|" + h; }
   // the area to crop to: the view plus half its size on each side
   function boxNow() {
     var s = scaleZ(view.z), hw = W / s, hh2 = HH / s;
@@ -451,7 +474,7 @@
   function request(h, front) {
     var k = fkey(h), f = frames[k];
     if (f && (f.loading || f.err || f.box === BOX)) return;
-    var job = { gen: gen, m: { model: cur.model, run: cur.run, h: h, param: cur.param, box: BOX, want: Math.round(Math.max(W, HH) * 1.6) }, cb: null };
+    var job = { gen: gen, m: { model: cur.model, run: cur.run, h: h, from: fromH(), param: cur.param, box: BOX, want: Math.round(Math.max(W, HH) * 1.6) }, cb: null };
     var fr = frames[k] = f || {}; fr.loading = true;
     job.cb = function (r) {
       fr.loading = false;
@@ -689,8 +712,9 @@
       st: mk("div", "mmstat", el), ro: mk("div", "mmro", el), reg: mk("div", "mmreg", el),
       model: box.querySelector("#mmodel"), param: box.querySelector("#mparam"), run: box.querySelector("#mrun"),
       play: box.querySelector("#mplay"), prev: box.querySelector("#mprev"), next: box.querySelector("#mnext"), range: box.querySelector("#mrange"), time: box.querySelector("#mtime"),
-      leg: box.querySelector("#mleg"), src: box.querySelector("#msrc"), title: box.querySelector("#mtitle")
+      leg: box.querySelector("#mleg"), src: box.querySelector("#msrc"), title: box.querySelector("#mtitle"), quick: box.querySelector("#mquick")
     };
+    if (ui.quick) ui.quick.addEventListener("click", function (e) { var b = e.target.closest("[data-q]"); if (!b || b.disabled) return; setParam(b.dataset.q); });
     ui.st.hidden = true; ui.ro.hidden = true;
     ui.reg.innerHTML = '<button type="button" data-z="7.4">Local</button><button type="button" data-z="5.7">Region</button><button type="button" data-z="us">U.S.</button>';
     ui.reg.addEventListener("click", function (e) { var b = e.target.closest("button"); if (!b) return; var z = b.dataset.z; if (z === "us") fly(wx(-96.5), wy(38.5), 3.9); else fly(wx(loc.lon), wy(loc.lat), +z); });
@@ -720,7 +744,7 @@
   }
   function uiParams() {
     var gs = [], html = "";
-    P.forEach(function (p) { if (p.only && p.only.indexOf(cur.model) < 0) return; if (!gs.length || gs[gs.length - 1].g !== p.g) gs.push({ g: p.g, l: [] }); gs[gs.length - 1].l.push(p); });
+    P.forEach(function (p) { if (!has(p, cur.model)) return; if (!gs.length || gs[gs.length - 1].g !== p.g) gs.push({ g: p.g, l: [] }); gs[gs.length - 1].l.push(p); });
     gs.forEach(function (g) { html += '<optgroup label="' + g.g + '">' + g.l.map(function (p) { return '<option value="' + p.id + '"' + (p.id === cur.param ? " selected" : "") + ">" + p.name + "</option>"; }).join("") + "</optgroup>"; });
     ui.param.innerHTML = html;
   }
@@ -761,7 +785,8 @@
     ui.title.textContent = MODELS[cur.model].name + " · " + p.name;
     if (!r || h == null) { ui.time.innerHTML = ""; return; }
     var v = r.run + h * H;
-    ui.time.innerHTML = "<b>" + fmtT(v, { weekday: "short", hour: "numeric" }) + "</b><span>Hour " + h + (p.accum ? " · run total" : "") + "</span>";
+    var f0 = fromH();
+    ui.time.innerHTML = "<b>" + fmtT(v, { weekday: "short", hour: "numeric" }) + "</b><span>" + (p.accum ? "Total from " + fmtT(r.run + f0 * H, { hour: "numeric" }) : "Hour " + h) + "</span>";
     ui.src.innerHTML = MODELS[cur.model].full + " " + hh(r.run) + "Z run · " + fmtT(r.run, { weekday: "short", hour: "numeric", minute: "2-digit" }) + " · NOAA";
   }
   function showHour() { readout = null; ui.ro.hidden = true; uiTime(); loadAround(); paint(6); status(); }
@@ -785,8 +810,8 @@
     if (!modelOk(m)) return;
     var vt = R() ? R().run + (hours()[cur.k] || 0) * H : Date.now();
     cur.model = m; cur.run = null; userRun = false; save(); resetFrames(); play(false);
-    if (PBY[cur.param].only && PBY[cur.param].only.indexOf(m) < 0) cur.param = "sn10";
-    uiModels(); uiParams(); legend(); uiTime(); status();
+    if (!has(PBY[cur.param], m)) cur.param = /^(sn10|nsn|snv)$/.test(cur.param) ? (m === "nbm" ? "nsn" : "sn10") : "qpf";
+    uiModels(); uiParams(); uiQuick(); legend(); uiTime(); status();
     findRuns(m).then(function (L) { if (cur.model !== m) return; var x = pickRun(L); if (x) setRun(x.run, vt); else { uiRuns(); status(); } });
   }
   function setRun(run, vt) {
@@ -796,7 +821,23 @@
     var hs = hours(), best = 0; hs.forEach(function (h, i) { if (Math.abs(run + h * H - was) < Math.abs(run + hs[best] * H - was)) best = i; });
     cur.k = best; showHour();
   }
-  function setParam(id) { cur.param = id; save(); var hs = hours(), h = hs[cur.k]; resetFrames(); uiParams(); legend(); if (h != null) showHour(); else { uiTime(); status(); } }
+  function setParam(id) {
+    var r = R(), hs0 = hours(), vt = r && hs0[cur.k] != null ? r.run + hs0[cur.k] * H : null;
+    cur.param = id; save(); resetFrames(); uiParams(); uiQuick(); legend();
+    var hs = hours(); if (!r || !hs.length) { uiTime(); status(); return; }
+    var best = 0; if (vt != null) hs.forEach(function (h, i) { if (Math.abs(r.run + h * H - vt) < Math.abs(r.run + hs[best] * H - vt)) best = i; });
+    cur.k = best; showHour();
+  }
+  // the four maps most people want, one tap away (everything else is in the menu)
+  var QUICK = [["ptype", "Precip type"], ["qpf", "Precip"], ["snow", "Snow"], ["frz", "Ice"]];
+  function snowId() { return cur.model === "nbm" ? "nsn" : "sn10"; }
+  function uiQuick() {
+    if (!ui.quick) return;
+    ui.quick.innerHTML = QUICK.map(function (q) {
+      var id = q[0] === "snow" ? snowId() : q[0], ok = has(PBY[id], cur.model), on = cur.param === id || q[0] === "snow" && /^(sn10|nsn|snv)$/.test(cur.param);
+      return '<button type="button" class="chip' + (on ? " on" : "") + '" data-q="' + id + '"' + (ok ? "" : " disabled") + ">" + q[1] + "</button>";
+    }).join("");
+  }
   // re-check for new hours and runs while open
   var refreshT = 0, lastRefresh = Date.now();
   function refresh() {
@@ -879,7 +920,7 @@
       loc = { lat: l.lat, lon: l.lon };
       if (moved2) { view = { x: wx(loc.lon), y: wy(loc.lat), z: view.z && drawn ? view.z : 5.7 }; drawn = null; BOX = null; resetFrames(); }
       if (!modelOk(cur.model)) cur.model = "gfs";
-      on = true; size(); uiModels(); uiParams(); legend(); uiTime();
+      on = true; size(); uiModels(); uiParams(); uiQuick(); legend(); uiTime();
       if (!cur.run) switchModel(cur.model); else if (moved2) showHour();
       else if (Date.now() - lastRefresh > 10 * 60000) refresh();
       clearInterval(refreshT); refreshT = setInterval(function () { if (on && !document.hidden) refresh(); }, 10 * 60000);
@@ -889,23 +930,27 @@
     _state: function () { var hs = hours(), f = frames[fkey(hs[cur.k])]; var c3 = f && f.r && f.r.c; return { model: cur.model, param: cur.param, run: cur.run, hours: hs, k: cur.k, ready: !!(f && f.r), err: f && f.err, view: view, queue: Q.length + busy, c: c3 ? { nx: c3.nx, ny: c3.ny, s: c3.s, a0: c3.a[0], mid: c3.a[c3.a.length >> 1] } : null, v: f && f.r && f.r.v ? { nx: f.r.v.nx, ny: f.r.v.ny, s: f.r.v.s } : null }; },
     _set: function (o) { if (o.model && o.model !== cur.model) switchModel(o.model); if (o.param) setParam(o.param); if (o.k != null) { cur.k = o.k; showHour(); } },
     // one product at one hour, decoded off-screen (for check.html): value range and share of missing values
-    _probe: function (model, param, h) {
+    _probe: function (model, param, h, o) {
+      o = o || {};
       return new Promise(function (ok, no) {
-        var run = runs[model] && runs[model].list && pickRun(runs[model].list);
+        var run = o.run ? { run: o.run, hours: [h] } : runs[model] && runs[model].list && pickRun(runs[model].list);
         var go = function (rr) {
-          var job = { keep: true, m: { model: model, run: rr.run, h: h != null ? h : rr.hours[Math.min(rr.hours.length - 1, 6)], param: param, box: { w: loc.lon - 6, e: loc.lon + 6, s: loc.lat - 4, n: loc.lat + 4 }, want: 200 } };
+          var cl = o.lat != null ? o : loc;
+          var job = { keep: true, m: { model: model, run: rr.run, h: h != null ? h : rr.hours[Math.min(rr.hours.length - 1, 6)], from: o.from || 0, param: param, box: { w: cl.lon - 6, e: cl.lon + 6, s: cl.lat - 4, n: cl.lat + 4 }, want: o.want || 200 } };
           job.cb = function (r) {
             if (r.err) return no(new Error(r.err));
             if (r.r.empty) return no(new Error("outside this model's area"));
             var a = r.r.v.a, lo = Infinity, hi = -Infinity, nan = 0; for (var i = 0; i < a.length; i++) { if (a[i] !== a[i]) { nan++; continue; } if (a[i] < lo) lo = a[i]; if (a[i] > hi) hi = a[i]; }
-            ok({ run: rr.run, h: job.m.h, min: lo, max: hi, nan: nan / a.length, n: a.length });
+            var res = { run: rr.run, h: job.m.h, min: lo, max: hi, nan: nan / a.length, n: a.length };
+            if (o.lat != null) { var q = [0, 0], V = r.r.v; projFor(r.r.g).p.fwd(o.lat, o.lon, q); res.at = V.a[Math.round((q[1] - r.r.j0) / V.s) * V.nx + Math.round((q[0] - r.r.i0) / V.s)]; }
+            ok(res);
           };
           Q.unshift(job); pump();
         };
         if (run) go(run); else findRuns(model).then(function (L) { var x = pickRun(L); if (x) go(x); else no(new Error("no runs found")); });
       });
     },
-    MODELS: MODELS, PARAMS: P
+    MODELS: MODELS, PARAMS: P, has: has
   };
   root.WXModels = api;
 })(typeof self !== "undefined" ? self : this);
