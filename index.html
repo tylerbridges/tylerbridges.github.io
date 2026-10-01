@@ -29,7 +29,7 @@
 .rleg .lrow span{width:28px;flex:none}
 .rleg i{display:block;height:6px;border-radius:3px;flex:1}
 .rleg em{font-style:normal;font-size:9.5px;line-height:1.25;color:var(--muted)}
-.rloc{position:absolute;right:10px;top:10px;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;cursor:pointer;padding:0}
+.rbtns{position:absolute;right:10px;top:10px;display:flex;flex-direction:column;gap:8px}.rloc{position:relative;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;cursor:pointer;padding:0}.rloc[hidden]{display:none}.rloc.on svg{animation:rpulse 1s ease-in-out infinite alternate}@keyframes rpulse{to{opacity:.35}}
 .rloc svg{width:19px;height:19px;fill:none;stroke:var(--accent);stroke-width:2;stroke-linecap:round}.rloc .f{fill:var(--accent);stroke:none}
 .rstat{position:absolute;left:50%;top:58px;transform:translateX(-50%);border-radius:999px;padding:5px 12px;font-size:12px;color:var(--ink2);white-space:nowrap;pointer-events:none}
 .rsrc{font-size:11px;line-height:1.4;color:var(--muted);padding:0 2px}
@@ -605,11 +605,11 @@ body:has(#testbar:not([hidden])) .sec{scroll-margin-top:140px}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=64"></script>
-<script src="wx-live.js?v=64"></script>
-<script src="wx-scenarios.js?v=64"></script>
-<script src="wx-vmap.js?v=64"></script>
-<script src="wx-radar.js?v=64"></script>
-<script src="app.js?v=64"></script>
+<script src="wx-normalize.js?v=65"></script>
+<script src="wx-live.js?v=65"></script>
+<script src="wx-scenarios.js?v=65"></script>
+<script src="wx-vmap.js?v=65"></script>
+<script src="wx-radar.js?v=65"></script>
+<script src="app.js?v=65"></script>
 </body>
 </html>

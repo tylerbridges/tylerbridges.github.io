@@ -983,7 +983,7 @@
   }
   window.addEventListener("scroll", function () { if (!syncQueued) { syncQueued = true; requestAnimationFrame(syncStrip); } }, { passive: true });
   // Radar tab (wx-radar.js): centred on the current location, frame times in the location's time zone
-  function radarOn() { if (window.WXRadar) WXRadar.show($("rmap"), curLoc(), { fmtTime: tm }); }
+  function radarOn() { if (window.WXRadar) WXRadar.show($("rmap"), curLoc(), { fmtTime: tm, mine: follow }); }
   function setTopH() { document.documentElement.style.setProperty("--toph", document.querySelector(".top").offsetHeight + "px"); }
   setTopH(); window.addEventListener("resize", setTopH);
   function showTab(t) {

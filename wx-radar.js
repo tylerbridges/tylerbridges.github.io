@@ -317,11 +317,21 @@
     cxL.setTransform(1, 0, 0, 1, 0, 0); cxL.clearRect(0, 0, cvL.width, cvL.height);
     if (vec()) VM.drawTop(cxL, visible(VM.tileZoom(rv.z), ldpr), { dark: dark(), dpr: ldpr, z: rv.z, w: SW, h: SH });
     else if (!VM || VM.failed()) { var g = layerGet("Reference"); visible(tz(), ldpr).forEach(function (v) { drawTile(cxL, v, g); }); }
-    if (home) { // location dot
-      var s = rscale(), hx = home.x - rv.x, d = ldpr; hx -= Math.round(hx); var x = (hx * s + SW / 2) * d, y = ((home.y - rv.y) * s + SH / 2) * d;
-      cxL.beginPath(); cxL.arc(x, y, 9 * d, 0, 7); cxL.fillStyle = "rgba(47,125,246,.22)"; cxL.fill();
-      cxL.beginPath(); cxL.arc(x, y, 5.5 * d, 0, 7); cxL.fillStyle = "#fff"; cxL.fill();
-      cxL.beginPath(); cxL.arc(x, y, 4 * d, 0, 7); cxL.fillStyle = "#2F7DF6"; cxL.fill();
+    // markers: the blue dot is the device's own position (or the forecast location when it follows the device);
+    //   any other forecast location gets a small neutral pin-dot
+    var s = rscale(), d = ldpr;
+    function pt(p) { var hx = p.x - rv.x; hx -= Math.round(hx); return { x: (hx * s + SW / 2) * d, y: ((p.y - rv.y) * s + SH / 2) * d }; }
+    var me = gps ? gps : home && opts.mine ? home : null;
+    if (home && home !== me && !(gps && Math.abs(gps.x - home.x) * s < 6 && Math.abs(gps.y - home.y) * s < 6)) {
+      var q = pt(home);
+      cxL.beginPath(); cxL.arc(q.x, q.y, 6 * d, 0, 7); cxL.fillStyle = dark() ? "#fff" : "#1c2430"; cxL.fill();
+      cxL.beginPath(); cxL.arc(q.x, q.y, 3 * d, 0, 7); cxL.fillStyle = dark() ? "#1c2430" : "#fff"; cxL.fill();
+    }
+    if (me) {
+      var m = pt(me);
+      cxL.beginPath(); cxL.arc(m.x, m.y, 10 * d, 0, 7); cxL.fillStyle = "rgba(47,125,246,.22)"; cxL.fill();
+      cxL.beginPath(); cxL.arc(m.x, m.y, 6 * d, 0, 7); cxL.fillStyle = "#fff"; cxL.fill();
+      cxL.beginPath(); cxL.arc(m.x, m.y, 4.5 * d, 0, 7); cxL.fillStyle = "#2F7DF6"; cxL.fill();
     }
   }
   // two frames blended exactly: A at (1-f) and B at f with additive compositing = a linear crossfade
@@ -520,11 +530,12 @@
   function checkPending() {
     if (pending && ready(pending) >= 1) { setFrames(pending); pending = null; paint(2); }
     var r = frames ? ready(frames) : 0;
-    status(outUS ? "Radar mosaic covers the lower 48 states" : r < 1 ? "Loading radar… " + Math.round(r * 100) + "%" : "");
+    lastR = r; status(statusText());
     if (r >= 1) at(RV.R, planMotion);
     if (r >= 1 && !playing && !userPaused && !started) { started = true; if (!reduced()) play(true); }
   }
-  var started = false, outUS = false;
+  var started = false, outUS = false, lastR = 0;
+  function statusText() { return ui.msg || (outUS ? "Radar mosaic covers the lower 48 states" : frames && lastR < 1 ? "Loading radar… " + Math.round(lastR * 100) + "%" : ""); }
   function reduced() { return root.matchMedia && root.matchMedia("(prefers-reduced-motion: reduce)").matches; }
   function smooth(t) { return t * t * (3 - 2 * t); }
   // continuous playback: each step glides from one scan to the next over its whole duration (no hold, no jump);
@@ -578,12 +589,13 @@
   function wire() {
     var t = stage;
     t.addEventListener("pointerdown", function (e) {
-      t.setPointerCapture(e.pointerId); var p = local(e); pts.set(e.pointerId, p); inertia = null; tween = null;
+      t.setPointerCapture(e.pointerId); var p = local(e); pts.set(e.pointerId, p); inertia = null; tween = null; t._lock = gpsMode === "locked";
       if (pts.size === 1) { samples = [{ x: p.x, y: p.y, t: e.timeStamp }]; t._down = { x: p.x, y: p.y, t: e.timeStamp }; }
       gesture();
     });
     t.addEventListener("pointermove", function (e) {
       if (!pts.has(e.pointerId)) return; var p = local(e); pts.set(e.pointerId, p);
+      if (pts.size > 1 || t._down && Math.hypot(p.x - t._down.x, p.y - t._down.y) > 8) unlock();
       var ps = Array.from(pts.values()), s = scale();
       if (g0 && g0.n === 1 && ps.length === 1) {
         view.x = g0.vx - (p.x - g0.x) / s; view.y = g0.vy - (p.y - g0.y) / s; clampView();
@@ -620,13 +632,53 @@
   }
   function zoomTo(sx, sy, z) { tween = { sx: sx, sy: sy, z0: view.z, z1: Math.max(MINZ, Math.min(MAXZ, z)), t0: 0 }; paint(0); }
   function stepTween(ts) {
-    if (!tween.t0) tween.t0 = ts; var t = Math.min(1, (ts - tween.t0) / 260);
-    zoomAt(tween.sx, tween.sy, tween.z0 + (tween.z1 - tween.z0) * smooth(t));
+    if (!tween.t0) tween.t0 = ts; var t = Math.min(1, (ts - tween.t0) / (tween.fly ? 480 : 260));
+    if (tween.fly) { var e = smooth(t), F = tween.fly, dx = F.x1 - F.x0; dx -= Math.round(dx); view.x = F.x0 + dx * e; view.y = F.y0 + (F.y1 - F.y0) * e; view.z = F.z0 + (F.z1 - F.z0) * e; clampView(); }
+    else zoomAt(tween.sx, tween.sy, tween.z0 + (tween.z1 - tween.z0) * smooth(t));
     if (t >= 1) { tween = null; preload(); }
   }
+  function flyTo(p, z) { tween = { fly: { x0: view.x, y0: view.y, z0: view.z, x1: p.x, y1: p.y, z1: z == null ? view.z : z }, t0: 0 }; inertia = null; paint(0); }
   function recenter(animate) {
     if (!home) return; view.x = home.x; view.y = home.y; if (!animate) view.z = 7; paint(7); preload();
   }
+
+  // ---------- your location ----------
+  // The locate button flies to the device's actual position (not the forecast location) and keeps the map locked
+  //   on it while it updates. While locked, the button is replaced by a pin that returns to the forecast location;
+  //   dragging the map unlocks it (both buttons then show, so you can re-lock or go back).
+  var gps = null, gpsMode = "off", watchId = null; // gpsMode: off | wait | locked | free
+  function locate() {
+    if (!navigator.geolocation) { flash("Location isn't available in this browser"); return; }
+    if (gps) { gpsMode = "locked"; locUi(); flash(""); flyTo(gps, Math.max(view.z, 8)); }
+    else { gpsMode = "wait"; locUi(); flash("Finding your location…"); }
+    startWatch();
+  }
+  function startWatch() {
+    if (watchId != null || !navigator.geolocation) return;
+    watchId = navigator.geolocation.watchPosition(function (p) {
+      var first = !gps || gpsMode === "wait";
+      gps = { x: mx(p.coords.longitude), y: my(p.coords.latitude) }; paint(4);
+      if (gpsMode === "wait") { gpsMode = "locked"; locUi(); flash(""); flyTo(gps, Math.max(view.z, 8)); }
+      else if (gpsMode === "locked" && !first && !tween && !pts.size) { view.x = gps.x; view.y = gps.y; paint(0); }
+    }, function (err) {
+      // a brief GPS hiccup once we have a position isn't worth stopping for; a refusal or a first-fix failure is
+      var denied = err && err.code === 1;
+      if (gps && !denied) return;
+      stopWatch(); if (gpsMode === "wait") { gpsMode = "off"; locUi(); }
+      flash(denied ? "Location permission is off for this site" : "Couldn't get your location");
+    }, { enableHighAccuracy: true, maximumAge: 15000, timeout: 20000 });
+  }
+  function stopWatch() { if (watchId != null && navigator.geolocation) navigator.geolocation.clearWatch(watchId); watchId = null; }
+  function toForecast() { gpsMode = "off"; stopWatch(); locUi(); if (home) flyTo(home, 7); }
+  function unlock() { if (gpsMode === "locked") { gpsMode = "free"; locUi(); } }
+  function locUi() {
+    if (!ui.loc) return;
+    ui.loc.hidden = gpsMode === "locked" || gpsMode === "wait" && !!gps;
+    ui.loc.classList.toggle("on", gpsMode === "wait");
+    ui.home.hidden = gpsMode === "off" || gpsMode === "wait";
+  }
+  var flashT = 0;
+  function flash(t) { clearTimeout(flashT); ui.msg = t; status(statusText()); if (t && !/…$/.test(t)) flashT = setTimeout(function () { ui.msg = ""; status(statusText()); }, 3500); }
 
   // ---------- setup ----------
   function build(host) {
@@ -634,7 +686,8 @@
       '<div class="rstage"><canvas class="rl rb"></canvas><canvas class="rl rr"></canvas><canvas class="rl rt"></canvas></div>' +
       '<div class="rstat" hidden></div>' +
       '<button type="button" class="rleg" aria-label="Switch radar colours"><span class="lrow lr"><span>Rain</span><i></i></span><span class="lrow ls"><span>Snow</span><i></i></span><em></em></button>' +
-      '<button type="button" class="rloc" aria-label="Back to your location"><svg viewBox="0 0 24 24"><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2" class="f"/></svg></button>' +
+      '<div class="rbtns"><button type="button" class="rloc" aria-label="Go to my current location"><svg viewBox="0 0 24 24"><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2" class="f"/></svg></button>' +
+      '<button type="button" class="rloc rhome" aria-label="Back to the forecast location" hidden><svg viewBox="0 0 24 24"><path d="M12 21.5s-6.5-6.2-6.5-11.2a6.5 6.5 0 0 1 13 0c0 5-6.5 11.2-6.5 11.2Z"/><circle cx="12" cy="10.3" r="2.3" class="f"/></svg></button></div>' +
       '<div class="rbar"><button type="button" class="rplay" aria-label="Play"></button><input type="range" class="rrange" min="0" max="' + (NF - 1) + '" step="0.01" value="' + (NF - 1) + '" aria-label="Radar time"><span class="rtime num"></span></div>';
     stage = el.querySelector(".rstage"); var cs = el.querySelectorAll("canvas"); cvB = cs[0]; cvR = cs[1]; cvL = cs[2];
     cxB = cvB.getContext("2d"); cxR = cvR.getContext("2d"); cxL = cvL.getContext("2d");
@@ -642,7 +695,8 @@
     ui = { stat: el.querySelector(".rstat"), play: el.querySelector(".rplay"), range: el.querySelector(".rrange"), time: el.querySelector(".rtime"), leg: el.querySelector(".rleg") };
     ui.play.addEventListener("click", function () { userPaused = playing; play(!playing); started = true; });
     ui.range.addEventListener("input", function () { var v = +ui.range.value; playing && play(false); userPaused = true; started = true; cur = Math.min(NF - 1, Math.floor(v)); frac = v - cur; if (cur === NF - 1) frac = 0; paint(2); });
-    el.querySelector(".rloc").addEventListener("click", function () { recenter(false); });
+    ui.loc = el.querySelector(".rloc:not(.rhome)"); ui.home = el.querySelector(".rhome"); ui.msg = "";
+    ui.loc.addEventListener("click", locate); ui.home.addEventListener("click", toForecast);
     ui.leg.addEventListener("click", function () {
       if (corsOK === false) return;
       style = style === "smooth" ? "nws" : "smooth"; try { localStorage.setItem("wx-radar-style", style); } catch (e) {}
@@ -684,14 +738,17 @@
       opts = o || {};
       if (el !== host) build(host);
       var h = { x: mx(loc.lon), y: my(loc.lat) }, changed = !home || Math.abs(h.x - home.x) > 1e-6 || Math.abs(h.y - home.y) > 1e-6;
-      home = h; if (changed) { view.x = h.x; view.y = h.y; view.z = 7; }
+      home = h;
+      if (changed) { view.x = h.x; view.y = h.y; view.z = 7; if (gpsMode !== "off") { gpsMode = "off"; stopWatch(); } }
+      else if (gpsMode !== "off") { startWatch(); if (gpsMode === "locked" && gps) { view.x = gps.x; view.y = gps.y; } }
+      locUi();
       outUS = !(loc.lat > 24 && loc.lat < 50.5 && loc.lon > -126 && loc.lon < -66);
       on = true; size();
       if (!frames || Math.floor(Date.now() / STEP) !== frames.bucket) loadFrames();
       clearInterval(refreshT); refreshT = setInterval(function () { if (on && !pending) loadFrames(); }, STEP);
       paint(7);
     },
-    hide: function () { on = false; playing && play(false); started = false; userPaused = false; clearInterval(refreshT); if (raf) cancelAnimationFrame(raf); raf = 0; },
+    hide: function () { stopWatch(); if (gpsMode === "wait") gpsMode = "off"; on = false; playing && play(false); started = false; userPaused = false; clearInterval(refreshT); if (raf) cancelAnimationFrame(raf); raf = 0; },
     refresh: function () { if (on) loadFrames(); },
     // for the live data check
     _state: function () { return { wk: !!WK, mv: (MV[mvKey] || []).map(function (m) { return m ? [+(m.x * rscale()).toFixed(1), +(m.y * rscale()).toFixed(1)] : null; }), redraws: redraws, tf: cvL && cvL.style.transform, tfs: LAYERS.map(function (L) { return L.c.style.transform; }), src: frames && frames.src, mrmsOK: mrmsOK, corsOK: corsOK, frames: frames && frames.n, valid: frames && frames.valid, ready: frames ? ready(frames) : 0, view: view, playing: playing, cur: cur, frac: frac }; },
