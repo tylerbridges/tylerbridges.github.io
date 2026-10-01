@@ -195,7 +195,7 @@
               if (MOCK) return null;
               return openTab("radar", function () { var r = w.WXRadar && w.WXRadar._state(); return r && (r.ready >= 1 || r.corsOK === false && r.ready > 0.9); }, "Radar tab", 20000).then(function (ok) {
                 var r = w.WXRadar && w.WXRadar._state(); if (!r) return;
-                res.radar = "radar " + (r.src === "s3" ? "MRMS from NOAA Open Data (rain/snow)" : r.src === "mrms" ? "MRMS via NCEP (rain/snow)" : r.src === "iemq" ? "MRMS via IEM (QC'd, no type)" : r.src === "iem" ? "IEM NEXRAD (unfiltered, no type)" : "?") + " " + Math.round(r.ready * 100) + "% loaded, colours " + (r.corsOK ? "recoloured" : r.corsOK === false ? "NWS only (no pixel access)" : "unknown") + (r.valid ? ", latest " + Math.round((Date.now() - r.valid) / 60000) + " min old" : ", frame times unavailable");
+                res.radar = "radar " + (r.src === "s3" ? "MRMS from NOAA Open Data (rain/snow" + (r.dom && r.dom !== "CONUS" ? ", " + r.dom : "") + ")" : r.src === "mrms" ? "MRMS via NCEP (rain/snow)" : r.src === "iemq" ? "MRMS via IEM (QC'd, no type)" : r.src === "iem" ? "IEM NEXRAD (unfiltered, no type)" : "?") + " " + Math.round(r.ready * 100) + "% loaded, colours " + (r.corsOK ? "recoloured" : r.corsOK === false ? "NWS only (no pixel access)" : "unknown") + (r.valid ? ", latest " + Math.round((Date.now() - r.valid) / 60000) + " min old" : ", frame times unavailable");
                 var vm = w.WXVMap; res.radar += ", base map " + (vm && vm.ok() ? "vector (OpenFreeMap)" : vm && vm.failed() ? "raster fallback (Esri)" : "still loading");
                 if (vm && vm.failed()) res.warns.push("vector base map unavailable: using Esri raster tiles");
                 if (r.src === "iemq") res.warns.push("radar fell back to MRMS via IEM: rain/snow colouring unavailable"); if (r.src === "iem") res.warns.push("radar fell back to the unfiltered IEM NEXRAD mosaic: birds/insects may show as light rain");
@@ -232,6 +232,83 @@
     return chain.then(function () { res.maps = results; });
   }
 
+  // ---- radar accuracy: what each station is reporting vs what the radar map shows over it
+  // A representative spread of airport weather stations (latest weather.gov observation) is compared with the radar
+  //   value at the station, as the map draws it, from the radar frame nearest the observation time. Agreement: precip
+  //   reported and radar shows echo, or dry and no echo. Misses (precip reported, no echo) and strong echo over a dry
+  //   station are listed; light echo over a dry station is allowed (often virga or just upwind).
+  var RSTN = [
+    ["CONUS", 39.5, -96.5, "KSEA KPDX KSFO KLAX KSAN KPHX KLAS KSLC KBOI KGJT KDEN KABQ KELP KBIS KFSD KINL KMSP KRST KDSM KOMA KICT KOKC KDFW KIAH KMSY KMEM KSTL KORD KDTW KBUF KBTV KCAR KBOS KJFK KDCA KCLT KATL KJAX KTPA KMIA"],
+    ["Alaska", 61.2, -149.9, "PANC PAFA PAJN"], ["Hawaii", 20.8, -157.0, "PHNL PHTO PHLI"], ["Caribbean", 18.3, -66.4, "TJSJ TJPS"], ["Guam", 13.48, 144.79, "PGUM"]];
+  var PWX = /^(rain|rain_showers|drizzle|snow|snow_showers|snow_grains|ice_pellets|freezing_rain|freezing_drizzle|hail|small_hail|thunderstorms|thunderstorms_rain|ice_crystals)$/;
+  function stationObs(id) {
+    return realFetch("https://api.weather.gov/stations/" + id + "/observations/latest", { headers: { Accept: "application/geo+json" } }).then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }).then(function (j) {
+      var p = j.properties || {}, c = j.geometry && j.geometry.coordinates, pw = (p.presentWeather || []).filter(function (w) { return w.modifier !== "vicinity" && w.weather; });
+      var wet = pw.some(function (w) { return PWX.test(w.weather) && w.weather !== "thunderstorms"; }), tsOnly = !wet && pw.some(function (w) { return w.weather === "thunderstorms"; });
+      return { id: id, lat: c && c[1], lon: c && c[0], t: Date.parse(p.timestamp), text: p.textDescription || "", wet: wet, tsOnly: tsOnly, snow: pw.some(function (w) { return /snow|ice_pellets|freezing/.test(w.weather); }) };
+    });
+  }
+  function radarFrame(lat, lon) {
+    return new Promise(function (resolve) {
+      var f = document.createElement("iframe");
+      f.style.cssText = "position:fixed;left:-9999px;top:0;width:390px;height:844px;border:0";
+      f.src = "index.html?nostore=1&lat=" + lat + "&lon=" + lon + "#radar";
+      document.body.appendChild(f);
+      f.onload = function () {
+        var w = f.contentWindow;
+        poll(function () { var r = w.WXRadar && w.WXRadar._state(); return r && r.ready >= 1 && r.frames; }, 60000).then(function () { resolve({ f: f, w: w }); });
+      };
+    });
+  }
+  function runRadarAcc() {
+    var res = { lines: [], warns: 0, fails: 0 }, all = { n: 0, ok: 0, wet: 0, hit: 0 }, chain = Promise.resolve();
+    RSTN.forEach(function (D) {
+      chain = chain.then(function () {
+        prog("Radar accuracy: " + D[0] + "…");
+        return Promise.all([radarFrame(D[1], D[2]), Promise.all(D[3].split(" ").map(function (id) { return stationObs(id).catch(function (e) { return { id: id, err: e.message }; }); }))]).then(function (both) {
+          var fr = both[0], obs = both[1], w = fr.w, st = w.WXRadar && w.WXRadar._state();
+          if (!st || st.src !== "s3") { res.lines.push("✗ " + D[0] + ": radar not on NOAA grids (" + (st ? st.src + (st.why ? ", " + st.why : "") : "didn't load") + ")"); res.fails++; fr.f.remove(); return; }
+          var age = Math.round((Date.now() - st.times[st.times.length - 1]) / 60000);
+          var head = D[0] + " · newest scan " + age + " min old" + (st.ready < 1 ? " · not fully loaded" : "");
+          if (age > 12) { res.warns++; head = "! " + head + " (running behind)"; } else head = "  " + head;
+          res.lines.push(head);
+          var good = obs.filter(function (o) { return !o.err && isFinite(o.t) && o.lat != null; });
+          obs.filter(function (o) { return o.err; }).forEach(function (o) { res.lines.push("      ? " + o.id + ": observation unavailable (" + o.err + ")"); });
+          // radar frame nearest each observation time (skip observations older than the radar loop)
+          var groups = {};
+          good.forEach(function (o) {
+            var best = null; st.times.forEach(function (t) { if (best == null || Math.abs(t - o.t) < Math.abs(best - o.t)) best = t; });
+            if (Math.abs(best - o.t) > 8 * 60000) { o.skip = "observation " + Math.round((Date.now() - o.t) / 60000) + " min old"; return; }
+            (groups[best] = groups[best] || []).push(o);
+          });
+          return Promise.all(Object.keys(groups).map(function (t) {
+            return w.WXRadar._probe(groups[t].map(function (o) { return [o.lat, o.lon]; }), +t).then(function (vals) { groups[t].forEach(function (o, i) { o.r = vals[i]; }); }, function (e) { groups[t].forEach(function (o) { o.skip = "probe failed: " + e.message; }); });
+          })).then(function () {
+            good.forEach(function (o) {
+              if (o.skip) { res.lines.push("      · " + o.id + " skipped (" + o.skip + ")"); return; }
+              var v = o.r && o.r.v, echo = v != null && v >= 15, rad = v == null ? "no echo" : Math.round(v) + " dBZ " + o.r.t, verdict;
+              if (o.tsOnly) verdict = "·"; // thunder heard, no precipitation reported: either is fine
+              else if (o.wet) { all.wet++; verdict = echo ? "✓" : v != null ? "~" : "✗"; if (echo) all.hit++; }
+              else verdict = v != null && v >= 30 ? "!" : "✓";
+              if (verdict !== "·") { all.n++; if (verdict === "✓") all.ok++; }
+              if (verdict === "✗") res.fails++; else if (verdict === "!" || verdict === "~") res.warns++;
+              if (o.wet && o.snow && o.r && o.r.t && o.r.t !== "snow" && echo) { verdict += " (station reports snow, radar type " + o.r.t + ")"; res.warns++; }
+              if (verdict !== "✓" || o.wet) res.lines.push("      " + verdict + " " + o.id + ": station “" + (o.text || "—") + "” · radar " + rad);
+            });
+            var dry = good.filter(function (o) { return !o.skip && !o.wet && !o.tsOnly && !(o.r && o.r.v != null && o.r.v >= 30); }).length;
+            if (dry) res.lines.push("      " + dry + " dry station" + (dry > 1 ? "s" : "") + " with no strong echo nearby ✓");
+            fr.f.remove();
+          });
+        });
+      });
+    });
+    return chain.then(function () {
+      res.lines.unshift("  agreement " + all.ok + "/" + all.n + (all.n ? " (" + Math.round(100 * all.ok / all.n) + "%)" : "") + " · stations reporting precipitation with radar echo " + all.hit + "/" + all.wet);
+      res.lines.push("  key: ✓ agrees · ✗ precipitation reported, no radar echo · ~ precipitation reported, only very light echo · ! strong echo within ~5 km of a dry station (shower nearby, virga or very local)");
+      return res;
+    });
+  }
+
   // ---- 3. search and location naming
   function runSearch() {
     var res = { lines: [], fails: 0 };
@@ -256,12 +333,12 @@
   var running = false;
   function run(full) {
     if (running) return; running = true; out = []; counts = { pass: 0, warn: 0, fail: 0 };
-    $("run").disabled = $("quick").disabled = true; $("copy").disabled = true; $("sum").textContent = "";
+    $("run").disabled = $("quick").disabled = $("racc").disabled = true; $("copy").disabled = true; $("sum").textContent = "";
     var started = Date.now(), chain = Promise.resolve();
     if (MOCK) WXLive.load = function (loc) { return WXScenario.load("blizzard", loc, null); };
-    line("LIVE CHECK " + new Date().toString().slice(0, 24) + (MOCK ? " · MOCK (test scenario, no network)" : "") + (full ? "" : " · data only"));
+    line("LIVE CHECK " + new Date().toString().slice(0, 24) + (MOCK ? " · MOCK (test scenario, no network)" : "") + (full === "radar" ? " · radar accuracy only" : full ? "" : " · data only"));
     line(navigator.userAgent); line("");
-    LOCS.forEach(function (L, idx) {
+    (full === "radar" ? [] : LOCS).forEach(function (L, idx) {
       chain = chain.then(function () {
         prog("Place " + (idx + 1) + " of " + LOCS.length + ": " + L[0] + " (data)…");
         return runData(L[0], L[1], L[2]).then(function (dr) {
@@ -278,19 +355,23 @@
         });
       });
     });
-    if (!MOCK) chain = chain.then(function () {
+    if (!MOCK && full !== "radar") chain = chain.then(function () {
       prog("Search and location naming…");
       return runSearch().then(function (s) { line(""); line("SEARCH / LOCATION"); s.lines.forEach(line); counts[s.fails ? "fail" : "pass"]++; });
+    });
+    if (!MOCK && full) chain = chain.then(function () { // full check, or "radar accuracy only"
+      return runRadarAcc().then(function (r) { line(""); line("RADAR ACCURACY (station reports vs radar map)"); r.lines.forEach(line); counts[r.fails ? "fail" : r.warns ? "warn" : "pass"]++; });
     });
     chain.then(function () {
       var sum = counts.pass + " passed · " + counts.warn + " warnings · " + counts.fail + " failed  (" + secs(Date.now() - started) + ")";
       line(""); line("SUMMARY: " + sum);
       $("sum").textContent = sum; $("sum").className = counts.fail ? "bad" : counts.warn ? "warn" : "ok";
-      prog("Done."); running = false; $("run").disabled = $("quick").disabled = false; $("copy").disabled = false;
-    }, function (e) { line("CHECK CRASHED: " + e.message); prog("Crashed."); running = false; $("run").disabled = $("quick").disabled = false; $("copy").disabled = false; });
+      prog("Done."); running = false; $("run").disabled = $("quick").disabled = $("racc").disabled = false; $("copy").disabled = false;
+    }, function (e) { line("CHECK CRASHED: " + e.message); prog("Crashed."); running = false; $("run").disabled = $("quick").disabled = $("racc").disabled = false; $("copy").disabled = false; });
   }
   $("run").addEventListener("click", function () { run(true); });
   $("quick").addEventListener("click", function () { run(false); });
+  $("racc").addEventListener("click", function () { run("radar"); });
   $("copy").addEventListener("click", function () {
     var t = out.join("\n");
     function fallback() { var a = document.createElement("textarea"); a.value = t; document.body.appendChild(a); a.select(); try { document.execCommand("copy"); } catch (e) {} a.remove(); }

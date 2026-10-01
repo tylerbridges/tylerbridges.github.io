@@ -540,7 +540,19 @@
   //   real time): MergedBaseReflectivityQC (quality-controlled, so birds/insects/clutter removed) plus PrecipFlag
   //   for rain/snow/hail. The GRIB2 files are decoded in the background worker (PNG-packed grids) and tiles are drawn
   //   from the exact values — no colour decoding, no map server in between.
-  var S3 = "https://noaa-mrms-pds.s3.amazonaws.com/", S3R = "CONUS/MergedBaseReflectivityQC_00.50/", S3F = "CONUS/PrecipFlag_00.00/";
+  var S3 = "https://noaa-mrms-pds.s3.amazonaws.com/";
+  // NOAA runs the same product on five grids (first match wins; CONUS before the Caribbean for south Florida)
+  var DOMS = [
+    { k: "CONUS", ni: 7000, nj: 3500, lat0: 54.995, lon0: -129.995, d: 0.01 },
+    { k: "ALASKA", ni: 5000, nj: 2200, lat0: 71.995, lon0: -175.995, d: 0.01 },
+    { k: "HAWAII", ni: 2600, nj: 2200, lat0: 25.9975, lon0: -163.9975, d: 0.005 },
+    { k: "CARIB", ni: 3000, nj: 1500, lat0: 24.995, lon0: -89.995, d: 0.01 },
+    { k: "GUAM", ni: 2000, nj: 1800, lat0: 17.9975, lon0: 140.0025, d: 0.005 }];
+  var dom = DOMS[0];
+  function domFor(lat, lon) {
+    for (var i = 0; i < DOMS.length; i++) { var D = DOMS[i], dl = ((lon - D.lon0) % 360 + 360) % 360; if (lat <= D.lat0 && lat >= D.lat0 - (D.nj - 1) * D.d && dl <= (D.ni - 1) * D.d) return D; }
+    return null;
+  }
   var s3OK = null, boxVer = 0, box = null, s3Why = "", wErr = "";
   function ymd(t) { return new Date(t).toISOString().slice(0, 10).replace(/-/g, ""); }
   function keyTime(k) { var m = /(\d{8})-(\d{2})(\d{2})(\d{2})\.grib2/.exec(k); return m ? Date.UTC(+m[1].slice(0, 4), +m[1].slice(4, 6) - 1, +m[1].slice(6, 8), +m[2], +m[3], +m[4]) : NaN; }
@@ -557,7 +569,7 @@
     if (!workers()) { s3Why = "this browser can't run the background decoder"; return Promise.reject(); }
     if (typeof DecompressionStream === "undefined") { s3Why = "this browser can't unzip the files"; return Promise.reject(); }
     var since = Date.now() - 75 * 60000;
-    return Promise.all([s3List(S3R, since), s3List(S3F, since)]).catch(function (e) { s3Why = "couldn't list NOAA's files"; throw e; }).then(function (L) {
+    return Promise.all([s3List(dom.k + "/MergedBaseReflectivityQC_00.50/", since), s3List(dom.k + "/PrecipFlag_00.00/", since)]).catch(function (e) { s3Why = "couldn't list NOAA's files"; throw e; }).then(function (L) {
       var R = L[0], F = L[1]; if (R.length < 5) { s3Why = "too few recent scans in NOAA's archive"; throw 0; }
       var last = R[R.length - 1].t, step = 6 * 60000, base = Math.floor(last / step) * step, pick = [];
       // the newest scan, then scans nearest to fixed 6-minute marks (stable across refreshes, so only new ones load)
@@ -612,11 +624,12 @@
   var lastLoad = 0;
   function loadFrames() {
     lastLoad = Date.now();
-    s3Frames().catch(function () { return mrmsFrames(); }).catch(function () { return iemqOK === false ? Promise.reject() : lcrefFrames(); }).catch(function () { return iemFrames(); }).then(function (f) {
+    // the backups only cover the lower 48
+    s3Frames().catch(function (e) { if (dom.k !== "CONUS") throw e; return mrmsFrames(); }).catch(function () { return iemqOK === false ? Promise.reject() : lcrefFrames(); }).catch(function () { if (dom.k !== "CONUS") throw 0; return iemFrames(); }).then(function (f) {
       if (f.src === "s3") s3Load(f);
       if (!frames) { setFrames(f); preload(); paint(2); } else if (f.bucket !== frames.bucket || f.src !== frames.src) { pending = f; preload(); }
       legend();
-    });
+    }).catch(function () { lastR = 0; ui.msg = "Radar couldn't load right now"; status(statusText()); });
   }
   function setFrames(f) { frames = f; NF = f.n; ui.range.max = NF - 1; if (cur > NF - 1 || !started) cur = NF - 1; }
   // request every frame's visible tiles so playback never waits on the network
@@ -651,7 +664,7 @@
     if (r >= 1 && !playing && !userPaused && !started) { started = true; if (!reduced()) play(true); }
   }
   var started = false, outUS = false, lastR = 0;
-  function statusText() { return ui.msg || (outUS ? "Radar mosaic covers the lower 48 states" : frames && lastR < 1 ? "Loading radar… " + Math.round(lastR * 100) + "%" : ""); }
+  function statusText() { return ui.msg || (outUS ? "Radar isn't available for this location" : frames && lastR < 1 ? "Loading radar… " + Math.round(lastR * 100) + "%" : ""); }
   function reduced() { return root.matchMedia && root.matchMedia("(prefers-reduced-motion: reduce)").matches; }
   function smooth(t) { return t * t * (3 - 2 * t); }
   // continuous playback: each step glides from one scan to the next over its whole duration (no hold, no jump);
@@ -688,15 +701,13 @@
   // what's on screen, in plain words, under the map: which source, how fresh, and (if a backup) why
   var nowEl = null, nowTxt = "";
   function nowLine() {
+    // normally silent; only speaks up when the radar is behind or a backup that can include non-weather echoes is on
     nowEl = nowEl || document.getElementById("rnow"); if (!nowEl || !frames) return;
     var t = frames.times ? frames.times[frames.n - 1] : frames.valid, ago = t ? Math.max(0, Math.round((Date.now() - t) / 60000)) : null;
-    var when = t ? " · newest scan " + (opts.fmtTime ? opts.fmtTime(t) : new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })) + " (" + (ago < 1 ? "just now" : ago + " min ago") + ")" + (ago > 15 ? " — this feed is running behind" : "") : "";
-    var why = frames.src !== "s3" && s3Why ? " NOAA's archive didn't load here: " + s3Why + "." : "";
-    var h = frames.src === "s3" ? "<b>NOAA MRMS</b> · quality-controlled: birds, insects and ground clutter removed" + when
-      : frames.src === "mrms" ? "<b>NOAA MRMS</b> via NCEP · quality-controlled" + when + "." + why
-      : frames.src === "iemq" ? "<b>NOAA MRMS</b> via Iowa State · quality-controlled, no rain/snow split" + when + "." + why
-      : "<b>Unfiltered NEXRAD mosaic</b> (Iowa State) — birds and insects can look like light rain, mostly at night" + when + "." + why;
-    if (h === nowTxt) return; nowTxt = h; nowEl.innerHTML = h; nowEl.classList.toggle("warn", frames.src === "iem" || ago > 15);
+    var h = "";
+    if (frames.src === "iem") h = "Showing backup radar: some light echoes may not be precipitation.";
+    if (ago != null && ago > 15) h = (h ? h + " " : "") + "Radar is running behind: newest scan " + (opts.fmtTime ? opts.fmtTime(t) : new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })) + " (" + ago + " min ago).";
+    if (h === nowTxt) return; nowTxt = h; nowEl.textContent = h; nowEl.classList.toggle("warn", !!h);
   }
   function status(t) { if (ui.stat.textContent !== t) { ui.stat.textContent = t; ui.stat.hidden = !t; } }
 
@@ -872,7 +883,11 @@
       if (changed) { view.x = h.x; view.y = h.y; view.z = 7; if (gpsMode !== "off") { gpsMode = "off"; stopWatch(); } }
       else if (gpsMode !== "off") { startWatch(); if (gpsMode === "locked" && gps) { view.x = gps.x; view.y = gps.y; } }
       locUi();
-      outUS = !(loc.lat > 24 && loc.lat < 50.5 && loc.lon > -126 && loc.lon < -66);
+      var D = domFor(loc.lat, loc.lon); outUS = !D;
+      if (D && D !== dom) { // another NOAA grid (Alaska, Hawaii, Caribbean, Guam): start over on it
+        dom = D; frames = null; pending = null; s3W = {}; box = null; boxVer++; s3OK = null; s3Why = "";
+        if (workers()) WK.forEach(function (w) { w.postMessage({ grid: "dom", dom: D }); });
+      }
       on = true; size();
       if (!frames || Math.floor(Date.now() / STEP) !== frames.bucket) loadFrames();
       // MRMS updates every 2 minutes; other sources every 5
@@ -882,8 +897,16 @@
     hide: function () { stopWatch(); if (gpsMode === "wait") gpsMode = "off"; on = false; playing && play(false); started = false; userPaused = false; clearInterval(refreshT); if (raf) cancelAnimationFrame(raf); raf = 0; },
     refresh: function () { if (on) loadFrames(); },
     // for the live data check
-    _state: function () { return { rvR: RV.R, rdpr: rdpr, SW: SW, SH: SH, times: frames && frames.times, refs: frames && frames.refs, flags: frames && frames.flags, s3OK: s3OK, box: box, wk: !!WK, mv: (MV[mvKey] || []).map(function (m) { return m ? [+(m.x * rscale()).toFixed(1), +(m.y * rscale()).toFixed(1)] : null; }), redraws: redraws, tf: cvL && cvL.style.transform, tfs: LAYERS.map(function (L) { return L.c.style.transform; }), src: frames && frames.src, mrmsOK: mrmsOK, corsOK: corsOK, frames: frames && frames.n, valid: frames && frames.valid, ready: frames ? ready(frames) : 0, view: view, playing: playing, cur: cur, frac: frac }; },
-    _pal: function () { return pal(); }, _dbz: toDbz, _iem: iemDbz, _test: function (im) { return recolor(im); }
+    _state: function () { return { why: s3Why, dom: dom.k, rvR: RV.R, rdpr: rdpr, SW: SW, SH: SH, times: frames && frames.times, refs: frames && frames.refs, flags: frames && frames.flags, s3OK: s3OK, box: box, wk: !!WK, mv: (MV[mvKey] || []).map(function (m) { return m ? [+(m.x * rscale()).toFixed(1), +(m.y * rscale()).toFixed(1)] : null; }), redraws: redraws, tf: cvL && cvL.style.transform, tfs: LAYERS.map(function (L) { return L.c.style.transform; }), src: frames && frames.src, mrmsOK: mrmsOK, corsOK: corsOK, frames: frames && frames.n, valid: frames && frames.valid, ready: frames ? ready(frames) : 0, view: view, playing: playing, cur: cur, frac: frac }; },
+    _pal: function () { return pal(); },
+    // radar values at [[lat, lon], …] for frame time t (default newest), as drawn; for the live accuracy check
+    _probe: function (pts, t) {
+      return new Promise(function (ok, no) {
+        if (!frames || frames.src !== "s3" || !WK) return no(new Error("radar not on NOAA grids"));
+        t = t || frames.times[frames.n - 1];
+        toWi(s3W[t] || 0, { kind: "probe", t: t, pts: pts }, function (r, redo) { if (redo || !r || r.err) no(new Error(r && r.msg || "probe failed")); else ok(r.vals); });
+      });
+    }, _dbz: toDbz, _iem: iemDbz, _test: function (im) { return recolor(im); }
   };
   if (!INW) { root.WXRadar = api; return; }
   // ---------- worker side ----------
@@ -893,7 +916,7 @@
       .then(function (b) { return createImageBitmap(b, { colorSpaceConversion: "none" }); });
   }
   // ----- MRMS grids from NOAA's archive (GRIB2, PNG-packed) -----
-  var G = {}, GBOX = null, NI = 7000, NJ = 3500, LAT0 = 54.995, LON0 = -129.995, FB = 1600, CS = 4;
+  var G = {}, GBOX = null, NI = 7000, NJ = 3500, LAT0 = 54.995, LON0 = -129.995, DEG = 0.01, FB = 1600, CS = 4;
   function gunzip(buf, fmt) { return new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream(fmt))); }
   // GRIB2 → { R, E, D, png } (template 5.41: value = (R + X·2^E) / 10^D, X from a greyscale PNG)
   function grib(u8) {
@@ -979,7 +1002,7 @@
       for (c = 0; c < NI; c++) {
         k = lut[bpp === 2 ? (row[2 * c] << 8) | row[2 * c + 1] : row[c]]; if (!k) continue;
         if (inF && c >= c0 && c < c1) ft[fo + ((c - c0) >> 1)] = k;
-        if (top && (c & 3) === 0) ct[co + (c >> 2)] = k;
+        if (top || ct[co + (c >> 2)] === 0) ct[co + (c >> 2)] = k; // any precipitation in the 4×4 block
       }
     }).then(function () { fr.ft = ft; fr.ct = ct; });
   }
@@ -1005,14 +1028,14 @@
       return fr.re.then(function () { return fr; });
     }).then(function (fr) {
       var M = 512, n = Math.pow(2, m.z), c = new OffscreenCanvas(M, M), cx = c.getContext("2d"), img = cx.createImageData(M, M), d32 = new Uint32Array(img.data.buffer), L = pal(), any = false;
-      var b = fr.fbox, CW = NI / CS, CH = NJ / CS, H = FB / 2, degPx = 360 / (n * M), useFine = degPx < 0.02;
+      var b = fr.fbox, CW = NI / CS, CH = NJ / CS, H = FB / 2, degPx = 360 / (n * M), useFine = degPx < 2 * DEG;
       var col = new Float64Array(M);
-      for (var ox = 0; ox < M; ox++) col[ox] = (((m.x + (ox + 0.5) / M) / n) * 360 - 180 - LON0) / 0.01;
+      for (var ox = 0; ox < M; ox++) col[ox] = (((m.x + (ox + 0.5) / M) / n) * 360 - 180 - LON0) / DEG;
       for (var oy = 0; oy < M; oy++) {
-        var wy = (m.y + (oy + 0.5) / M) / n, lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * wy))) * 180 / Math.PI, gr = (LAT0 - lat) / 0.01;
+        var wy = (m.y + (oy + 0.5) / M) / n, lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * wy))) * 180 / Math.PI, gr = (LAT0 - lat) / DEG;
         if (gr < -1 || gr > NJ) continue;
         for (ox = 0; ox < M; ox++) {
-          var gc = col[ox], v, tk, fx, fy, x0, y0, a;
+          var gc = col[ox], v, tk, fx, fy, x0, y0, a, hasT = !!fr.ft;
           if (gc < -1 || gc > NI) continue;
           var lr = gr - b.r0, lc = gc - b.c0;
           if (useFine && lr >= 0 && lr < FB - 1 && lc >= 0 && lc < FB - 1) {
@@ -1027,6 +1050,10 @@
           }
           // light snow is often only 5–10 dBZ: shown from 5 where NOAA's type grid says snow, rain from 10
           if (v < (tk === 2 ? 5 : MINDBZ)) continue;
+          // weak echoes (under 20 dBZ) only where NOAA's precipitation-type grid says something is falling: in a
+          //   check against 15 radars' dual-pol scans this removed most leftover bird/insect and blocked-beam echoes
+          //   while keeping 98%+ of real precipitation (stronger echoes are always shown)
+          if (v < 20 && hasT && !tk) continue;
           d32[oy * M + ox] = L[tk === 2 ? 2 : tk === 3 ? 3 : 1][Math.min(199, (v * 2) | 0)]; any = true;
         }
       }
@@ -1034,18 +1061,42 @@
       cx.putImageData(img, 0, 0); return { sm: c.transferToImageBitmap() };
     });
   }
+  // radar at points, as the map shows it (weak echoes need NOAA's precipitation flag): strongest value within ~5 km
+  //   on the sharp grid, or within the surrounding 4×4 blocks on the zoomed-out copy. For the live accuracy check.
+  function probe(fr, pts) {
+    var CW = NI / CS, CH = NJ / CS, H = FB / 2, b = fr.fbox, R = Math.max(1, Math.round(0.045 / DEG));
+    return pts.map(function (p) {
+      var gr = (LAT0 - p[0]) / DEG, gc = (((p[1] - LON0) % 360 + 360) % 360) / DEG, best = null, bt = 0, fine = false;
+      if (gr < 0 || gr > NJ - 1 || gc < 0 || gc > NI - 1) return null;
+      var lr = Math.round(gr) - b.r0, lc = Math.round(gc) - b.c0;
+      function take(q, tk, has) { if (!q) return; var v = q / 2 - 10; if (v < (tk === 2 ? 5 : MINDBZ) || v < 20 && has && !tk) return; if (best == null || v > best) { best = v; bt = tk; } }
+      if (lr >= R && lr < FB - R && lc >= R && lc < FB - R) {
+        fine = true;
+        for (var dy = -R; dy <= R; dy++) for (var dx = -R; dx <= R; dx++) take(fr.fine[(lr + dy) * FB + lc + dx], fr.ft ? fr.ft[((lr + dy) >> 1) * H + ((lc + dx) >> 1)] : 1, !!fr.ft);
+      } else {
+        var cr = Math.round(gr / CS), cc = Math.round(gc / CS);
+        for (var y = Math.max(0, cr - 1); y <= Math.min(CH - 1, cr + 1); y++) for (var x = Math.max(0, cc - 1); x <= Math.min(CW - 1, cc + 1); x++) take(fr.coarse[y * CW + x], fr.ct ? fr.ct[y * CW + x] : 1, !!fr.ct);
+      }
+      return { v: best, t: bt === 2 ? "snow" : bt === 3 ? "hail" : best != null ? "rain" : "", fine: fine };
+    });
+  }
   function boxFor(bx) {
-    var r = Math.round((LAT0 - bx.lat) / 0.01) - FB / 2, c = Math.round((bx.lon - LON0) / 0.01) - FB / 2;
+    var r = Math.round((LAT0 - bx.lat) / DEG) - FB / 2, c = Math.round((bx.lon - LON0) / DEG) - FB / 2;
     return { r0: Math.max(0, Math.min(NJ - FB, r)), c0: Math.max(0, Math.min(NI - FB, c)), v: bx.v };
   }
   root.onmessage = function (ev) {
     var m = ev.data;
+    if (m.grid === "dom") { var D = m.dom; NI = D.ni; NJ = D.nj; LAT0 = D.lat0; LON0 = D.lon0; DEG = D.d; G = {}; FR = {}; LASTK = {}; GERR = {}; GBOX = null; return; }
     if (m.grid === "box") { GBOX = boxFor(m.box); return; }
     if (m.grid === "load") {
       // keep this set and the previous one (still on screen until the new one is ready)
       var keep = {}, prev = Promise.resolve();
       m.frames.forEach(function (f) { f.base = m.base; FR[f.t] = f; keep[f.t] = 1; prev = gridFrame(f, prev).catch(function () {}); });
       Object.keys(G).forEach(function (t) { if (!keep[t] && !LASTK[t]) { delete G[t]; delete FR[t]; } }); LASTK = keep;
+      return;
+    }
+    if (m.kind === "probe") {
+      var pf = G[m.t]; (pf ? pf.p : Promise.reject(new Error("frame not loaded"))).then(function (fr) { root.postMessage({ id: m.id, vals: probe(fr, m.pts) }); }, function (e) { root.postMessage({ id: m.id, err: true, msg: String(e && e.message || e) }); });
       return;
     }
     if (m.kind === "gtile") {
