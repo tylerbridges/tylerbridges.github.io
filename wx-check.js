@@ -245,7 +245,9 @@
     return realFetch("https://api.weather.gov/stations/" + id + "/observations/latest", { headers: { Accept: "application/geo+json" } }).then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }).then(function (j) {
       var p = j.properties || {}, c = j.geometry && j.geometry.coordinates, pw = (p.presentWeather || []).filter(function (w) { return w.modifier !== "vicinity" && w.weather; });
       var wet = pw.some(function (w) { return PWX.test(w.weather) && w.weather !== "thunderstorms"; }), tsOnly = !wet && pw.some(function (w) { return w.weather === "thunderstorms"; });
-      return { id: id, lat: c && c[1], lon: c && c[0], t: Date.parse(p.timestamp), text: p.textDescription || "", wet: wet, tsOnly: tsOnly, snow: pw.some(function (w) { return /snow|ice_pellets|freezing/.test(w.weather); }) };
+      // intensity as reported (METAR: no prefix = moderate)
+      var lvl = 0; pw.forEach(function (w) { if (PWX.test(w.weather) && w.weather !== "thunderstorms") lvl = Math.max(lvl, w.intensity === "heavy" ? 3 : w.intensity === "light" ? 1 : 2); });
+      return { id: id, lat: c && c[1], lon: c && c[0], t: Date.parse(p.timestamp), text: p.textDescription || "", wet: wet, lvl: lvl, tsOnly: tsOnly, snow: pw.some(function (w) { return /snow|ice_pellets|freezing/.test(w.weather); }) };
     });
   }
   function radarFrame(lat, lon) {
@@ -288,12 +290,17 @@
               if (o.skip) { res.lines.push("      · " + o.id + " skipped (" + o.skip + ")"); return; }
               var v = o.r && o.r.v, echo = v != null && v >= 15, rad = v == null ? "no echo" : Math.round(v) + " dBZ " + o.r.t, verdict;
               if (o.tsOnly) verdict = "·"; // thunder heard, no precipitation reported: either is fine
-              else if (o.wet) { all.wet++; verdict = echo ? "✓" : v != null ? "~" : "✗"; if (echo) all.hit++; }
+              else if (o.wet) {
+                all.wet++; verdict = echo ? "✓" : v != null ? "~" : "✗"; if (echo) all.hit++;
+                // intensity: moderate rain should be at least ~25 dBZ on the map, heavy at least ~35 (snow reads lower, so rain only)
+                var need = o.snow ? 0 : o.lvl === 3 ? 35 : o.lvl === 2 ? 25 : 0;
+                if (echo && need && v < need) verdict = "↓";
+              }
               else verdict = v != null && v >= 30 ? "!" : "✓";
               if (verdict !== "·") { all.n++; if (verdict === "✓") all.ok++; }
-              if (verdict === "✗") res.fails++; else if (verdict === "!" || verdict === "~") res.warns++;
+              if (verdict === "✗") res.fails++; else if (verdict === "!" || verdict === "~" || verdict === "↓") res.warns++;
               if (o.wet && o.snow && o.r && o.r.t && o.r.t !== "snow" && echo) { verdict += " (station reports snow, radar type " + o.r.t + ")"; res.warns++; }
-              if (verdict !== "✓" || o.wet) res.lines.push("      " + verdict + " " + o.id + ": station “" + (o.text || "—") + "” · radar " + rad);
+              if (verdict !== "✓" || o.wet) res.lines.push("      " + verdict + " " + o.id + ": station “" + (o.text || "—") + "”" + (o.wet ? " (" + ["", "light", "moderate", "heavy"][o.lvl] + ")" : "") + " · radar " + rad);
             });
             var dry = good.filter(function (o) { return !o.skip && !o.wet && !o.tsOnly && !(o.r && o.r.v != null && o.r.v >= 30); }).length;
             if (dry) res.lines.push("      " + dry + " dry station" + (dry > 1 ? "s" : "") + " with no strong echo nearby ✓");
@@ -304,7 +311,7 @@
     });
     return chain.then(function () {
       res.lines.unshift("  agreement " + all.ok + "/" + all.n + (all.n ? " (" + Math.round(100 * all.ok / all.n) + "%)" : "") + " · stations reporting precipitation with radar echo " + all.hit + "/" + all.wet);
-      res.lines.push("  key: ✓ agrees · ✗ precipitation reported, no radar echo · ~ precipitation reported, only very light echo · ! strong echo within ~5 km of a dry station (shower nearby, virga or very local)");
+      res.lines.push("  key: ✓ agrees · ✗ precipitation reported, no radar echo · ~ precipitation reported, only very light echo · ↓ radar lighter than the station's moderate/heavy report · ! strong echo within ~5 km of a dry station (shower nearby, virga or very local)");
       return res;
     });
   }
