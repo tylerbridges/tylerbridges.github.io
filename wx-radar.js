@@ -226,14 +226,15 @@
     if (WK !== null) return WK;
     WK = false;
     if (!SELF || typeof Worker === "undefined" || typeof OffscreenCanvas === "undefined" || typeof createImageBitmap === "undefined") return WK;
-    try { WK = [0, 1].map(function () { var w = new Worker(SELF); w.onmessage = fromW; w.onerror = wFail; return w; }); cfgW(); } catch (x) { WK = false; }
+    try { var nw = Math.max(2, Math.min(4, ((typeof navigator !== "undefined" && navigator.hardwareConcurrency) || 2) - 1)); WK = []; for (var q = 0; q < nw; q++) WK.push(q); WK = WK.map(function () { var w = new Worker(SELF); w.onmessage = fromW; w.onerror = wFail; return w; }); cfgW(); } catch (x) { WK = false; }
     return WK;
   }
   function cfgW() { if (WK && REFP) WK.forEach(function (w) { w.postMessage({ cfg: { REFP: REFP, TYPC: TYPC } }); }); }
   function toWi(i, m, cb) { m.id = ++wid; wjobs[m.id] = { cb: cb, m: m }; WK[i % WK.length].postMessage(m); }
   function toW(m, cb, tr) { m.id = ++wid; wjobs[m.id] = { cb: cb, m: m }; WK[wkI++ % WK.length].postMessage(m, tr || []); }
   function fromW(ev) {
-    var r = ev.data, j = wjobs[r.id]; if (!j) return; delete wjobs[r.id];
+    var r = ev.data; if (r.loaded) { s3Got(r.loaded); return; }
+    var j = wjobs[r.id]; if (!j) return; delete wjobs[r.id];
     if (r.nosupport) { wFail(); j.cb(null, true); return; }
     j.cb(r);
   }
@@ -598,14 +599,21 @@
     if (box && Math.abs(lat - box.lat) < 4.5 && Math.abs(lon - box.lon) < 4.5) return false;
     box = { lat: lat, lon: lon, v: ++boxVer }; if (WK) WK.forEach(function (w) { w.postMessage({ grid: "box", box: box }); }); return true;
   }
-  // frames are shared out between the two workers (each decodes and draws its own), newest first
-  var s3W = {};
+  // frames are shared out between the workers (each decodes and draws its own), newest first. On a first load the
+  //   newest scan downloads alone, so the current radar shows as soon as possible; the rest start once it's in.
+  var s3W = {}, s3Have = {}, s3Wait = null;
   function s3Load(f) {
     needBox();
-    var lists = WK.map(function () { return []; });
+    var lists = WK.map(function () { return []; }), nt = f.times[f.n - 1];
     for (var i = f.n - 1, j = 0; i >= 0; i--, j++) { var w = s3W[f.times[i]] != null ? s3W[f.times[i]] : j % WK.length; s3W[f.times[i]] = w; lists[w].push({ t: f.times[i], ref: f.refs[i], flag: f.flags[i] }); }
-    WK.forEach(function (w, k) { w.postMessage({ grid: "load", base: S3, frames: lists[k] }); });
+    var send = function (k) { WK[k].postMessage({ grid: "load", base: S3, frames: lists[k], prune: k === 0 }); };
+    if (s3Wait) { clearTimeout(s3Wait.t); s3Wait = null; }
+    if (Object.keys(s3Have).length) { WK.forEach(function (w, k) { send(k); }); return; }
+    send(s3W[nt]);
+    var rest = function () { if (!s3Wait) return; clearTimeout(s3Wait.t); s3Wait = null; WK.forEach(function (w, k) { if (k !== s3W[nt]) send(k); }); };
+    s3Wait = { nt: nt, go: rest, t: setTimeout(rest, 4000) };
   }
+  function s3Got(t) { s3Have[t] = 1; if (s3Wait && s3Wait.nt === t) s3Wait.go(); }
   function loadGT(e, u) {
     if (!WK) { e.err = true; soon(0); return; }
     toWi(s3W[u.t] || 0, { kind: "gtile", t: u.t, z: u.z, x: u.x, y: u.y, v: u.v }, function (r, redo) {
@@ -627,15 +635,17 @@
       return { src: "mrms", n: times.length, times: times, valid: times[times.length - 1], bucket: times[times.length - 1] };
     }).catch(function (e) { mrmsOK = false; throw e; });
   }
-  var lastLoad = 0;
+  // checking: a check (or the new scans it found) is still coming in; upd: when the radar last refreshed
+  var lastLoad = 0, checking = false, upd = 0, tickT = 0;
   function loadFrames() {
-    lastLoad = Date.now();
+    lastLoad = Date.now(); checking = true; timeUi();
     // the backups only cover the lower 48
     s3Frames().catch(function (e) { if (dom.k !== "CONUS") throw e; return mrmsFrames(); }).catch(function () { return iemqOK === false ? Promise.reject() : lcrefFrames(); }).catch(function () { if (dom.k !== "CONUS") throw 0; return iemFrames(); }).then(function (f) {
       if (f.src === "s3") s3Load(f);
       if (!frames) { setFrames(f); preload(); paint(2); } else if (f.bucket !== frames.bucket || f.src !== frames.src) { pending = f; preload(); }
-      legend(); plan();
-    }).catch(function () { lastR = 0; ui.msg = "Radar couldn't load right now"; status(statusText()); plan(60000); });
+      if (!pending) { checking = false; upd = Date.now(); }
+      legend(); plan(); timeUi();
+    }).catch(function () { checking = false; lastR = 0; ui.msg = "Radar couldn't load right now"; status(statusText()); plan(60000); timeUi(); });
   }
   // Refresh as soon as new data exists. NOAA scans every 2 minutes and posts each one ~1 minute after its time
   //   (its precipitation type ~1.5 minutes after), so check right then and every 15 s until it shows up; other
@@ -681,7 +691,7 @@
     if (frames && frames.src === "iemq" && !iemqOK && ready(frames) >= 1) { if (errAll(frames)) { iemqOK = false; setFrames(iemFrames()); preload(); paint(2); legend(); } else iemqOK = true; }
     if (frames && frames.src === "s3" && !s3OK && ready(frames) >= 1) { if (errAll(frames)) { s3OK = false; s3Why = "couldn't decode NOAA's files" + (wErr ? " (" + wErr + ")" : ""); frames = null; loadFrames(); return; } else s3OK = true; }
     nowLine();
-    if (pending && ready(pending) >= 1) { setFrames(pending); pending = null; paint(2); }
+    if (pending && ready(pending) >= 1) { setFrames(pending); pending = null; checking = false; upd = Date.now(); paint(2); }
     var r = frames ? ready(frames) : 0;
     lastR = r; status(statusText());
     if (r >= 1) at(RV.R, planMotion);
@@ -717,11 +727,18 @@
     var pos = cur + frac, k = Math.round(pos) % NF;
     var rvv = String(+(pos > NF - 1 ? NF - 1 : pos).toFixed(2)); if (ui.range.value !== rvv) ui.range.value = rvv;
     var t = !frames ? null : frames.times ? frames.times[k] : frames.valid ? frames.valid - (NF - 1 - k) * 5 * 60000 : null;
-    // minutes before now (so a feed that has fallen behind says so), "Latest" only when it really is recent
-    var ago = t ? Math.max(0, Math.round((Date.now() - t) / 60000)) : (NF - 1 - k) * 5;
-    var abs = t ? (opts.fmtTime ? opts.fmtTime(t) : new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })) : "";
-    var tt = (abs ? abs + " · " : "") + (k === NF - 1 && ago < 12 ? "Latest" : ago + " min ago"); if (ui.time.textContent !== tt) ui.time.textContent = tt;
+    var ago = t ? Math.max(0, Math.round((Date.now() - t) / 60000)) : (NF - 1 - k) * 5, abs = t ? fmt(t) : "";
+    // RadarScope style: the shown scan's time, and under it when the radar last refreshed; both turn red when the
+    //   newest scan is older than expected (NOAA's every 2 min, so 8 min; the backups every 5, so 16)
+    var nt = !frames ? null : frames.times ? frames.times[frames.n - 1] : frames.valid;
+    var late = !!nt && Date.now() - nt > (frames.src === "s3" ? 8 : 16) * 60000;
+    var t2 = upd ? "Updated " + fmt(upd) : checking ? "Loading" : "";
+    if (ui.t1.textContent !== abs) ui.t1.textContent = abs;
+    if (ui.t2.textContent !== t2) ui.t2.textContent = t2;
+    ui.time.classList.toggle("late", late); ui.time.classList.toggle("chk", checking);
+    var ti = t ? (k === NF - 1 ? "Newest scan" : ago + " min before now") + (late ? " · radar is behind" : "") : ""; if (ui.time.title !== ti) ui.time.title = ti;
   }
+  function fmt(t) { return opts.fmtTime ? opts.fmtTime(t) : new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); }
   // what's on screen, in plain words, under the map: which source, how fresh, and (if a backup) why
   var nowEl = null, nowTxt = "";
   function nowLine() {
@@ -853,13 +870,18 @@
       '<button type="button" class="rleg" aria-label="Switch radar colours"><span class="lrow lr"><span>Rain</span><i></i></span><span class="lrow ls"><span>Snow</span><i></i></span><em></em></button>' +
       '<div class="rbtns"><button type="button" class="rloc" aria-label="Go to my current location"><svg viewBox="0 0 24 24"><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2" class="f"/></svg></button>' +
       '<button type="button" class="rloc rhome" aria-label="Back to the forecast location" hidden><svg viewBox="0 0 24 24"><path d="M12 21.5s-6.5-6.2-6.5-11.2a6.5 6.5 0 0 1 13 0c0 5-6.5 11.2-6.5 11.2Z"/><circle cx="12" cy="10.3" r="2.3" class="f"/></svg></button></div>' +
-      '<div class="rbar"><button type="button" class="rplay" aria-label="Play"></button><input type="range" class="rrange" min="0" max="' + (NF - 1) + '" step="0.01" value="' + (NF - 1) + '" aria-label="Radar time"><span class="rtime num"></span></div>';
+      '<div class="rbar"><button type="button" class="rplay" aria-label="Play"></button><input type="range" class="rrange" min="0" max="' + (NF - 1) + '" step="0.01" value="' + (NF - 1) + '" aria-label="Radar time"><button type="button" class="rtime num" aria-label="Show the latest radar and check for new scans"><b></b><span></span></button></div>';
     stage = el.querySelector(".rstage"); var cs = el.querySelectorAll("canvas"); cvB = cs[0]; cvR = cs[1]; cvL = cs[2];
     cxB = cvB.getContext("2d"); cxR = cvR.getContext("2d"); cxL = cvL.getContext("2d");
     LAYERS = [{ k: "R", b: 2, c: cvR, draw: drawRadar, tf: "" }, { k: "B", b: 1, c: cvB, draw: drawBase, tf: "" }, { k: "L", b: 4, c: cvL, draw: drawLabels, tf: "" }];
-    ui = { stat: el.querySelector(".rstat"), play: el.querySelector(".rplay"), range: el.querySelector(".rrange"), time: el.querySelector(".rtime"), leg: el.querySelector(".rleg") };
+    ui = { stat: el.querySelector(".rstat"), play: el.querySelector(".rplay"), range: el.querySelector(".rrange"), time: el.querySelector(".rtime"), t1: el.querySelector(".rtime b"), t2: el.querySelector(".rtime span"), leg: el.querySelector(".rleg") };
     ui.play.addEventListener("click", function () { userPaused = playing; play(!playing); started = true; });
     ui.range.addEventListener("input", function () { var v = +ui.range.value; playing && play(false); userPaused = true; started = true; cur = Math.min(NF - 1, Math.floor(v)); frac = v - cur; if (cur === NF - 1) frac = 0; paint(2); });
+    // like RadarScope's product time: tap to jump to the newest scan and check for a newer one now
+    ui.time.addEventListener("click", function () {
+      playing && play(false); userPaused = true; started = true; if (frames) { cur = NF - 1; frac = 0; } paint(2);
+      if (on && !checking) loadFrames();
+    });
     ui.loc = el.querySelector(".rloc:not(.rhome)"); ui.home = el.querySelector(".rhome"); ui.msg = "";
     ui.loc.addEventListener("click", locate); ui.home.addEventListener("click", toForecast);
     ui.leg.addEventListener("click", function () {
@@ -909,15 +931,17 @@
       locUi();
       var D = domFor(loc.lat, loc.lon); outUS = !D;
       if (D && D !== dom) { // another NOAA grid (Alaska, Hawaii, Caribbean, Guam): start over on it
-        dom = D; frames = null; pending = null; s3W = {}; box = null; boxVer++; s3OK = null; s3Why = "";
+        dom = D; frames = null; pending = null; s3W = {}; s3Have = {}; box = null; boxVer++; s3OK = null; s3Why = "";
         if (workers()) WK.forEach(function (w) { w.postMessage({ grid: "dom", dom: D }); });
       }
       on = true; size();
       if (!frames || Math.floor(Date.now() / STEP) !== frames.bucket) loadFrames();
       else plan();
+      // keeps "Updated" and the late colour current between scans
+      clearInterval(tickT); tickT = setInterval(function () { timeUi(); nowLine(); }, 15000);
       paint(7);
     },
-    hide: function () { stopWatch(); if (gpsMode === "wait") gpsMode = "off"; on = false; playing && play(false); started = false; userPaused = false; clearTimeout(refreshT); if (raf) cancelAnimationFrame(raf); raf = 0; },
+    hide: function () { stopWatch(); if (gpsMode === "wait") gpsMode = "off"; on = false; playing && play(false); started = false; userPaused = false; clearTimeout(refreshT); clearInterval(tickT); if (raf) cancelAnimationFrame(raf); raf = 0; },
     refresh: function () { if (on) loadFrames(); },
     // for the live data check
     _state: function () { return { why: s3Why, dom: dom.k, rvR: RV.R, rdpr: rdpr, SW: SW, SH: SH, times: frames && frames.times, refs: frames && frames.refs, flags: frames && frames.flags, s3OK: s3OK, box: box, wk: !!WK, mv: (MV[mvKey] || []).map(function (m) { return m ? [+(m.x * rscale()).toFixed(1), +(m.y * rscale()).toFixed(1)] : null; }), redraws: redraws, tf: cvL && cvL.style.transform, tfs: LAYERS.map(function (L) { return L.c.style.transform; }), src: frames && frames.src, mrmsOK: mrmsOK, corsOK: corsOK, frames: frames && frames.n, valid: frames && frames.valid, ready: frames ? ready(frames) : 0, view: view, playing: playing, cur: cur, frac: frac }; },
@@ -998,18 +1022,20 @@
   }
   // reflectivity → bytes q = (dBZ + 10)·2 (0 = none); type → 0 none, 1 rain, 2 snow, 3 hail
   function decodeRef(buf, fr) {
-    var g = grib(buf), sc = Math.pow(2, g.E), dd = Math.pow(10, g.D), bx = GBOX, lut = new Uint8Array(65536), lin = new Float32Array(65536);
-    for (var X = 0; X < 65536; X++) { var v = (g.R + X * sc) / dd; lut[X] = v < 0 ? 0 : v > 117 ? 254 : Math.round((v + 10) * 2); lin[X] = Math.pow(10, Math.max(-10, Math.min(117, v)) / 10); }
+    var g = grib(buf), sc = Math.pow(2, g.E), dd = Math.pow(10, g.D), bx = GBOX, lut = new Uint8Array(65536), dl = new Float64Array(65536), L0 = Math.pow(10, -1);
+    // dl = linear value above the no-echo floor (−10 dBZ), so cells without echo (most of the grid) add nothing
+    for (var X = 0; X < 65536; X++) { var v = (g.R + X * sc) / dd; lut[X] = v < 0 ? 0 : v > 117 ? 254 : Math.round((v + 10) * 2); dl[X] = v > -10 ? Math.pow(10, Math.min(117, v) / 10) - L0 : 0; }
     // zoomed-out copy: each 4×4 block is the average of its reflectivity in linear units (what a 4 km pixel really
     //   contains). Taking the block maximum instead made rain areas ~15% too big and doubled the area of 40+ dBZ
     //   cores in a test against the full grid.
-    var r0 = bx.r0, c0 = bx.c0, c1 = c0 + FB, fine = new Uint8Array(FB * FB), CW = NI >> 2, CH = NJ >> 2, acc = new Float64Array(CW * CH);
+    var r0 = bx.r0, c0 = bx.c0, c1 = c0 + FB, fine = new Uint8Array(FB * FB), CW = NI >> 2, CH = NJ >> 2, acc = new Float64Array(CW * CH).fill(16 * L0);
     return pngRows(g.png, function (r, row) {
       var fo = (r - r0) * FB - c0, inF = r >= r0 && r < r0 + FB, co = (r >> 2) * CW;
       for (var c = 0; c < NI; c++) {
-        var X = (row[2 * c] << 8) | row[2 * c + 1], q = lut[X];
-        acc[co + (c >> 2)] += lin[X];
-        if (q && inF && c >= c0 && c < c1) fine[fo + c] = q;
+        var X = (row[2 * c] << 8) | row[2 * c + 1], d = dl[X];
+        if (d === 0) continue;
+        acc[co + (c >> 2)] += d;
+        var q = lut[X]; if (q && inF && c >= c0 && c < c1) fine[fo + c] = q;
       }
     }).then(function () {
       var coarse = new Uint8Array(CW * CH);
@@ -1029,22 +1055,37 @@
       }
     }).then(function () { fr.ft = ft; fr.ct = ct; });
   }
-  function fetchGz(url) { return fetch(url).then(function (r) { if (!r.ok) throw new Error("download failed (" + r.status + ")"); return r.arrayBuffer(); }).then(function (b) { return gunzip(b, "gzip").arrayBuffer(); }).then(function (b) { return new Uint8Array(b); }); }
-  // frames load one after another (newest first), so the current radar shows as soon as possible
-  function gridFrame(f, after) {
+  // NOAA's file names never change, so downloaded scans are kept for 2 hours (reopening only fetches new ones)
+  var CK = "wx-mrms-1";
+  function getFile(url) {
+    var net = function () { return fetch(url).then(function (r) { if (!r.ok) throw new Error("download failed (" + r.status + ")"); return r; }); };
+    if (typeof caches === "undefined") return net();
+    return caches.open(CK).then(function (c) {
+      return c.match(url).then(function (r) { return r || net().then(function (r) { c.put(url, r.clone()).catch(function () {}); return r; }); });
+    }, net);
+  }
+  function pruneFiles() {
+    if (typeof caches === "undefined") return;
+    caches.open(CK).then(function (c) { return c.keys().then(function (ks) { ks.forEach(function (q) { var t = keyTime(q.url); if (!(t > Date.now() - 2 * 3600000)) c.delete(q); }); }); }).catch(function () {});
+  }
+  function fetchGz(url) { return getFile(url).then(function (r) { return r.arrayBuffer(); }).then(function (b) { return gunzip(b, "gzip").arrayBuffer(); }).then(function (b) { return new Uint8Array(b); }); }
+  // frames load one after another (newest first), so the current radar shows as soon as possible; downloads run
+  //   ahead in their own chain, so the next file is already arriving while this one is being decoded
+  function gridFrame(f, after, dlAfter) {
     var fr = G[f.t];
     if (fr) {
       // its precipitation type was borrowed from an older scan and its own has now been posted
       if (f.flag && fr.flagK !== f.flag) { fr.flagK = f.flag; fr.p = fr.p.then(function () { return fetchGz(f.base + f.flag); }).then(function (b) { fr.rawF = b; fr.reBox = null; return fr.fbox === GBOX ? decodeFlag(b, fr) : null; }, function () { return null; }).then(function () { return fr; }); }
-      return fr.p;
+      return fr;
     }
     fr = G[f.t] = { t: f.t, flagK: f.flag };
-    fr.p = (after || Promise.resolve()).then(function () { return Promise.all([fetchGz(f.base + f.ref), f.flag ? fetchGz(f.base + f.flag).catch(function () { return null; }) : null]); }).then(function (b) {
+    fr.dl = (dlAfter || Promise.resolve()).then(function () { return Promise.all([fetchGz(f.base + f.ref), f.flag ? fetchGz(f.base + f.flag).catch(function () { return null; }) : null]); });
+    fr.p = Promise.all([fr.dl, after]).then(function (r) { return r[0]; }).then(function (b) {
       fr.raw = b[0]; fr.rawF = b[1];
       return Promise.all([decodeRef(b[0], fr), b[1] ? decodeFlag(b[1], fr) : null]);
-    }).then(function () { return fr; });
+    }).then(function () { root.postMessage({ loaded: f.t }); return fr; });
     fr.p.catch(function (e) { delete G[f.t]; GERR[f.t] = String(e && e.message || e); });
-    return fr.p;
+    return fr;
   }
   var FR = {}, LASTK = {}, GERR = {};
   function gtile(m) {
@@ -1118,8 +1159,9 @@
     if (m.grid === "box") { GBOX = boxFor(m.box); return; }
     if (m.grid === "load") {
       // keep this set and the previous one (still on screen until the new one is ready)
-      var keep = {}, prev = Promise.resolve();
-      m.frames.forEach(function (f) { f.base = m.base; FR[f.t] = f; keep[f.t] = 1; prev = gridFrame(f, prev).catch(function () {}); });
+      if (m.prune) pruneFiles();
+      var keep = {}, prev = Promise.resolve(), dl = prev, noop = function () {};
+      m.frames.forEach(function (f) { f.base = m.base; FR[f.t] = f; keep[f.t] = 1; var fr = gridFrame(f, prev, dl); prev = fr.p.catch(noop); if (fr.dl) dl = fr.dl.catch(noop); });
       Object.keys(G).forEach(function (t) { if (!keep[t] && !LASTK[t]) { delete G[t]; delete FR[t]; } }); LASTK = keep;
       return;
     }

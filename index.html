@@ -23,7 +23,7 @@
 .rplay{width:34px;height:34px;border-radius:50%;border:0;background:var(--accent);display:grid;place-items:center;flex:none;cursor:pointer;padding:0}
 .rplay svg{width:16px;height:16px;fill:#fff}
 .rrange{flex:1;min-width:0;accent-color:var(--accent);margin:0}
-.rtime{font-size:12.5px;font-weight:500;color:var(--ink);white-space:nowrap;min-width:112px;text-align:right}
+.rtime{display:flex;flex-direction:column;align-items:flex-end;gap:1px;min-width:92px;padding:0 0 0 2px;border:0;background:none;font:inherit;color:var(--ink);white-space:nowrap;text-align:right;cursor:pointer;line-height:1.15}.rtime b{font-size:13px;font-weight:600}.rtime span{font-size:10.5px;font-weight:500;color:var(--muted);display:flex;align-items:center;gap:4px}.rtime span:empty{display:none}.rtime.chk span::before{content:"";width:7px;height:7px;border:1.5px solid currentColor;border-right-color:transparent;border-radius:50%;animation:rspin .8s linear infinite}@keyframes rspin{to{transform:rotate(360deg)}}.rtime.late b,.rtime.late span{color:var(--crit)}@media (prefers-reduced-motion:reduce){.rtime.chk span::before{animation:none;opacity:.6}}
 .rleg{position:absolute;left:10px;top:10px;border-radius:10px;padding:6px 9px 5px;display:flex;flex-direction:column;gap:4px;width:150px;cursor:pointer;text-align:left}
 .rleg .lrow{display:flex;align-items:center;gap:7px;font-size:10.5px;font-weight:500;color:var(--ink2)}
 .rleg .lrow span{width:28px;flex:none}
@@ -606,11 +606,11 @@ body:has(#testbar:not([hidden])) .sec{scroll-margin-top:140px}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=76"></script>
-<script src="wx-live.js?v=76"></script>
-<script src="wx-scenarios.js?v=76"></script>
-<script src="wx-vmap.js?v=76"></script>
-<script src="wx-radar.js?v=76"></script>
-<script src="app.js?v=76"></script>
+<script src="wx-normalize.js?v=77"></script>
+<script src="wx-live.js?v=77"></script>
+<script src="wx-scenarios.js?v=77"></script>
+<script src="wx-vmap.js?v=77"></script>
+<script src="wx-radar.js?v=77"></script>
+<script src="app.js?v=77"></script>
 </body>
 </html>
