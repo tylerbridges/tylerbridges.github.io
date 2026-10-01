@@ -606,11 +606,13 @@
     needBox();
     var lists = WK.map(function () { return []; }), nt = f.times[f.n - 1];
     for (var i = f.n - 1, j = 0; i >= 0; i--, j++) { var w = s3W[f.times[i]] != null ? s3W[f.times[i]] : j % WK.length; s3W[f.times[i]] = w; lists[w].push({ t: f.times[i], ref: f.refs[i], flag: f.flags[i] }); }
-    var send = function (k) { WK[k].postMessage({ grid: "load", base: S3, frames: lists[k], prune: k === 0 }); };
+    // every worker gets its list now (so tile requests wait for their frame instead of failing); on a first load
+    //   the others hold their downloads until the newest scan is in
+    var first = !Object.keys(s3Have).length;
     if (s3Wait) { clearTimeout(s3Wait.t); s3Wait = null; }
-    if (Object.keys(s3Have).length) { WK.forEach(function (w, k) { send(k); }); return; }
-    send(s3W[nt]);
-    var rest = function () { if (!s3Wait) return; clearTimeout(s3Wait.t); s3Wait = null; WK.forEach(function (w, k) { if (k !== s3W[nt]) send(k); }); };
+    WK.forEach(function (w, k) { w.postMessage({ grid: "load", base: S3, frames: lists[k], prune: k === 0, hold: first && k !== s3W[nt] }); });
+    if (!first) return;
+    var rest = function () { if (!s3Wait) return; clearTimeout(s3Wait.t); s3Wait = null; WK.forEach(function (w) { w.postMessage({ grid: "go" }); }); };
     s3Wait = { nt: nt, go: rest, t: setTimeout(rest, 4000) };
   }
   function s3Got(t) { s3Have[t] = 1; if (s3Wait && s3Wait.nt === t) s3Wait.go(); }
@@ -1087,7 +1089,7 @@
     fr.p.catch(function (e) { delete G[f.t]; GERR[f.t] = String(e && e.message || e); });
     return fr;
   }
-  var FR = {}, LASTK = {}, GERR = {};
+  var FR = {}, LASTK = {}, GERR = {}, GATE = null;
   function gtile(m) {
     var fr = G[m.t]; if (!fr) return Promise.reject();
     return fr.p.then(function () {
@@ -1156,11 +1158,14 @@
   root.onmessage = function (ev) {
     var m = ev.data;
     if (m.grid === "dom") { var D = m.dom; NI = D.ni; NJ = D.nj; LAT0 = D.lat0; LON0 = D.lon0; DEG = D.d; G = {}; FR = {}; LASTK = {}; GERR = {}; GBOX = null; return; }
+    if (m.grid === "go") { if (GATE) { GATE.open(); GATE = null; } return; }
     if (m.grid === "box") { GBOX = boxFor(m.box); return; }
     if (m.grid === "load") {
       // keep this set and the previous one (still on screen until the new one is ready)
       if (m.prune) pruneFiles();
+      if (GATE) { GATE.open(); GATE = null; }
       var keep = {}, prev = Promise.resolve(), dl = prev, noop = function () {};
+      if (m.hold) { var open; dl = GATE = new Promise(function (r) { open = r; }); GATE.open = open; }
       m.frames.forEach(function (f) { f.base = m.base; FR[f.t] = f; keep[f.t] = 1; var fr = gridFrame(f, prev, dl); prev = fr.p.catch(noop); if (fr.dl) dl = fr.dl.catch(noop); });
       Object.keys(G).forEach(function (t) { if (!keep[t] && !LASTK[t]) { delete G[t]; delete FR[t]; } }); LASTK = keep;
       return;
