@@ -1477,8 +1477,49 @@
     $("plabel").textContent = loc.label || "Loading…"; fitTop();
     return refresh(false);
   }
-  function lsOpen() { $("locsheet").hidden = false; renderLs(); setTimeout(function () { try { $("lsq").focus(); } catch (e) {} }, 50); }
-  function lsClose() { $("locsheet").hidden = true; lsStatus(""); }
+  var lsT = 0;
+  function lsCard() { return document.querySelector("#locsheet .ls-card"); }
+  function lsOpen() {
+    clearTimeout(lsT); var c = lsCard(); c.style.transition = ""; c.style.transform = ""; c.style.animation = "";
+    $("locsheet").classList.remove("closing"); $("locsheet").hidden = false; renderLs(); setTimeout(function () { try { $("lsq").focus(); } catch (e) {} }, 50);
+  }
+  // closing slides the sheet down (quickly) rather than cutting it
+  function lsClose() {
+    var ls = $("locsheet"), c = lsCard(); if (ls.hidden || ls.classList.contains("closing")) return;
+    var reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    try { document.activeElement && document.activeElement.blur && document.activeElement.blur(); } catch (e) {}
+    lsStatus("");
+    if (reduce) { ls.hidden = true; return; }
+    ls.classList.add("closing"); c.style.animation = "none"; c.style.transition = "transform .22s cubic-bezier(.4,0,1,1)"; c.style.transform = "translateY(105%)";
+    lsT = setTimeout(function () { ls.hidden = true; ls.classList.remove("closing"); c.style.transition = ""; c.style.transform = ""; c.style.animation = ""; }, 220);
+  }
+  // swipe down to close: from the grab handle/header anywhere, or from the body once it's scrolled to the top;
+  //   follows the finger, closes past ~110 px or on a quick flick, otherwise springs back
+  (function () {
+    var c = lsCard(); if (!c) return;
+    var y0 = null, t0 = 0, dy = 0, drag = false;
+    function start(y, target) { if (target.closest("input,select") || (c.scrollTop > 0 && !target.closest(".ls-head"))) { y0 = null; return; } y0 = y; t0 = Date.now(); dy = 0; drag = false; }
+    function move(y, e) {
+      if (y0 == null) return;
+      var d = y - y0;
+      if (!drag) { if (d < -6) { y0 = null; return; } if (d < 8) return; drag = true; c.style.animation = "none"; c.style.transition = "none"; }
+      dy = Math.max(0, d - 8); c.style.transform = "translateY(" + dy + "px)"; if (e.cancelable) e.preventDefault();
+    }
+    function end() {
+      if (y0 == null) return; y0 = null; if (!drag) return; drag = false;
+      var v = dy / Math.max(1, Date.now() - t0);
+      if (dy > 110 || (v > 0.6 && dy > 24)) lsClose();
+      else { c.style.transition = "transform .25s cubic-bezier(.3,1.3,.4,1)"; c.style.transform = ""; setTimeout(function () { if (!drag) c.style.transition = ""; }, 260); }
+    }
+    c.addEventListener("touchstart", function (e) { start(e.touches[0].clientY, e.target); }, { passive: true });
+    c.addEventListener("touchmove", function (e) { move(e.touches[0].clientY, e); }, { passive: false });
+    c.addEventListener("touchend", end); c.addEventListener("touchcancel", end);
+    // mouse/pen: drag from the grab handle area at the top of the sheet
+    var mouse = false;
+    c.addEventListener("pointerdown", function (e) { if (e.pointerType === "touch" || e.button || e.target.closest("button,input,a,select,label,summary") || e.clientY - c.getBoundingClientRect().top > 60) return; mouse = true; start(e.clientY, e.target); });
+    window.addEventListener("pointermove", function (e) { if (mouse) move(e.clientY, e); });
+    window.addEventListener("pointerup", function () { if (mouse) { mouse = false; end(); } });
+  })();
   function lsStatus(msg, err) { var e = $("lsstat"); e.hidden = !msg; e.textContent = msg || ""; e.classList.toggle("err", !!err); }
   var STAR = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="m12 3 2.6 5.85 6.4.62-4.85 4.3 1.4 6.28L12 16.9l-5.55 3.15 1.4-6.28-4.85-4.3 6.4-.62Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>';
   function renderLs() {

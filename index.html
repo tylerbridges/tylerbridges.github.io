@@ -706,6 +706,8 @@ section[data-tab]:not([hidden]){animation:secin .2s cubic-bezier(.2,.8,.2,1)}
 .oqset:not([hidden]){animation:popin .18s cubic-bezier(.3,1.3,.4,1);transform-origin:100% 100%}
 @keyframes popin{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:none}}
 .ls-back{animation:fadein .2s ease}
+#locsheet.closing .ls-back{opacity:0;transition:opacity .22s ease}
+.ls-card{touch-action:pan-y}
 @keyframes fadein{from{opacity:0}}
 @media (prefers-reduced-motion:reduce){
   section[data-tab]:not([hidden]),#toast,.oqset:not([hidden]),.ls-back,.nav.anim .navpill.go{animation:none}
@@ -873,13 +875,13 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=102"></script>
-<script src="wx-live.js?v=102"></script>
-<script src="wx-scenarios.js?v=102"></script>
-<script src="wx-vmap.js?v=102"></script>
-<script src="wx-radar.js?v=102"></script>
-<script src="wx-models.js?v=102"></script>
-<script src="wx-official.js?v=102"></script>
-<script src="app.js?v=102"></script>
+<script src="wx-normalize.js?v=103"></script>
+<script src="wx-live.js?v=103"></script>
+<script src="wx-scenarios.js?v=103"></script>
+<script src="wx-vmap.js?v=103"></script>
+<script src="wx-radar.js?v=103"></script>
+<script src="wx-models.js?v=103"></script>
+<script src="wx-official.js?v=103"></script>
+<script src="app.js?v=103"></script>
 </body>
 </html>
