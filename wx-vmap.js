@@ -191,12 +191,12 @@
     var P = o.dark ? PAL.dark : PAL.light, z = o.z, d = o.dpr, places = [];
     eachTile(ctx, slots, function (L, s) {
       ctx.lineJoin = ctx.lineCap = "round";
-      if (L.transportation) {
+      if (L.transportation && !o.placesOnly) {
         var by = [[], [], [], []];
         L.transportation.f.forEach(function (f) { var r = roadRank(f.p["class"]); if (f.t === 2 && r >= 0 && z >= roadMinZ(r) && f.p.brunnel !== "tunnel") by[r].push(f); });
         for (var r = 3; r >= 0; r--) { if (!by[r].length) continue; ctx.strokeStyle = P.road[r]; ctx.lineWidth = roadWidth(r, z) * d / s; strokeAll(ctx, by[r]); }
       }
-      if (L.boundary) {
+      if (L.boundary && !o.placesOnly) {
         var bl = { 6: [], 4: [], 2: [] };
         L.boundary.f.forEach(function (f) { if (f.t === 2 && f.p.maritime !== 1 && f.p.maritime !== true && bl[+f.p.admin_level]) bl[+f.p.admin_level].push(f); });
         if (z >= 6.5) { ctx.strokeStyle = P.county; ctx.lineWidth = 0.8 * d / s; strokeAll(ctx, bl[6]); }
@@ -210,37 +210,47 @@
       });
     });
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    labels(ctx, places, P, z, d, o.w, o.h);
+    return labels(ctx, places, P, z, d, o.w, o.h, o);
   }
   // place names: biggest places first, skipping any that would overlap one already placed; sizes grow gently with zoom
   var CLS = { state: 0, city: 1, town: 2, village: 3 };
-  function labels(ctx, places, P, z, d, w, h) {
+  // o.placesOnly (official county map): no state names, each place gets a dot with its name beside it, names skip
+  //   the boxes in o.avoid (the county numbers), o.classes limits which classes draw, o.text/o.halo override the palette;
+//   returns the boxes taken (including o.avoid) so the caller can place more labels around them
+  function labels(ctx, places, P, z, d, w, h, o) {
+    o = o || {};
     var seen = {}, list = [];
     places.forEach(function (pl) {
       var c = pl.p["class"], name = pl.p["name:en"] || pl.p.name_en || pl.p.name; if (!name || CLS[c] == null) return;
-      if (c === "state" && (z < 4 || z > 7.5)) return;
+      if (c === "state" && (z < 4 || z > 7.5 || o.placesOnly)) return;
       if (c === "town" && z < 7.5 || c === "village" && z < 9.5) return;
+      if (o.classes && !o.classes[c]) return;
       var k = name + "|" + Math.round(pl.x / 60) + "|" + Math.round(pl.y / 60); if (seen[k]) return; seen[k] = 1;
       if (pl.x < -50 || pl.y < -20 || pl.x > w + 50 || pl.y > h + 20) return;
       list.push({ c: c, name: c === "state" ? String(pl.p.name_en || name).toUpperCase() : name, x: pl.x, y: pl.y, r: (CLS[c] * 100) + (+pl.p.rank || 50) - (pl.p.capital ? 20 : 0) });
     });
     list.sort(function (a, b) { return a.r - b.r; });
-    var boxes = [], zz = Math.max(4, Math.min(12, z));
+    var boxes = (o.avoid || []).slice(), zz = Math.max(4, Math.min(12, z)), dots = !!o.placesOnly;
     ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.lineJoin = "round";
     list.slice(0, 400).forEach(function (L) {
       var size = L.c === "state" ? 10.5 + (zz - 4) * 0.4 : L.c === "city" ? 12 + (zz - 5) * 0.5 : L.c === "town" ? 11.5 + (zz - 8) * 0.45 : 11 + (zz - 10) * 0.4;
-      size = Math.min(L.c === "city" ? 17 : 15, size);
-      var wt = L.c === "city" ? 600 : L.c === "state" ? 600 : 500, sp = L.c === "state" ? 1.5 : 0;
+      size = Math.min(L.c === "city" ? 17 : 15, size); if (dots) size *= 0.85;
+      var wt = dots ? (L.c === "city" ? 500 : 400) : L.c === "city" ? 600 : L.c === "state" ? 600 : 500, sp = L.c === "state" ? 1.5 : 0;
       ctx.font = wt + " " + (size * d).toFixed(1) + "px -apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Roboto,sans-serif";
       if (sp && "letterSpacing" in ctx) ctx.letterSpacing = (sp * d) + "px";
-      var tw = ctx.measureText(L.name).width / d, bx = { x0: L.x - tw / 2 - 3, x1: L.x + tw / 2 + 3, y0: L.y - size * 0.7, y1: L.y + size * 0.7 };
-      for (var i = 0; i < boxes.length; i++) { var q = boxes[i]; if (bx.x0 < q.x1 && bx.x1 > q.x0 && bx.y0 < q.y1 && bx.y1 > q.y0) { if ("letterSpacing" in ctx) ctx.letterSpacing = "0px"; return; } }
+      var tw = ctx.measureText(L.name).width / d, tx = dots ? L.x + 5 + tw / 2 : L.x, bx = { x0: tx - tw / 2 - 3, x1: tx + tw / 2 + 3, y0: L.y - size * 0.7, y1: L.y + size * 0.7 };
+      if (dots) bx.x0 = L.x - 3.5;
+      var hit = function (b) { for (var i = 0; i < boxes.length; i++) { var q = boxes[i]; if (b.x0 < q.x1 && b.x1 > q.x0 && b.y0 < q.y1 && b.y1 > q.y0) return true; } return false; };
+      if (hit(bx) && dots) { tx = L.x - 5 - tw / 2; bx = { x0: tx - tw / 2 - 3, x1: L.x + 3.5, y0: bx.y0, y1: bx.y1 }; } // try the left side
+      if (hit(bx)) { if ("letterSpacing" in ctx) ctx.letterSpacing = "0px"; return; }
       boxes.push(bx);
-      ctx.strokeStyle = P.halo; ctx.lineWidth = 3 * d; ctx.strokeText(L.name, L.x * d, L.y * d);
-      ctx.fillStyle = L.c === "state" ? P.stateText : L.c === "city" ? P.text : L.c === "town" ? P.text2 : P.text3;
-      ctx.fillText(L.name, L.x * d, L.y * d);
+      ctx.strokeStyle = o.halo || P.halo; ctx.lineWidth = 3 * d; ctx.strokeText(L.name, tx * d, L.y * d);
+      ctx.fillStyle = o.text ? o.text : L.c === "state" ? P.stateText : L.c === "city" ? P.text : L.c === "town" ? P.text2 : P.text3;
+      ctx.fillText(L.name, tx * d, L.y * d);
+      if (dots) { ctx.beginPath(); ctx.arc(L.x * d, L.y * d, 2.2 * d, 0, 2 * Math.PI); ctx.fill(); }
       if ("letterSpacing" in ctx) ctx.letterSpacing = "0px";
     });
+    return boxes;
   }
 
   if (INW) {

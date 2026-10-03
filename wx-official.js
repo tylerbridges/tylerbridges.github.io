@@ -13,14 +13,15 @@
 //   County value: the WPC polygons are rasterised once onto a 0.04° lat/lon grid (~4 km), and each county takes the
 //   grid cells inside it: precipitation = area average, using the middle of each WPC band (.01–.10 counts as .055,
 //   the top band as its floor); snow/ice chance = the highest category covering at least a quarter of the county.
-//   Labels sit at the county's label point, largest values first, skipping any that would overlap. Tap for the county
+//   Labels sit at the county's label point, largest values first, skipping any that would overlap; city and town
+//   names (OpenFreeMap tiles via wx-vmap.js, a dot plus the name beside it) fill in around them without covering them. Tap for the county
 //   name and value. start_time/end_time (UTC) give the forecast period. If the service can't be reached the caller
 //   falls back to WPC's images.
 (function (root) {
   "use strict";
   var MS = "https://mapservices.weather.noaa.gov/";
   var PRECIP = MS + "vector/rest/services/precip/", REF = MS + "static/rest/services/nws_reference_maps/nws_reference_map/MapServer/";
-  var D2R = Math.PI / 180, TS = 256, K = 1e4, TTL = 30 * 60000;
+  var VM = root.WXVMap, D2R = Math.PI / 180, TS = 256, K = 1e4, TTL = 30 * 60000;
   var QL = [0.01, 0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5, 7, 10, 15, 20]; // WPC's contour levels
   var CATL = [null, "10%", "40%", "70%"], CATLONG = [null, "10–39%", "40–69%", "70%+"];
   // rasterised WPC grid: covers CONUS and nearby waters
@@ -188,6 +189,7 @@
     stat.hidden = true; ro.hidden = true;
     reg.innerHTML = '<button type="button" data-z="7.6">Local</button><button type="button" data-z="6.6">Region</button><button type="button" data-z="us">U.S.</button>';
     reg.addEventListener("click", function (e) { var b = e.target.closest("button"); if (!b) return; var z = b.dataset.z; if (z === "us") fly(wx(-96.5), wy(38.5), 3.9); else fly(wx(loc.lon), wy(loc.lat), +z); });
+    if (VM) VM.init(function () { paint(); }, function () { if (on) paint(); });
     new ResizeObserver(size).observe(el);
     if (root.matchMedia) root.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function () { paint(); });
     gestures();
@@ -221,7 +223,17 @@
     }
     if (states) { var sp = new Path2D(); states.forEach(function (st) { if (vis(st.bb)) sp.addPath(st.path); }); cx.strokeStyle = ink; cx.lineWidth = (drawn.z < 5 ? 1 : 1.4) * dpr / k; cx.stroke(sp); }
     cx.setTransform(1, 0, 0, 1, 0, 0);
-    if (data) labels(list, ink, dk);
+    // place names from the OpenFreeMap tiles (the radar's base map), each a dot with its name beside it: cities first,
+    //   then the county numbers around them (nudged a line up or down if a city is in the way), then towns in the gaps
+    var vm = VM && VM.ok(), sl = vm && slots(VM.tileZoom(drawn.z));
+    var po = function (cls, avoid) {
+      var r = VM.drawTop(cx, sl, { dark: dk, dpr: dpr, z: drawn.z, w: SW, h: SH, placesOnly: true, classes: cls, avoid: avoid,
+        text: dk ? "rgba(255,255,255,.86)" : "rgba(0,0,0,.8)", halo: dk ? "rgba(0,0,0,.95)" : "rgba(255,255,255,.95)" });
+      cx.setTransform(1, 0, 0, 1, 0, 0); return r || avoid;
+    };
+    var boxes = vm ? po({ city: 1 }, []) : [];
+    if (data) boxes = labels(list, ink, dk, boxes);
+    if (vm) po({ town: 1, village: 1 }, boxes);
     if (loc) {
       var m = toScr(loc.lat, loc.lon);
       cx.beginPath(); cx.arc(m.x * dpr, m.y * dpr, 4.5 * dpr, 0, 2 * Math.PI); cx.lineWidth = 2 * dpr; cx.strokeStyle = dk ? "#000" : "#fff"; cx.stroke();
@@ -229,8 +241,8 @@
     }
   }
   // county numbers: biggest first, skipping overlaps; text size grows a little with zoom
-  function labels(list, ink, dk) {
-    var size = Math.max(9.5, Math.min(14, 9.5 + (drawn.z - 5.5) * 1.6)), boxes = [], items = [];
+  function labels(list, ink, dk, taken) {
+    var size = Math.max(9.5, Math.min(14, 9.5 + (drawn.z - 5.5) * 1.6)), boxes = (taken || []).slice(), items = [];
     list.forEach(function (c) {
       var v = countyVal(c); if (data.qpf ? v < 0.005 : !v) return;
       var p = toScr(c.lat, c.lon); if (p.x < 0 || p.y < 0 || p.x > SW || p.y > SH) return;
@@ -240,12 +252,23 @@
     cx.textAlign = "center"; cx.textBaseline = "middle"; cx.lineJoin = "round";
     cx.font = "600 " + (size * dpr).toFixed(1) + "px -apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Roboto,sans-serif";
     items.forEach(function (it) {
-      var w = cx.measureText(it.t).width / dpr, bx = { x0: it.x - w / 2 - 1.5, x1: it.x + w / 2 + 1.5, y0: it.y - size * 0.6, y1: it.y + size * 0.6 };
-      for (var i = 0; i < boxes.length; i++) { var q = boxes[i]; if (bx.x0 < q.x1 && bx.x1 > q.x0 && bx.y0 < q.y1 && bx.y1 > q.y0) return; }
+      var w = cx.measureText(it.t).width / dpr, bx = null;
+      var free = function (b) { for (var i = 0; i < boxes.length; i++) { var q = boxes[i]; if (b.x0 < q.x1 && b.x1 > q.x0 && b.y0 < q.y1 && b.y1 > q.y0) return false; } return true; };
+      [0, 1.15, -1.15].some(function (dy) { var y = it.y + dy * size, b = { x0: it.x - w / 2 - 1.5, x1: it.x + w / 2 + 1.5, y0: y - size * 0.6, y1: y + size * 0.6 }; if (free(b)) { bx = b; it.y = y; return true; } return false; });
+      if (!bx) return;
       boxes.push(bx);
       cx.strokeStyle = dk ? "#000" : "#fff"; cx.lineWidth = 3 * dpr; cx.strokeText(it.t, it.x * dpr, it.y * dpr);
       cx.fillStyle = ink; cx.fillText(it.t, it.x * dpr, it.y * dpr);
     });
+    return boxes;
+  }
+  function slots(zt) {
+    var n = Math.pow(2, zt), s = scaleZ(drawn.z), out = [];
+    var l = drawn.x - SW / 2 / s, r = drawn.x + SW / 2 / s, t = drawn.y - SH / 2 / s, b = drawn.y + SH / 2 / s;
+    var px = function (x) { return Math.round(((x - drawn.x) * s + SW / 2) * dpr); }, py = function (y) { return Math.round(((y - drawn.y) * s + SH / 2) * dpr); };
+    for (var j = Math.max(0, Math.floor(t * n)); j <= Math.min(n - 1, Math.floor(b * n)); j++)
+      for (var i = Math.floor(l * n); i <= Math.floor(r * n); i++) out.push({ i: i, j: j, n: n, z: zt, x0: px(i / n), y0: py(j / n), x1: px((i + 1) / n), y1: py((j + 1) / n) });
+    return out;
   }
   function countyAt(lat, lon) {
     var hit = null;
