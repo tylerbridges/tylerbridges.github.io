@@ -44,6 +44,15 @@
     });
   }
 
+  // weather.gov's names for its observation icon codes (api.weather.gov/icons), for stations that send no text
+  var ICON_NAME = { skc: "Clear", few: "A Few Clouds", sct: "Partly Cloudy", bkn: "Mostly Cloudy", ovc: "Overcast",
+    wind_skc: "Clear and Windy", wind_few: "A Few Clouds and Windy", wind_sct: "Partly Cloudy and Windy", wind_bkn: "Mostly Cloudy and Windy", wind_ovc: "Overcast and Windy",
+    snow: "Snow", rain_snow: "Rain and Snow", rain_sleet: "Rain and Sleet", snow_sleet: "Snow and Sleet", fzra: "Freezing Rain", rain_fzra: "Rain and Freezing Rain",
+    snow_fzra: "Freezing Rain and Snow", sleet: "Sleet", rain: "Rain", rain_showers: "Rain Showers", rain_showers_hi: "Rain Showers", tsra: "Thunderstorm",
+    tsra_sct: "Thunderstorm", tsra_hi: "Thunderstorm", tornado: "Tornado", hurricane: "Hurricane", tropical_storm: "Tropical Storm", dust: "Dust", smoke: "Smoke",
+    haze: "Haze", hot: "Hot", cold: "Cold", blizzard: "Blizzard", fog: "Fog/Mist" };
+  function iconName(ic) { var c = ic && ic[0] && ic[0].c; return c && ICON_NAME[c] || ""; }
+
   function normalize(raw) {
     var pt = raw.points.properties;
     var gd = raw.grid.properties;
@@ -169,6 +178,8 @@
         if (obsF[i].textDescription) { latest.desc = obsF[i].textDescription; latest.icon = iconCodes(obsF[i].icon); break; }
       }
     }
+    // still nothing (some stations send no text at all): name it from the observation's own icon, as weather.gov does
+    if (latest && !latest.desc) latest.desc = iconName(latest.icon);
     var hist = [], seen = {};
     obsF.forEach(function (o) {
       var ms = Date.parse(o.timestamp);
