@@ -508,6 +508,15 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .oqwrap .mm{background:#000}}
 :root[data-theme="dark"] .oqwrap .mm{background:#000}
 .oqcap{padding:7px 12px 0;font-size:11.5px;color:var(--ink2)}
+.oqgear{position:absolute;right:8px;bottom:8px;width:36px;height:36px;border-radius:999px;display:grid;place-items:center;cursor:pointer;color:var(--ink2);padding:0;background:color-mix(in srgb,var(--surface) 82%,transparent);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border:1px solid color-mix(in srgb,var(--line) 75%,transparent)}
+.oqgear svg{width:19px;height:19px;fill:currentColor}
+.oqset{position:absolute;right:8px;bottom:52px;width:min(300px,calc(100% - 16px));padding:10px 12px 4px;border-radius:14px;background:var(--surface);border:1px solid var(--line);box-shadow:0 6px 24px rgba(0,0,0,.28);z-index:3;cursor:default}
+.oqset[hidden]{display:none}
+.oqst{font:600 13px var(--sans);color:var(--ink);margin-bottom:6px}
+.oqsr{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 0}
+.oqsr span{font-size:12.5px;color:var(--ink2)}
+.oqsr div{display:flex;gap:4px}
+.oqsr .chip{padding:4px 9px;font-size:12px}
 /* NWS / WPC / CPC map images */
 .mcats{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin-inline:-16px;padding-inline:16px}
 .marea{display:flex;gap:4px;flex:none}
@@ -683,13 +692,13 @@ body:has(#testbar:not([hidden])) .sec{scroll-margin-top:140px}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=87"></script>
-<script src="wx-live.js?v=87"></script>
-<script src="wx-scenarios.js?v=87"></script>
-<script src="wx-vmap.js?v=87"></script>
-<script src="wx-radar.js?v=87"></script>
-<script src="wx-models.js?v=87"></script>
-<script src="wx-official.js?v=87"></script>
-<script src="app.js?v=87"></script>
+<script src="wx-normalize.js?v=88"></script>
+<script src="wx-live.js?v=88"></script>
+<script src="wx-scenarios.js?v=88"></script>
+<script src="wx-vmap.js?v=88"></script>
+<script src="wx-radar.js?v=88"></script>
+<script src="wx-models.js?v=88"></script>
+<script src="wx-official.js?v=88"></script>
+<script src="app.js?v=88"></script>
 </body>
 </html>

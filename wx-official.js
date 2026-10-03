@@ -180,6 +180,25 @@
   var el, stage, cv, cx, ro, stat, reg;
   var W = 0, HH = 0, M = 0, SW = 0, SH = 0, dpr = 1, view = { x: 0, y: 0, z: 6.6 }, drawn = null, raf = 0;
   var loc = null, cur = { k: "qpf", p: 24, th: "04" }, data = null, gen = 0, on = false;
+  // map settings (gear menu, saved as wx-oqset): place names, county lines, number size, map colours, 0 for dry counties
+  var SET = { cities: true, lines: true, size: "m", theme: "auto", zeros: false }, setEl = null, gear = null;
+  try { var sv = JSON.parse(localStorage.getItem("wx-oqset") || "null"); if (sv) Object.keys(SET).forEach(function (k) { if (sv[k] != null) SET[k] = sv[k]; }); } catch (e) {}
+  function saveSet() { try { localStorage.setItem("wx-oqset", JSON.stringify(SET)); } catch (e) {} }
+  function isDark() { return SET.theme === "dark" ? true : SET.theme === "light" ? false : dark(); }
+  var GEAR = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-1.7-1L15 3.5h-4l-.4 2.5a7.4 7.4 0 0 0-1.7 1l-2.4-1-2 3.4L6.6 11a7.6 7.6 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7.4 7.4 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7.4 7.4 0 0 0 1.7-1l2.4 1 2-3.4zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg>';
+  function setRow(label, key, opts) {
+    return '<div class="oqsr"><span>' + label + '</span><div>' + opts.map(function (o) {
+      return '<button type="button" class="chip' + (SET[key] === o[0] ? " on" : "") + '" data-sk="' + key + '" data-sv="' + o[0] + '">' + o[1] + "</button>";
+    }).join("") + "</div></div>";
+  }
+  function setUI() {
+    setEl.innerHTML = '<div class="oqst">Map settings</div>' +
+      setRow("Cities &amp; towns", "cities", [[true, "Show"], [false, "Hide"]]) +
+      setRow("County lines", "lines", [[true, "Show"], [false, "Hide"]]) +
+      setRow("Number size", "size", [["s", "S"], ["m", "M"], ["l", "L"]]) +
+      setRow("Map colors", "theme", [["auto", "Auto"], ["light", "Light"], ["dark", "Dark"]]) +
+      setRow("Dry counties", "zeros", [[false, "Blank"], [true, "Show 0"]]);
+  }
   function mk(t, c, p) { var e = document.createElement(t); e.className = c; p.appendChild(e); return e; }
   function setup() {
     el = document.createElement("div"); el.className = "mm oqmap";
@@ -187,6 +206,14 @@
     cv = mk("canvas", "mml", stage); cx = cv.getContext("2d");
     stat = mk("div", "mmstat", el); ro = mk("div", "mmro", el); reg = mk("div", "mmreg", el);
     stat.hidden = true; ro.hidden = true;
+    gear = mk("button", "oqgear", el); gear.type = "button"; gear.innerHTML = GEAR; gear.setAttribute("aria-label", "Map settings");
+    setEl = mk("div", "oqset", el); setEl.hidden = true;
+    gear.addEventListener("click", function () { setEl.hidden = !setEl.hidden; if (!setEl.hidden) setUI(); });
+    setEl.addEventListener("click", function (e) {
+      var b = e.target.closest("[data-sk]"); if (!b) return;
+      var k = b.dataset.sk, v = b.dataset.sv; SET[k] = v === "true" ? true : v === "false" ? false : v;
+      saveSet(); setUI(); paint();
+    });
     reg.innerHTML = '<button type="button" data-z="7.6">Local</button><button type="button" data-z="6.6">Region</button><button type="button" data-z="us">U.S.</button>';
     reg.addEventListener("click", function (e) { var b = e.target.closest("button"); if (!b) return; var z = b.dataset.z; if (z === "us") fly(wx(-96.5), wy(38.5), 3.9); else fly(wx(loc.lon), wy(loc.lat), +z); });
     if (VM) VM.init(function () { paint(); }, function () { if (on) paint(); });
@@ -210,14 +237,14 @@
   function toScr(lat, lon) { var s = scaleZ(drawn.z); return { x: (wx(lon) - drawn.x) * s + SW / 2, y: (wy(lat) - drawn.y) * s + SH / 2 }; }
   function viewLL() { var s = scaleZ(drawn.z); return [lonOf(drawn.x - SW / 2 / s), latOf(drawn.y + SH / 2 / s), lonOf(drawn.x + SW / 2 / s), latOf(drawn.y - SH / 2 / s)]; }
   function draw() {
-    var dk = dark(), ink = dk ? "#fff" : "#000", s = scaleZ(drawn.z), k = s * dpr / K, V = viewLL();
+    var dk = isDark(), ink = dk ? "#fff" : "#000", s = scaleZ(drawn.z), k = s * dpr / K, V = viewLL();
     cx.setTransform(1, 0, 0, 1, 0, 0); cx.fillStyle = dk ? "#000" : "#fff"; cx.fillRect(0, 0, cv.width, cv.height);
     var vis = function (bb) { return !(bb[2] < V[0] || bb[0] > V[2] || bb[3] < V[1] || bb[1] > V[3]); };
     var list = Object.keys(counties).map(function (f) { return counties[f]; }).filter(function (c) { return vis(c.bb); });
     cx.setTransform(k, 0, 0, k, (SW / 2 - drawn.x * s) * dpr, (SH / 2 - drawn.y * s) * dpr);
     cx.lineJoin = "round";
     // county lines, then state lines over them
-    if (drawn.z >= 4.6) {
+    if (drawn.z >= 4.6 && SET.lines) {
       var cp = new Path2D(); list.forEach(function (c) { cp.addPath(c.path); });
       cx.strokeStyle = dk ? "rgba(255,255,255,.34)" : "rgba(0,0,0,.30)"; cx.lineWidth = (drawn.z < 6 ? 0.5 : 0.75) * dpr / k; cx.stroke(cp);
     }
@@ -225,7 +252,7 @@
     cx.setTransform(1, 0, 0, 1, 0, 0);
     // place names from the OpenFreeMap tiles (the radar's base map), each a dot with its name beside it: cities first,
     //   then the county numbers around them (nudged a line up or down if a city is in the way), then towns in the gaps
-    var vm = VM && VM.ok(), sl = vm && slots(VM.tileZoom(drawn.z));
+    var vm = SET.cities && VM && VM.ok(), sl = vm && slots(VM.tileZoom(drawn.z));
     var po = function (cls, avoid) {
       var r = VM.drawTop(cx, sl, { dark: dk, dpr: dpr, z: drawn.z, w: SW, h: SH, placesOnly: true, classes: cls, avoid: avoid,
         text: dk ? "rgba(255,255,255,.86)" : "rgba(0,0,0,.8)", halo: dk ? "rgba(0,0,0,.95)" : "rgba(255,255,255,.95)" });
@@ -242,11 +269,11 @@
   }
   // county numbers: biggest first, skipping overlaps; text size grows a little with zoom
   function labels(list, ink, dk, taken) {
-    var size = Math.max(9.5, Math.min(14, 9.5 + (drawn.z - 5.5) * 1.6)), boxes = (taken || []).slice(), items = [];
+    var size = Math.max(9.5, Math.min(14, 9.5 + (drawn.z - 5.5) * 1.6)) * ({ s: 0.85, l: 1.2 }[SET.size] || 1), boxes = (taken || []).slice(), items = [];
     list.forEach(function (c) {
-      var v = countyVal(c); if (data.qpf ? v < 0.005 : !v) return;
+      var v = countyVal(c), dry = data.qpf ? v < 0.005 : !v; if (dry && !SET.zeros) return;
       var p = toScr(c.lat, c.lon); if (p.x < 0 || p.y < 0 || p.x > SW || p.y > SH) return;
-      items.push({ v: v, x: p.x, y: p.y, t: data.qpf ? amt(v) : CATL[v] });
+      items.push({ v: dry ? -1 : v, x: p.x, y: p.y, t: dry ? (data.qpf ? "0" : "0%") : data.qpf ? amt(v) : CATL[v], dry: dry });
     });
     items.sort(function (a, b) { return b.v - a.v; });
     cx.textAlign = "center"; cx.textBaseline = "middle"; cx.lineJoin = "round";
@@ -258,7 +285,7 @@
       if (!bx) return;
       boxes.push(bx);
       cx.strokeStyle = dk ? "#000" : "#fff"; cx.lineWidth = 3 * dpr; cx.strokeText(it.t, it.x * dpr, it.y * dpr);
-      cx.fillStyle = ink; cx.fillText(it.t, it.x * dpr, it.y * dpr);
+      cx.fillStyle = it.dry ? (dk ? "rgba(255,255,255,.5)" : "rgba(0,0,0,.45)") : ink; cx.fillText(it.t, it.x * dpr, it.y * dpr);
     });
     return boxes;
   }
@@ -313,7 +340,8 @@
   }
   function gestures() {
     el.addEventListener("pointerdown", function (e) {
-      if (e.target.closest("button")) return;
+      if (e.target.closest("button") || e.target.closest(".oqset")) return;
+      if (!setEl.hidden) { setEl.hidden = true; return; } // a tap on the map closes the menu
       el.setPointerCapture(e.pointerId); pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); cancelAnimationFrame(tween);
       g0 = snap(); moved = false; ro.hidden = true;
     });
@@ -352,7 +380,7 @@
   // one line under the map saying what the numbers are (no colour key)
   function caption(s) {
     if (s.k === "qpf") return "Numbers: each county's average forecast precipitation, inches of liquid (rain + melted snow); <.1 = .01 to .10. Tap a county for its range.";
-    return "Numbers: each county's chance of " + (s.k === "ice" ? '0.25"+ ice' : +s.th + '"+ snow') + " (10% = 10–39%, 40% = 40–69%, 70% = 70%+). Blank: under 10%.";
+    return "Numbers: each county's chance of " + (s.k === "ice" ? '0.25"+ ice' : +s.th + '"+ snow') + " (10% = 10–39%, 40% = 40–69%, 70% = 70%+). Blank or 0%: under 10%.";
   }
 
   // show(host, place, { k, p, th }) → Promise of { start, end, issue } once drawn; rejects if the data can't load
