@@ -1051,6 +1051,7 @@
     if (!$("nav").querySelector('[data-tab="' + t + '"]')) t = "daily";
     var changed = t !== tab; tab = t;
     document.querySelectorAll("#nav .chip").forEach(function (c) { c.classList.toggle("on", c.dataset.tab === t); });
+    movePill(changed);
     document.querySelectorAll("section[data-tab]").forEach(function (s) {
       s.hidden = s.dataset.tab !== t;
     });
@@ -1063,6 +1064,19 @@
     try { localStorage.setItem("wx-tab", t); } catch (e) {}
     touchTab();
   }
+  // the glass pill behind the selected tab: slides (with a short squash) to the new tab; placed without animation
+  //   the first time and on resize, so it never animates in from nowhere
+  function movePill(animate) {
+    var n = $("nav"), on = n.querySelector(".chip.on"), p = n.querySelector(".navpill"); if (!on || !p || !on.offsetWidth) return;
+    if (!animate) n.classList.remove("anim");
+    p.style.width = on.offsetWidth + "px"; p.style.transform = "translateX(" + on.offsetLeft + "px)";
+    if (animate) { p.classList.remove("go"); void p.offsetWidth; p.classList.add("go"); }
+    n.classList.add("pilled");
+    if (!animate) requestAnimationFrame(function () { requestAnimationFrame(function () { n.classList.add("anim"); }); });
+    if (n.scrollWidth > n.clientWidth) on.scrollIntoView({ block: "nearest", inline: "nearest", behavior: animate ? "smooth" : "auto" });
+  }
+  window.addEventListener("resize", function () { movePill(false); });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { movePill(false); });
   // Coming back within TAB_KEEP of the last visit returns to the tab you were on; after longer it starts on Now.
   var TAB_KEEP = 30 * 60000;
   function touchTab() { try { localStorage.setItem("wx-tab-at", String(Date.now())); } catch (e) {} }
