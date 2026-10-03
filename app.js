@@ -1131,8 +1131,8 @@
     renderImgMaps(); renderOfficial();
   }
   // Official NWS precipitation: the Weather Prediction Center's 24- and 48-hour forecasts (the human-issued national
-  //   forecast the NWS grids are built from), drawn from WPC's own forecast polygons by wx-official.js on the same base
-  //   map as the model viewer (tap for the value), plus this place's official amounts from its weather.gov forecast
+  //   forecast the NWS grids are built from), drawn by wx-official.js as a monochrome county map with each county's
+  //   amount printed on it (tap for the county and value), plus this place's official amounts from its weather.gov forecast
   //   grid for the next 24 and 48 hours. If NOAA's map service can't be reached, WPC's image is shown instead.
   // Kinds: precipitation (WPC's official 24-h Day 1 and 48-h Days 1–2 amounts), snow and ice (WPC's official winter
   //   forecasts: chance of 4/8/12" snow or 0.25" ice for Day 1 = next 24 h and Day 2 = 24–48 h). Under each map, this
@@ -1161,7 +1161,7 @@
     el.innerHTML = '<div class="oqh">' + chip("data-oqk", "qpf", "Precip", OQ.k === "qpf") + chip("data-oqk", "snow", "Snow", OQ.k === "snow") + chip("data-oqk", "ice", "Ice", OQ.k === "ice") + "</div>" +
       '<div class="oqh">' + chip("data-oqp", 24, "Next 24 hr", OQ.p === 24) + chip("data-oqp", 48, OQ.k === "qpf" ? "Next 48 hr" : "24–48 hr", OQ.p === 48) +
       "</div>" + (OQ.k === "snow" ? '<div class="oqh"><span class="oqlab">Chance of</span>' + ["04", "08", "12"].map(function (t) { return chip("data-oqt", t, +t + '"+', OQ.th === t); }).join("") + "</div>" : "") +
-      (window.WXOfficial ? '<div class="oqwrap" id="oqwrap"><span class="mfr num" id="oqper">' + esc(per) + '</span></div><div class="mleg" id="oqleg">' + WXOfficial.legend(OQ.k) + "</div>"
+      (window.WXOfficial ? '<div class="oqwrap" id="oqwrap"><span class="mfr num" id="oqper">' + esc(per) + '</span></div><div class="oqcap" id="oqleg">' + esc(WXOfficial.caption(OQ)) + "</div>"
         : '<div class="oqimg" id="oqimg"><img src="' + img + bust + '" alt="' + esc(cap) + '"><span class="mfr num">' + esc(per) + "</span></div>") +
       '<div class="oqnote"><b>' + esc(cap) + "</b> · NWS Weather Prediction Center · " + '<a href="' + WPC + (OQ.k === "qpf" ? "qpf/qpf2.shtml" : "wwd/winter_wx.shtml") + '" target="_blank" rel="noopener">Source</a></div>' + amt;
     var imgOk = function (box) {

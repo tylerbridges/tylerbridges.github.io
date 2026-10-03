@@ -193,8 +193,8 @@
             // Official precipitation card: WPC's polygons drawn by wx-official.js (or WPC's image if the map service failed)
             .then(function () {
               if (MOCK) return null;
-              return poll(function () { return d.querySelector("#oqwrap .oqf") && !d.querySelector("#oqwrap .mmstat:not([hidden])") || d.getElementById("oqimg"); }, 30000).then(function (ok) {
-                var drawn = !!d.querySelector("#oqwrap .oqf"), per = (d.getElementById("oqper") || {}).textContent || "";
+              return poll(function () { return d.querySelector("#oqwrap canvas") && !d.querySelector("#oqwrap .mmstat:not([hidden])") || d.getElementById("oqimg"); }, 30000).then(function (ok) {
+                var drawn = !!d.querySelector("#oqwrap canvas"), per = (d.getElementById("oqper") || {}).textContent || "";
                 res.official = !ok ? "timed out" : drawn ? "drawn " + per : "WPC image (map service unavailable)";
                 if (!ok || !drawn) res.warns.push("official precipitation map didn't draw: " + res.official);
               });
