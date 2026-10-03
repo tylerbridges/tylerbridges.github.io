@@ -583,6 +583,93 @@ body:has(#testbar:not([hidden])) .sec{scroll-margin-top:140px}
 .now-line .now-t::before{margin:0 6px 0 4px}
 </style>
 
+<style id="glass">
+/* ===== Design layer: matches airport-wx (dark-first, true black, big bold type, 22px cards, segmented
+   controls, bottom sheets) with Liquid Glass materials for everything that floats (header, tab bar, map
+   controls, sheets, toasts). Visual only: no markup or behaviour depends on it. ===== */
+:root{
+  --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display",Inter,"Segoe UI",Roboto,system-ui,sans-serif;
+  --cond:-apple-system,BlinkMacSystemFont,"SF Pro Display",Inter,"Segoe UI",Roboto,system-ui,sans-serif;
+  --ground:#F2F2F7; --surface:#FFFFFF; --sunk:#F2F2F7; --ink:#000; --ink2:#3C3C43; --muted:#6C6C70;
+  --line:rgba(0,0,0,.09); --grid:rgba(0,0,0,.07); --accent:#007AFF; --accent-soft:rgba(0,122,255,.12); --seg-sel:#fff;
+  --glass:rgba(255,255,255,.62); --glass-hi:rgba(255,255,255,.75); --glass-edge:rgba(0,0,0,.08); --glass-sh:0 8px 28px rgba(0,0,0,.12);
+  --r-card:22px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --ground:#000; --surface:#1C1C1E; --sunk:#2C2C2E; --ink:#fff; --ink2:#D1D1D6; --muted:#A1A1A6;
+  --line:rgba(255,255,255,.1); --grid:rgba(255,255,255,.08); --accent:#0A84FF; --accent-soft:rgba(10,132,255,.2); --seg-sel:#3A3A3C;
+  --glass:rgba(30,30,32,.55); --glass-hi:rgba(255,255,255,.14); --glass-edge:rgba(255,255,255,.12); --glass-sh:0 8px 30px rgba(0,0,0,.5);
+}}
+:root[data-theme="dark"]{
+  --ground:#000; --surface:#1C1C1E; --sunk:#2C2C2E; --ink:#fff; --ink2:#D1D1D6; --muted:#A1A1A6;
+  --line:rgba(255,255,255,.1); --grid:rgba(255,255,255,.08); --accent:#0A84FF; --accent-soft:rgba(10,132,255,.2); --seg-sel:#3A3A3C;
+  --glass:rgba(30,30,32,.55); --glass-hi:rgba(255,255,255,.14); --glass-edge:rgba(255,255,255,.12); --glass-sh:0 8px 30px rgba(0,0,0,.5);
+}
+body{font-family:var(--sans);-webkit-font-smoothing:antialiased;letter-spacing:-.005em}
+h2{font:700 12px/1 var(--sans);letter-spacing:.08em}
+
+/* glass material: translucent, blurred and saturated, with a light inner edge and a soft shadow */
+.top,.rbar,.rleg,.rloc,.rstat,.mmreg,.mmstat,.oqgear,.oqwrap .mfr,#toast,.ls-card{
+  background:var(--glass);-webkit-backdrop-filter:blur(24px) saturate(1.8);backdrop-filter:blur(24px) saturate(1.8);
+  border:1px solid var(--glass-edge);box-shadow:inset 0 1px 0 var(--glass-hi),var(--glass-sh)}
+
+/* cards: borderless, 22px corners (light mode keeps a hairline shadow to lift them off the grey) */
+.card,.alert,.haz,.dcard,.gbg div{border-color:transparent;border-radius:var(--r-card)}
+.ccard{border-color:transparent;border-radius:16px}
+:root:not([data-theme="dark"]) .card,:root:not([data-theme="dark"]) .alert,:root:not([data-theme="dark"]) .gbg div,:root:not([data-theme="dark"]) .dcard,:root:not([data-theme="dark"]) .ccard{box-shadow:0 1px 2px rgba(0,0,0,.05)}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .card,:root:not([data-theme="light"]) .alert,:root:not([data-theme="light"]) .gbg div,:root:not([data-theme="light"]) .dcard,:root:not([data-theme="light"]) .ccard{box-shadow:none}}
+.alert summary,.haz{border-left-width:4px}
+.rmap{border-radius:var(--r-card);border-color:transparent}
+
+/* header: floating glass bar, big bold place title, circular refresh */
+.top{margin-inline:-8px;padding:10px 12px 10px;border-radius:0 0 26px 26px;border-top:0;gap:10px}
+.place b{font:800 26px/1.1 var(--sans);letter-spacing:-.03em;display:flex;align-items:center;gap:5px;min-width:0}
+.place b #plabel{font-size:inherit;color:inherit;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.place b .pchev{width:18px;height:18px;opacity:.55;flex:none}
+.place > span{font-size:13px}
+/* title row: place on top, "Updated …" under it (like a large title with its subtitle), refresh on the right */
+.top-row{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"place btn" "fresh btn";column-gap:10px;row-gap:2px;align-items:center}
+.top-row .place{grid-area:place}.top-row .fresh{grid-area:fresh;font-size:13px;color:var(--muted)}.top-row .rbtn{grid-area:btn}
+.rbtn{width:40px;height:40px;border:0;background:var(--sunk)}
+.rbtn svg{stroke:var(--ink)}
+
+/* tab bar: segmented control in a capsule; the selected tab is a raised pill */
+.nav{margin-inline:0;padding:3px;gap:2px;border-radius:999px;background:color-mix(in srgb,var(--ink) 7%,transparent)}
+.nav .chip{border:0;background:none;padding:7px 13px;font-size:14px;font-weight:600;color:var(--muted);flex:none}
+.nav .chip.on{background:var(--seg-sel);color:var(--ink);box-shadow:0 1px 4px rgba(0,0,0,.18),inset 0 1px 0 var(--glass-hi)}
+
+/* chips elsewhere: soft filled capsules, accent when selected */
+.chip{border-color:transparent;background:var(--sunk);font-weight:600;color:var(--ink2)}
+.chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.testbar{border-radius:16px}
+
+/* map controls */
+.rbar{border-radius:999px}
+.rleg{border-radius:14px}
+.mmreg button{font-weight:700}
+.oqset{border-radius:20px;border:1px solid var(--glass-edge);background:var(--glass);-webkit-backdrop-filter:blur(28px) saturate(1.8);backdrop-filter:blur(28px) saturate(1.8);box-shadow:inset 0 1px 0 var(--glass-hi),var(--glass-sh)}
+.oqset .chip{background:color-mix(in srgb,var(--ink) 8%,transparent)}
+.oqset .chip.on{background:var(--accent);color:#fff}
+#toast{color:var(--ink);font-weight:600}
+
+/* location: a bottom sheet with a grab handle that slides up */
+.ls-back{background:rgba(0,0,0,.4)}
+.ls-card{background:color-mix(in srgb,var(--surface) 88%,transparent);top:auto;bottom:0;border-radius:28px 28px 0 0;border-bottom:0;max-height:88vh;max-height:88dvh;
+  padding:8px 18px calc(env(safe-area-inset-bottom,0px) + 22px);animation:lsup .3s cubic-bezier(.2,.8,.2,1)}
+.ls-card::before{content:"";display:block;width:40px;height:5px;border-radius:3px;background:var(--muted);opacity:.5;margin:0 auto 6px}
+.ls-head{top:-8px;background:transparent;padding:4px 0 8px}
+.ls-head::before{display:none}
+.ls-head b{font:800 22px/1.1 var(--sans);letter-spacing:-.02em}
+.ls-x{width:36px;height:36px;border-radius:50%;background:color-mix(in srgb,var(--ink) 10%,transparent);font-size:22px;display:grid;place-items:center;padding:0}
+#lsq{border-radius:12px;border-color:transparent;background:color-mix(in srgb,var(--ink) 7%,transparent)}
+#lsgo{border-radius:12px}
+.ls-gps{border-radius:14px;border-color:transparent;background:color-mix(in srgb,var(--ink) 7%,transparent);font-weight:600}
+.ls-gps.on{background:var(--accent-soft)}
+.ls-rec{background:color-mix(in srgb,var(--ink) 5%,transparent);border-radius:14px;padding:0 12px}
+.ls-lbl{font-weight:700;letter-spacing:.08em}
+@keyframes lsup{from{transform:translateY(100%)}to{transform:none}}
+@media (prefers-reduced-motion:reduce){.ls-card{animation:none}}
+</style>
 </head>
 <body>
 <div class="wrap">
@@ -692,13 +779,13 @@ body:has(#testbar:not([hidden])) .sec{scroll-margin-top:140px}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=94"></script>
-<script src="wx-live.js?v=94"></script>
-<script src="wx-scenarios.js?v=94"></script>
-<script src="wx-vmap.js?v=94"></script>
-<script src="wx-radar.js?v=94"></script>
-<script src="wx-models.js?v=94"></script>
-<script src="wx-official.js?v=94"></script>
-<script src="app.js?v=94"></script>
+<script src="wx-normalize.js?v=95"></script>
+<script src="wx-live.js?v=95"></script>
+<script src="wx-scenarios.js?v=95"></script>
+<script src="wx-vmap.js?v=95"></script>
+<script src="wx-radar.js?v=95"></script>
+<script src="wx-models.js?v=95"></script>
+<script src="wx-official.js?v=95"></script>
+<script src="app.js?v=95"></script>
 </body>
 </html>
