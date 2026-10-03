@@ -684,8 +684,10 @@ h2{font:700 12px/1 var(--sans);letter-spacing:.08em}
 /* ===== motion: quick, springy, Liquid Glass-style. The selected tab sits on a glass pill that slides (and briefly
    stretches) to the tab you pick; sections fade up as they open; buttons and cards give a little on press.
    Everything is short (≤ 280 ms) so moving around never waits on an animation; reduced-motion turns it off. ===== */
-.nav{position:relative;width:max-content;max-width:100%;margin-inline:auto;justify-content:center}
-.nav .chip{position:relative;z-index:1;transition:color .2s ease,transform .12s ease}
+/* tab bar spans the header edge to edge (standard padding), tabs share the width equally, labels centred */
+.nav{position:relative;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);width:auto;margin-inline:0;overflow:visible}
+#nav .chip{padding-inline:2px}
+.nav .chip{position:relative;z-index:1;text-align:center;padding-inline:2px;font-size:clamp(12.5px,3.7vw,15px);overflow:hidden;text-overflow:ellipsis;transition:color .2s ease,transform .12s ease}
 .navpill{position:absolute;z-index:0;top:3px;bottom:3px;left:0;width:0;border-radius:999px;background:var(--seg-sel);
   box-shadow:0 1px 4px rgba(0,0,0,.18),inset 0 1px 0 var(--glass-hi);opacity:0;pointer-events:none}
 .nav.pilled .navpill{opacity:1}
@@ -709,6 +711,48 @@ section[data-tab]:not([hidden]){animation:secin .2s cubic-bezier(.2,.8,.2,1)}
   section[data-tab]:not([hidden]),#toast,.oqset:not([hidden]),.ls-back,.nav.anim .navpill.go{animation:none}
   .nav.anim .navpill{transition:none}
 }
+/* ===== feel pass (from a review of airport-wx's source and of Flighty's published design): airport-wx's type
+   scale and rhythm, board-style bold headlines with tabular numbers, opaque data cards with glass kept for floating
+   chrome, tinted status pills, tactile press feedback, and a solid bottom sheet. Visual only. ===== */
+body{font-size:15px;line-height:1.38;font-variant-numeric:tabular-nums}
+.wrap{gap:18px}
+h2{font-weight:700;letter-spacing:.08em}
+.sec-h{padding-inline:2px}
+.sec-h .meta{font-size:13px}
+/* headline: one line like an airport board, heavier and tighter */
+.place b{font-size:clamp(24px,7.2vw,30px);letter-spacing:-.035em}
+.top-row .fresh{font-size:14px}
+.top-row .rbtn{width:44px;height:44px}
+.now-line{font-weight:800!important;letter-spacing:-.02em}
+.now-line .now-t{color:var(--ink);font-weight:800}
+.now-line .now-t::before{font-weight:400}
+.gt{font-weight:800;letter-spacing:-.02em}
+.dday .gt{font-size:19px}
+.dhl3{font-weight:600}
+.kv div{font-size:14px}
+.kv dd{font-weight:600}
+/* status pills: the colour tints its own background (18%), like the status pills elsewhere */
+.pill{font:700 12px var(--sans);padding:3px 9px;color:var(--accent);background:color-mix(in srgb,var(--accent) 18%,transparent)}
+.dot{margin:0 3px;box-shadow:0 0 0 3px color-mix(in srgb,var(--ok) 22%,transparent)}
+.dot.warn{box-shadow:0 0 0 3px color-mix(in srgb,var(--warn) 22%,transparent)}
+.dot.crit{box-shadow:0 0 0 3px color-mix(in srgb,var(--crit) 22%,transparent)}
+.haz{background:color-mix(in srgb,var(--sev,var(--sev-mod)) 12%,var(--surface))}
+/* tactile: tappable cards give a little when pressed */
+.ccard,.dday[role="link"],.alert summary,.oqamt div{transition:transform .12s ease}
+.ccard:active,.alert summary:active{transform:scale(.985)}
+/* bottom sheet: solid surface (glass stays on floating bars), 44px close, darker scrim */
+.ls-card{background:var(--surface);-webkit-backdrop-filter:none;backdrop-filter:none;animation-duration:.28s}
+.ls-back{background:var(--backdrop-c,rgba(0,0,0,.45));animation-duration:.25s}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .ls-back{background:rgba(0,0,0,.6)}}
+:root[data-theme="dark"] .ls-back{background:rgba(0,0,0,.6)}
+.ls-x{width:44px;height:44px;background:var(--sunk)}
+.ls-rec{background:var(--sunk);border-radius:16px;padding:0 14px}
+.ls-row{border-top-color:var(--line)}
+/* quieter, readable small print */
+.foot{font-size:13px;padding-inline:4px}
+.foot .notice{font-size:12.5px}
+.past .pn{font-size:12.5px}
+.rsrc{font-size:12px}
 </style>
 </head>
 <body>
@@ -819,13 +863,13 @@ section[data-tab]:not([hidden]){animation:secin .2s cubic-bezier(.2,.8,.2,1)}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=99"></script>
-<script src="wx-live.js?v=99"></script>
-<script src="wx-scenarios.js?v=99"></script>
-<script src="wx-vmap.js?v=99"></script>
-<script src="wx-radar.js?v=99"></script>
-<script src="wx-models.js?v=99"></script>
-<script src="wx-official.js?v=99"></script>
-<script src="app.js?v=99"></script>
+<script src="wx-normalize.js?v=101"></script>
+<script src="wx-live.js?v=101"></script>
+<script src="wx-scenarios.js?v=101"></script>
+<script src="wx-vmap.js?v=101"></script>
+<script src="wx-radar.js?v=101"></script>
+<script src="wx-models.js?v=101"></script>
+<script src="wx-official.js?v=101"></script>
+<script src="app.js?v=101"></script>
 </body>
 </html>
