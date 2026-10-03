@@ -785,7 +785,7 @@
     });
     el.hidden = !rows.length;
     if (!rows.length) { el.innerHTML = ""; return; }
-    el.innerHTML = '<div class="ph"><b>What fell</b><span>Past 72 hours</span></div>' + rows.join("") +
+    el.innerHTML = '<div class="ph"><b>Actual amounts</b><span>Observed · past 72 hours</span></div>' + rows.join("") +
       (pick.length ? '<div class="pn">Totals reported to the National Weather Service (storm reports, via Iowa Environmental Mesonet).</div>' : "");
   }
 
