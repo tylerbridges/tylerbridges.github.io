@@ -1497,12 +1497,19 @@
   //   follows the finger, closes past ~110 px or on a quick flick, otherwise springs back
   (function () {
     var c = lsCard(); if (!c) return;
-    var y0 = null, t0 = 0, dy = 0, drag = false;
-    function start(y, target) { if (target.closest("input,select") || (c.scrollTop > 0 && !target.closest(".ls-head"))) { y0 = null; return; } y0 = y; t0 = Date.now(); dy = 0; drag = false; }
+    var y0 = null, t0 = 0, dy = 0, drag = false, armed = false;
+    // armed = this touch may pull the sheet down: it began on the pinned header/grab area (always, however far the
+    //   list is scrolled), or with the list at the top, or the list reached the top during the same gesture
+    function start(y, target) {
+      if (target.closest("input,select,textarea")) { y0 = null; return; }
+      var head = !!target.closest(".ls-head") || y - c.getBoundingClientRect().top <= 64;
+      y0 = y; t0 = Date.now(); dy = 0; drag = false; armed = head || c.scrollTop <= 0;
+    }
     function move(y, e) {
       if (y0 == null) return;
+      if (!armed) { if (c.scrollTop <= 0 && y > y0) { armed = true; y0 = y; t0 = Date.now(); } else { y0 = Math.min(y0, y); return; } }
       var d = y - y0;
-      if (!drag) { if (d < -6) { y0 = null; return; } if (d < 8) return; drag = true; c.style.animation = "none"; c.style.transition = "none"; }
+      if (!drag) { if (d < -6) { armed = false; y0 = y; return; } if (d < 8) return; drag = true; c.style.animation = "none"; c.style.transition = "none"; }
       dy = Math.max(0, d - 8); c.style.transform = "translateY(" + dy + "px)"; if (e.cancelable) e.preventDefault();
     }
     function end() {
