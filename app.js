@@ -950,7 +950,7 @@
     if (!doc) { $("foot").innerHTML = NOTICE; return; }
     var l = doc.loc;
     var link = "https://forecast.weather.gov/MapClick.php?lat=" + l.lat + "&lon=" + l.lon;
-    $("plabel").textContent = l.label || HOME.label;
+    $("plabel").textContent = l.label || HOME.label; fitTop();
     document.title = (l.label || HOME.label) + " Weather";
     if (false) $("psub").textContent = "NWS " + l.office + " · grid " + l.grid + " · " + l.lat.toFixed(4) + "°N " + Math.abs(l.lon).toFixed(4) + "°W" + (l.elevFt ? " · " + l.elevFt + " ft" : "");
     $("foot").innerHTML = NOTICE;
@@ -1075,8 +1075,25 @@
     if (!animate) requestAnimationFrame(function () { requestAnimationFrame(function () { n.classList.add("anim"); }); });
     if (n.scrollWidth > n.clientWidth) on.scrollIntoView({ block: "nearest", inline: "nearest", behavior: animate ? "smooth" : "auto" });
   }
-  window.addEventListener("resize", function () { movePill(false); });
-  if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { movePill(false); });
+  // auto-fit to the screen: the place name and the tab labels start from their CSS size (which already scales with
+  //   the screen width) and step down only as far as needed so nothing is cut off, never below a readable minimum
+  function fitText(el, min) {
+    if (!el) return; el.style.fontSize = "";
+    var px = parseFloat(getComputedStyle(el).fontSize) || 16;
+    while (el.scrollWidth > el.clientWidth + 1 && px > min) { px -= 0.5; el.style.fontSize = px + "px"; }
+  }
+  function fitTop() {
+    var b = document.querySelector("#placebtn b"), lab = $("plabel");
+    if (b && lab) { b.style.fontSize = ""; var px = parseFloat(getComputedStyle(b).fontSize) || 24; while (lab.scrollWidth > lab.clientWidth + 1 && px > 17) { px -= 0.5; b.style.fontSize = px + "px"; } }
+    var chips = document.querySelectorAll("#nav .chip"), m = Infinity;
+    chips.forEach(function (c) { fitText(c, 11); m = Math.min(m, parseFloat(c.style.fontSize || getComputedStyle(c).fontSize)); });
+    if (isFinite(m)) chips.forEach(function (c) { c.style.fontSize = m + "px"; }); // all tabs share one size
+    movePill(false);
+  }
+  var fitT = 0;
+  window.addEventListener("resize", function () { clearTimeout(fitT); fitT = setTimeout(fitTop, 60); movePill(false); });
+  window.addEventListener("orientationchange", function () { setTimeout(fitTop, 250); });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitTop);
   // Coming back within TAB_KEEP of the last visit returns to the tab you were on; after longer it starts on Now.
   var TAB_KEEP = 30 * 60000;
   function touchTab() { try { localStorage.setItem("wx-tab-at", String(Date.now())); } catch (e) {} }
@@ -1457,7 +1474,7 @@
     loc = { lat: +l.lat, lon: +l.lon, label: l.label || null };
     recents = [loc].concat(recents.filter(function (r) { return r && !same(r, loc); })).slice(0, 6);
     store("wx-loc", loc); store("wx-recents", recents); setUrl();
-    $("plabel").textContent = loc.label || "Loading…";
+    $("plabel").textContent = loc.label || "Loading…"; fitTop();
     return refresh(false);
   }
   function lsOpen() { $("locsheet").hidden = false; renderLs(); setTimeout(function () { try { $("lsq").focus(); } catch (e) {} }, 50); }

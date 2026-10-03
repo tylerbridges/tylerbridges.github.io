@@ -753,6 +753,16 @@ h2{font-weight:700;letter-spacing:.08em}
 .foot .notice{font-size:12.5px}
 .past .pn{font-size:12.5px}
 .rsrc{font-size:12px}
+/* ===== auto-fit: sizes scale smoothly with the screen width (clamp), and fitTop() in app.js trims the place name
+   and tab labels further only if they would still be cut off ===== */
+body{font-size:clamp(14.5px,3.9vw,16px)}
+.now-line{font-size:clamp(19px,6vw,26px)!important}
+.now-line .now-ico{font-size:clamp(21px,6.6vw,28px)}
+.dday .gt{font-size:clamp(17px,4.9vw,21px)}
+.kv div{font-size:clamp(13.5px,3.7vw,15px)}
+.wrap{padding-inline:clamp(12px,4vw,24px)}
+.top{margin-inline:clamp(-12px,-2vw,-6px)}
+@media (min-width:600px){.place b{font-size:34px}}
 </style>
 </head>
 <body>
@@ -863,13 +873,13 @@ h2{font-weight:700;letter-spacing:.08em}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=101"></script>
-<script src="wx-live.js?v=101"></script>
-<script src="wx-scenarios.js?v=101"></script>
-<script src="wx-vmap.js?v=101"></script>
-<script src="wx-radar.js?v=101"></script>
-<script src="wx-models.js?v=101"></script>
-<script src="wx-official.js?v=101"></script>
-<script src="app.js?v=101"></script>
+<script src="wx-normalize.js?v=102"></script>
+<script src="wx-live.js?v=102"></script>
+<script src="wx-scenarios.js?v=102"></script>
+<script src="wx-vmap.js?v=102"></script>
+<script src="wx-radar.js?v=102"></script>
+<script src="wx-models.js?v=102"></script>
+<script src="wx-official.js?v=102"></script>
+<script src="app.js?v=102"></script>
 </body>
 </html>
