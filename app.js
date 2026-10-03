@@ -535,6 +535,8 @@
     // exact chance of precipitation on top of the bars
     // (a background-coloured outline keeps it readable where it crosses dark bars)
     var popD = path(s.pop, yP);
+    // the Definite (100%) level drawn darker, over the bars, so a full-height bar is easy to spot
+    pb += '<line x1="0" x2="' + W + '" y1="' + yP(100) + '" y2="' + yP(100) + '" stroke="var(--ink2)" stroke-opacity=".55" stroke-width="1.25"/>';
     pb += '<path d="' + popD + '" fill="none" stroke="var(--surface)" stroke-width="5" stroke-linejoin="round" stroke-opacity=".85"/><path d="' + popD + '" fill="none" stroke="var(--ink2)" stroke-width="2" stroke-linejoin="round"/>';
     AMT.forEach(function (a, k) {
       (g[a[0]] || []).forEach(function (b) {
