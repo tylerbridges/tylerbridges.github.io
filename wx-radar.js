@@ -181,7 +181,7 @@
   function get(key, url, radar) {
     var e = cache.get(key); if (e) { e.t = ++tick; return e; }
     e = { t: ++tick }; cache.set(key, e); load(e, url, radar, corsOK !== false && radar);
-    if (cache.size > 700) { // drop the least recently drawn
+    if (cache.size > 900) { // drop the least recently drawn (room for the loop's tiles plus the ring around the view)
       var all = Array.from(cache.entries()).sort(function (a, b) { return a[1].t - b[1].t; });
       for (var i = 0; i < 200; i++) cache.delete(all[i][0]);
     }
@@ -668,14 +668,51 @@
   // phones pause timers in the background: catch up as soon as the page is back
   if (typeof document !== "undefined") document.addEventListener("visibilitychange", function () { if (!document.hidden && on && refreshT) plan(1000); });
   function setFrames(f) { frames = f; NF = f.n; ui.range.max = NF - 1; if (cur > NF - 1 || !started) cur = NF - 1; }
-  // request every frame's visible tiles so playback never waits on the network
+  // request every frame's visible tiles so playback never waits on the network, then the same for a ring of tiles
+  //   just beyond the screen (one tile all round, three ahead of a pan), so panning shows radar that is already
+  //   drawn instead of filling in afterwards. No loading indicator: the map just keeps up.
   function preload() {
     if (frames && frames.src === "s3" && view.z >= 5.5 && needBox()) paint(2);
-    // the frames on screen first, then the rest of the loop in playback order
-    [frames, pending].forEach(function (f) {
-      if (!f) return; var vs = at(view, function () { return visible(rz()); });
+    var req = function (f, vs) {
       for (var q = 0; q < f.n; q++) { var k = (Math.min(cur, f.n - 1) + q) % f.n, g = radarGet(f, k); vs.forEach(function (v) { g(v.z, ((v.i % v.n) + v.n) % v.n, v.j, true); }); }
-    });
+    };
+    // the frames on screen first, then the rest of the loop in playback order
+    [frames, pending].forEach(function (f) { if (f) req(f, at(view, function () { return visible(rz()); })); });
+    if (frames) req(frames, at(view, function () { return around(rz()); }));
+    if (vec() && VM.prefetch) VM.prefetch(at(view, function () { return around(VM.tileZoom(view.z)); }));
+  }
+  // tiles outside the stage: one ring all round plus two more on the side the map is moving towards, nearest first
+  var dir = { x: 0, y: 0 }, lastV = null;
+  function around(zt) {
+    var n = Math.pow(2, zt), s = rscale(), out = [];
+    var i0 = Math.floor((rv.x - SW / 2 / s) * n), i1 = Math.floor((rv.x + SW / 2 / s) * n), j0 = Math.floor((rv.y - SH / 2 / s) * n), j1 = Math.floor((rv.y + SH / 2 / s) * n);
+    var L = i0 - (dir.x < 0 ? 3 : 1), R = i1 + (dir.x > 0 ? 3 : 1), T = j0 - (dir.y < 0 ? 3 : 1), B = j1 + (dir.y > 0 ? 3 : 1);
+    var cx = rv.x * n + dir.x * 2, cy = rv.y * n + dir.y * 2;
+    for (var j = Math.max(0, T); j <= Math.min(n - 1, B); j++)
+      for (var i = L; i <= R; i++) if (i < i0 || i > i1 || j < j0 || j > j1) out.push({ i: i, j: j, n: n, z: zt, d: Math.hypot(i + 0.5 - cx, j + 0.5 - cy) });
+    return out.sort(function (a, b) { return a.d - b.d; });
+  }
+  // share of the shown frame's ring tiles already loaded (check.html / tests)
+  function ringReady() {
+    var vs = at(view, function () { return around(rz()); }), n = 0, ok = 0, k = Math.min(cur, frames.n - 1);
+    vs.forEach(function (v) { var e = peek(rkey(frames, k, v.z, ((v.i % v.n) + v.n) % v.n, v.j)); n++; if (e && (e.ok || e.err)) ok++; });
+    return n ? ok / n : 1;
+  }
+  // which way the map is moving (in screens), so the ring reaches further that way
+  function track() {
+    var s = scale();
+    if (lastV && Math.abs(lastV.z - view.z) < 0.01) {
+      var dx = view.x - lastV.x; dx -= Math.round(dx);
+      var px = dx * s, py = (view.y - lastV.y) * s;
+      if (Math.abs(px) + Math.abs(py) > 2) dir = { x: Math.abs(px) > Math.abs(py) * 0.4 ? Math.sign(px) : 0, y: Math.abs(py) > Math.abs(px) * 0.4 ? Math.sign(py) : 0 };
+    }
+    lastV = { x: view.x, y: view.y, z: view.z };
+  }
+  // while a pan or zoom is under way: ask for what's coming at most every 220 ms, and once more when it stops
+  var lastPre = 0;
+  function ahead() {
+    track(); var now = Date.now();
+    if (now - lastPre > 220) { lastPre = now; preload(); }
   }
   function ready(f) {
     var vs = at(RV.R, function () { return visible(rz()); }), n = 0, ok = 0;
@@ -700,7 +737,8 @@
     if (r >= 1 && !playing && !userPaused && !started) { started = true; if (!reduced()) play(true); }
   }
   var started = false, outUS = false, lastR = 0;
-  function statusText() { return ui.msg || (outUS ? "Radar isn't available for this location" : frames && lastR < 1 ? "Loading radar… " + Math.round(lastR * 100) + "%" : ""); }
+  // no loading percentage: radar fills in as it arrives; only real problems get a message
+  function statusText() { return ui.msg || (outUS ? "Radar isn't available for this location" : ""); }
   function reduced() { return root.matchMedia && root.matchMedia("(prefers-reduced-motion: reduce)").matches; }
   function smooth(t) { return t * t * (3 - 2 * t); }
   // continuous playback: each step glides from one scan to the next over its whole duration (no hold, no jump);
@@ -762,7 +800,7 @@
     var s = scale(); view.x = w.x - (sx - W / 2) / s; view.y = w.y - (sy - HH / 2) / s; clampView();
   }
   function clampView() { view.y = Math.max(0.05, Math.min(0.95, view.y)); view.x = ((view.x % 1) + 1) % 1; }
-  function moved() { paint(0); clearTimeout(moved.t); moved.t = setTimeout(preload, 150); }
+  function moved() { paint(0); ahead(); clearTimeout(moved.t); moved.t = setTimeout(preload, 150); }
   function local(e) { var r = el.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
   function gesture() {
     var p = Array.from(pts.values());
@@ -811,7 +849,7 @@
   }
   function stepInertia(dt) {
     var ms = dt * 1000, s = scale(); view.x -= inertia.vx * ms / s; view.y -= inertia.vy * ms / s; clampView();
-    var k = Math.exp(-ms / 260); inertia.vx *= k; inertia.vy *= k;
+    var k = Math.exp(-ms / 260); inertia.vx *= k; inertia.vy *= k; ahead();
     if (Math.hypot(inertia.vx, inertia.vy) < 0.02) { inertia = null; preload(); }
   }
   function zoomTo(sx, sy, z) { tween = { sx: sx, sy: sy, z0: view.z, z1: Math.max(MINZ, Math.min(MAXZ, z)), t0: 0 }; paint(0); }
@@ -946,7 +984,7 @@
     hide: function () { stopWatch(); if (gpsMode === "wait") gpsMode = "off"; on = false; playing && play(false); started = false; userPaused = false; clearTimeout(refreshT); clearInterval(tickT); if (raf) cancelAnimationFrame(raf); raf = 0; },
     refresh: function () { if (on) loadFrames(); },
     // for the live data check
-    _state: function () { return { why: s3Why, dom: dom.k, rvR: RV.R, rdpr: rdpr, SW: SW, SH: SH, times: frames && frames.times, refs: frames && frames.refs, flags: frames && frames.flags, s3OK: s3OK, box: box, wk: !!WK, mv: (MV[mvKey] || []).map(function (m) { return m ? [+(m.x * rscale()).toFixed(1), +(m.y * rscale()).toFixed(1)] : null; }), redraws: redraws, tf: cvL && cvL.style.transform, tfs: LAYERS.map(function (L) { return L.c.style.transform; }), src: frames && frames.src, mrmsOK: mrmsOK, corsOK: corsOK, frames: frames && frames.n, valid: frames && frames.valid, ready: frames ? ready(frames) : 0, view: view, playing: playing, cur: cur, frac: frac }; },
+    _state: function () { return { why: s3Why, dom: dom.k, rvR: RV.R, rdpr: rdpr, SW: SW, SH: SH, times: frames && frames.times, refs: frames && frames.refs, flags: frames && frames.flags, s3OK: s3OK, box: box, wk: !!WK, mv: (MV[mvKey] || []).map(function (m) { return m ? [+(m.x * rscale()).toFixed(1), +(m.y * rscale()).toFixed(1)] : null; }), redraws: redraws, tf: cvL && cvL.style.transform, tfs: LAYERS.map(function (L) { return L.c.style.transform; }), src: frames && frames.src, mrmsOK: mrmsOK, corsOK: corsOK, frames: frames && frames.n, valid: frames && frames.valid, ready: frames ? ready(frames) : 0, ring: frames ? ringReady() : 0, view: view, playing: playing, cur: cur, frac: frac }; },
     _pal: function () { return pal(); },
     // radar values at [[lat, lon], …] for frame time t (default newest), as drawn; for the live accuracy check
     _probe: function (pts, t) {

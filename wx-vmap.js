@@ -264,5 +264,7 @@
     };
     return;
   }
-  root.WXVMap = { init: init, ok: function () { return state === "ok"; }, failed: function () { return state === "fail"; }, tileZoom: tileZoom, drawBase: drawBase, drawTop: drawTop, _decode: decode };
+  // ask for tiles just off screen ahead of time ({ z, i, j, n } list, nearest first), so panning finds them loaded
+  function prefetch(list) { if (state !== "ok") return; list.slice(0, 40).forEach(function (v) { if (v.z <= maxz) get(v.z, ((v.i % v.n) + v.n) % v.n, v.j, true); }); }
+  root.WXVMap = { prefetch: prefetch, init: init, ok: function () { return state === "ok"; }, failed: function () { return state === "fail"; }, tileZoom: tileZoom, drawBase: drawBase, drawTop: drawTop, _decode: decode };
 })(this);
