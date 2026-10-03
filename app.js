@@ -3,7 +3,7 @@
   // check.html loads the site in a hidden frame with ?nostore=1 so its test places never end up in your recents or favorites
   if (/[?&]nostore=1/.test(location.search)) { try { Storage.prototype.setItem = function () {}; } catch (e) {} }
   var H = 3600000, PX = 16, GL = 38; // GL: left gutter so the first hours (and the now line) sit clear of the axis labels
-  var tab = "now", doc = null, db = null, lastCheck = 0, busy = false, selIdx = null;
+  var tab = "daily", doc = null, db = null, lastCheck = 0, busy = false, selIdx = null;
   var $ = function (id) { return document.getElementById(id); };
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   var TZ = "America/Chicago";
@@ -329,8 +329,9 @@
       }).join("") + "</div>";
     }
     $("det").innerHTML = days.map(function (d, k) { return dayCard(d, k, false); }).join("") || '<div class="card empty">Forecast not available.</div>';
-    // Now tab: the current day's card, identical to the Daily one; tapping it opens that card on the Daily tab
-    var nd = $("nowday"); if (nd) nd.innerHTML = days.length ? dayCard(days[0], 0, true) : "";
+    // current conditions now sit at the top of the Daily tab and the day cards follow right below, so the
+    //   conditions card no longer carries its own copy of today's card
+    var nd = $("nowday"); if (nd) nd.innerHTML = "";
   }
 
 
@@ -992,7 +993,8 @@
   function showTab(t) {
     if (t === "totals") t = "obs"; // old tab name
     if (t === "forecast") t = "maps"; // the Maps tab is now called Forecast
-    if (!$("nav").querySelector('[data-tab="' + t + '"]')) t = "now";
+    if (t === "now") t = "daily"; // Now and Daily are one tab: current conditions on top, flowing into the days
+    if (!$("nav").querySelector('[data-tab="' + t + '"]')) t = "daily";
     var changed = t !== tab; tab = t;
     document.querySelectorAll("#nav .chip").forEach(function (c) { c.classList.toggle("on", c.dataset.tab === t); });
     document.querySelectorAll("section[data-tab]").forEach(function (s) {
@@ -1112,7 +1114,7 @@
   document.addEventListener("visibilitychange", function () {
     if (document.hidden) { touchTab(); return; }
     checkVersion();
-    if (tabStale() && tab !== "now") showTab("now"); // reopened hours later (an installed app resumes without reloading)
+    if (tabStale() && tab !== "daily") showTab("daily"); // reopened hours later (an installed app resumes without reloading)
     if (follow && Date.now() - lastFix > 10 * 60000) locateQuietly();
     else touchTab();
     if (Date.now() - lastCheck > 5 * 60000) refresh(false);
@@ -1476,8 +1478,8 @@
   document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !$("locsheet").hidden) lsClose(); });
 
   // ---------- boot ----------
-  var startTab = "now";
-  try { startTab = (location.hash || "").replace("#", "") || (tabStale() ? "now" : localStorage.getItem("wx-tab")) || "now"; } catch (e) {}
+  var startTab = "daily";
+  try { startTab = (location.hash || "").replace("#", "") || (tabStale() ? "daily" : localStorage.getItem("wx-tab")) || "daily"; } catch (e) {}
   // paint the last data this device saw right away (if it's for the same place), then pull live
   var cached = store("wx-cache");
   var qs = new URLSearchParams(location.search), qLat = parseFloat(qs.get("lat")), qLon = parseFloat(qs.get("lon")), qQ = qs.get("q");

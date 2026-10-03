@@ -680,12 +680,12 @@ h2{font:700 12px/1 var(--sans);letter-spacing:.08em}
       <button class="rbtn" id="rbtn" type="button" aria-label="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button>
     </div>
     <nav class="nav" id="nav">
-      <button type="button" class="chip on" data-tab="now">Now</button><button type="button" class="chip" data-tab="daily">Daily</button><button type="button" class="chip" data-tab="hourly">Hourly</button><button type="button" class="chip" data-tab="radar">Radar</button><button type="button" class="chip" data-tab="maps">Forecast</button><button type="button" class="chip" data-tab="obs">Observations</button>
+      <button type="button" class="chip on" data-tab="daily">Daily</button><button type="button" class="chip" data-tab="hourly">Hourly</button><button type="button" class="chip" data-tab="radar">Radar</button><button type="button" class="chip" data-tab="maps">Forecast</button><button type="button" class="chip" data-tab="obs">Observations</button>
     </nav>
     <div class="testbar" id="testbar" hidden><span>Test: <b id="testname"></b> · sample data, not a real forecast</span><button type="button" class="chip" id="testx">Exit</button></div>
   </header>
 
-  <section id="now" class="sec" data-tab="now">
+  <section id="now" class="sec" data-tab="daily">
     <div class="sec-h"><h2 id="nowtitle"></h2></div>
     <div class="card now"><div id="nowcard" class="nowin"></div></div>
   </section>
@@ -751,7 +751,6 @@ h2{font:700 12px/1 var(--sans);letter-spacing:.08em}
 
 
   <section id="detail" class="sec" data-tab="daily" hidden>
-    <div class="sec-h"><h2>Detailed forecast</h2></div>
     <div class="dstack" id="det"></div>
   </section>
 
@@ -779,13 +778,13 @@ h2{font:700 12px/1 var(--sans);letter-spacing:.08em}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=95"></script>
-<script src="wx-live.js?v=95"></script>
-<script src="wx-scenarios.js?v=95"></script>
-<script src="wx-vmap.js?v=95"></script>
-<script src="wx-radar.js?v=95"></script>
-<script src="wx-models.js?v=95"></script>
-<script src="wx-official.js?v=95"></script>
-<script src="app.js?v=95"></script>
+<script src="wx-normalize.js?v=96"></script>
+<script src="wx-live.js?v=96"></script>
+<script src="wx-scenarios.js?v=96"></script>
+<script src="wx-vmap.js?v=96"></script>
+<script src="wx-radar.js?v=96"></script>
+<script src="wx-models.js?v=96"></script>
+<script src="wx-official.js?v=96"></script>
+<script src="app.js?v=96"></script>
 </body>
 </html>
