@@ -319,13 +319,14 @@
     }
     return false;
   }
+  function lowGet(key, url) { var e = cache.get(key); if (e) return e; e = get(key, url, true); e.t = 0; return e; }
   function peek(key) { var e = cache.get(key); if (e) e.t = ++tick; return e; }
   function layerGet(kind) {
     var th = dark() ? "d" : "l";
     return function (z, x, y, request) { var k = kind + th + z + "/" + x + "/" + y; return request ? get(k, baseUrl(kind, z, x, y), false) : peek(k); };
   }
   function radarGet(f, k) {
-    return function (z, x, y, request) { var key = rkey(f, k, z, x, y); return request ? get(key, radarUrl(f, k, z, x, y), true) : peek(key); };
+    return function (z, x, y, request) { var key = rkey(f, k, z, x, y); return request === 2 ? lowGet(key, radarUrl(f, k, z, x, y)) : request ? get(key, radarUrl(f, k, z, x, y), true) : peek(key); };
   }
   function rkey(f, k, z, x, y) { return "r" + f.src + (f.src === "s3" ? boxVer + "|" + (f.flags[k] ? keyTime(f.flags[k]) : "") + "|" : "") + (f.times ? f.times[k] : f.bucket + ":" + k) + ":" + z + "/" + x + "/" + y; }
   function tz() { return Math.max(0, Math.min(16, Math.round(rv.z))); }
@@ -376,13 +377,19 @@
     //   behind, so echoes glide between radar scans instead of fading in and out in place
     var mv = b === a + 1 ? motionFor(a) : null, s = rscale() * rdpr, mx = mv ? mv.x * s : 0, my = mv ? mv.y * s : 0;
     cxR.globalCompositeOperation = "lighter";
-    [[a, 1 - f, f], [b, f, f - 1]].forEach(function (p) {
-      if (p[1] <= 0.001) return;
-      cxR.globalAlpha = p[1]; var g = radarGet(frames, p[0]), ox = mx * p[2], oy = my * p[2];
-      vs.forEach(function (v) { drawTile(cxR, ox || oy ? shift(v, ox, oy) : v, g); });
+    // per tile: crossfade only when both scans' tiles are in. If one is still loading, the other is drawn at full
+    //   strength (no dip in brightness, which read as the radar pulsing); if neither, the shown scan's nearest
+    //   loaded stand-in (children or ancestor) is drawn
+    var ga = radarGet(frames, a), gb = radarGet(frames, b), have = function (g, v) { var im = img(g(v.z, ((v.i % v.n) + v.n) % v.n, v.j, false)); return !!im; };
+    vs.forEach(function (v) {
+      var wa = 1 - f, wb = f;
+      if (wb > 0.001 && wa > 0.001) { var ha = have(ga, v), hb = have(gb, v); if (ha !== hb) { miss++; if (ha) { wa = 1; wb = 0; } else { wa = 0; wb = 1; } } }
+      if (wa > 0.001) { cxR.globalAlpha = wa; drawTile(cxR, mx && f ? shift(v, mx * f, my * f) : v, ga); }
+      if (wb > 0.001) { cxR.globalAlpha = wb; drawTile(cxR, mx && f ? shift(v, mx * (f - 1), my * (f - 1)) : v, gb); }
     });
     cxR.globalCompositeOperation = "source-over"; cxR.globalAlpha = 1;
   }
+  var miss = 0; // tiles drawn from one scan only because the other wasn't loaded yet (tests)
   function shift(v, ox, oy) { return { i: v.i, j: v.j, n: v.n, z: v.z, x0: v.x0 + ox, y0: v.y0 + oy, x1: v.x1 + ox, y1: v.y1 + oy }; }
 
   // ---------- storm motion between consecutive frames ----------
@@ -678,7 +685,12 @@
     };
     // the frames on screen first, then the rest of the loop in playback order
     [frames, pending].forEach(function (f) { if (f) req(f, at(view, function () { return visible(rz()); })); });
-    if (frames) req(frames, at(view, function () { return around(rz()); }));
+    // the ring waits until every frame's visible tiles are in (so it never delays what's on screen), and is asked
+    //   for at low priority (first to be dropped from the cache); the rest of the loop gets it only while playing
+    if (frames && at(view, function () { return readyIn(frames); }) >= 1) {
+      var ring = at(view, function () { return around(rz()); }), k0 = Math.min(cur, frames.n - 1);
+      for (var q = 0; q < (playing ? frames.n : 1); q++) { var g = radarGet(frames, (k0 + q) % frames.n); ring.forEach(function (v) { g(v.z, ((v.i % v.n) + v.n) % v.n, v.j, 2); }); }
+    }
     if (vec() && VM.prefetch) VM.prefetch(at(view, function () { return around(VM.tileZoom(view.z)); }));
   }
   // tiles outside the stage: one ring all round plus two more on the side the map is moving towards, nearest first
@@ -714,8 +726,10 @@
     track(); var now = Date.now();
     if (now - lastPre > 220) { lastPre = now; preload(); }
   }
-  function ready(f) {
-    var vs = at(RV.R, function () { return visible(rz()); }), n = 0, ok = 0;
+  function ready(f) { return at(RV.R, function () { return readyIn(f); }); }
+  // share of every frame's tiles for the current view (rv) that are in
+  function readyIn(f) {
+    var vs = visible(rz()), n = 0, ok = 0;
     for (var k = 0; k < f.n; k++) vs.forEach(function (v) { var e = peek(rkey(f, k, v.z, ((v.i % v.n) + v.n) % v.n, v.j)); n++; if (e && (e.ok || e.err)) ok++; });
     return n ? ok / n : 1;
   }
@@ -734,9 +748,11 @@
     var r = frames ? ready(frames) : 0;
     lastR = r; status(statusText());
     if (r >= 1) at(RV.R, planMotion);
+    // once the view is complete, ask for the ring around it (preload skipped it while the view was still loading)
+    if (r >= 1) { var rk = rz() + ":" + Math.floor(view.x * 64) + "," + Math.floor(view.y * 64) + ":" + playing + ":" + (frames && frames.bucket); if (rk !== ringK) { ringK = rk; preload(); } }
     if (r >= 1 && !playing && !userPaused && !started) { started = true; if (!reduced()) play(true); }
   }
-  var started = false, outUS = false, lastR = 0;
+  var started = false, outUS = false, lastR = 0, ringK = "";
   // no loading percentage: radar fills in as it arrives; only real problems get a message
   function statusText() { return ui.msg || (outUS ? "Radar isn't available for this location" : ""); }
   function reduced() { return root.matchMedia && root.matchMedia("(prefers-reduced-motion: reduce)").matches; }
@@ -984,7 +1000,7 @@
     hide: function () { stopWatch(); if (gpsMode === "wait") gpsMode = "off"; on = false; playing && play(false); started = false; userPaused = false; clearTimeout(refreshT); clearInterval(tickT); if (raf) cancelAnimationFrame(raf); raf = 0; },
     refresh: function () { if (on) loadFrames(); },
     // for the live data check
-    _state: function () { return { why: s3Why, dom: dom.k, rvR: RV.R, rdpr: rdpr, SW: SW, SH: SH, times: frames && frames.times, refs: frames && frames.refs, flags: frames && frames.flags, s3OK: s3OK, box: box, wk: !!WK, mv: (MV[mvKey] || []).map(function (m) { return m ? [+(m.x * rscale()).toFixed(1), +(m.y * rscale()).toFixed(1)] : null; }), redraws: redraws, tf: cvL && cvL.style.transform, tfs: LAYERS.map(function (L) { return L.c.style.transform; }), src: frames && frames.src, mrmsOK: mrmsOK, corsOK: corsOK, frames: frames && frames.n, valid: frames && frames.valid, ready: frames ? ready(frames) : 0, ring: frames ? ringReady() : 0, view: view, playing: playing, cur: cur, frac: frac }; },
+    _state: function () { return { why: s3Why, dom: dom.k, rvR: RV.R, rdpr: rdpr, SW: SW, SH: SH, times: frames && frames.times, refs: frames && frames.refs, flags: frames && frames.flags, s3OK: s3OK, box: box, wk: !!WK, mv: (MV[mvKey] || []).map(function (m) { return m ? [+(m.x * rscale()).toFixed(1), +(m.y * rscale()).toFixed(1)] : null; }), redraws: redraws, tf: cvL && cvL.style.transform, tfs: LAYERS.map(function (L) { return L.c.style.transform; }), src: frames && frames.src, mrmsOK: mrmsOK, corsOK: corsOK, frames: frames && frames.n, valid: frames && frames.valid, ready: frames ? ready(frames) : 0, ring: frames ? ringReady() : 0, miss: miss, view: view, playing: playing, cur: cur, frac: frac }; },
     _pal: function () { return pal(); },
     // radar values at [[lat, lon], …] for frame time t (default newest), as drawn; for the live accuracy check
     _probe: function (pts, t) {
