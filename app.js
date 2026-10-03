@@ -321,17 +321,17 @@
     function dayCard(d, k, copy) {
       var hl = dayHL(p, d);
       // copy = the Now tab's version: no header (the date and high/low are already at the top of that card)
-      return (copy ? '<div class="dday nowfc" data-go="d' + k + '" role="link" tabindex="0">' : '<div class="card dday" id="d' + k + '"><div class="gt">' + esc(fmt(d.s, { weekday: "long", month: "short", day: "numeric" })) +
+      return (copy ? '<div class="dday nowfc">' : '<div class="card dday" id="d' + k + '"><div class="gt">' + esc(fmt(d.s, { weekday: "long", month: "short", day: "numeric" })) +
         '<span class="dhl3 num"><span class="hiT">' + (hl[0] != null ? hl[0] + "°F" : "–") + '</span> / <span class="loT">' + (hl[1] != null ? hl[1] + "°F" : "–") + "</span></span></div>") + d.rows.map(function (i) {
         var x = p[i], nt = notes[i] ? '<div class="afdnote"><span>From the forecast discussion</span>' + notes[i].map(esc).join(" ") + "</div>" : "";
         var sub = /^(Today|Tonight|This Afternoon|Overnight|Late Afternoon)$/.test(x.name) ? x.name : x.day ? "Day" : "Night";
         return '<div class="drow"' + (copy ? "" : ' id="p' + i + '"') + '><div class="ccard dc' + (x.day ? "" : " night") + '">' + ccardInner(p, i, true) + '</div><div><div class="dsub">' + esc(sub) + '</div><p>' + esc(x.detail) + "</p>" + nt + "</div></div>";
       }).join("") + "</div>";
     }
-    $("det").innerHTML = days.map(function (d, k) { return dayCard(d, k, false); }).join("") || '<div class="card empty">Forecast not available.</div>';
-    // current conditions now sit at the top of the Daily tab and the day cards follow right below, so the
-    //   conditions card no longer carries its own copy of today's card
-    var nd = $("nowday"); if (nd) nd.innerHTML = "";
+    // Daily: the current-conditions card carries today's periods (today and/or tonight, by the usual day/night
+    //   rules) at its foot, under the precipitation card when that shows; the day cards below start with the next day
+    $("det").innerHTML = days.slice(1).map(function (d, k) { return dayCard(d, k + 1, false); }).join("") || (days.length ? "" : '<div class="card empty">Forecast not available.</div>');
+    var nd = $("nowday"); if (nd) nd.innerHTML = days.length ? dayCard(days[0], 0, true) : "";
   }
 
 
@@ -735,11 +735,10 @@
     $("tot").innerHTML = html;
   }
 
-  // ---------- past 72 hours: what actually fell ----------
-  // Shown on Daily under the current conditions only when something was measured or reported:
-  //   - the station's own gauge: hourly METAR "precipitation last hour" summed over the last 24 hours (doc.obs);
-  //   - NWS Local Storm Reports within ~40 miles over the last 72 hours (snowfall, heavy rain, freezing rain / ice),
-  //     read from the Iowa Environmental Mesonet's archive (mesonet.agron.iastate.edu, CORS-open), nearest first.
+  // ---------- actual amounts: snow that actually fell ----------
+  // Shown on Daily under the current-conditions card only when snow was reported in the past 72 hours: NWS Local
+  //   Storm Reports of snowfall within ~40 miles, read from the Iowa Environmental Mesonet's archive
+  //   (mesonet.agron.iastate.edu, CORS-open), nearest first. Rain, ice and gauge totals are not shown.
   var LSR = { key: "", t: 0, list: null, busy: false };
   function milesBetween(a, b, c, d) { var R = 3958.8, r = Math.PI / 180, x = Math.sin((c - a) * r / 2), y = Math.sin((d - b) * r / 2); return 2 * R * Math.asin(Math.sqrt(x * x + Math.cos(a * r) * Math.cos(c * r) * y * y)); }
   function bearing(a, b, c, d) { var r = Math.PI / 180, y = Math.sin((d - b) * r) * Math.cos(c * r), x = Math.cos(a * r) * Math.sin(c * r) - Math.sin(a * r) * Math.cos(c * r) * Math.cos((d - b) * r); return ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(((Math.atan2(y, x) / r + 360) % 360) / 45) % 8]; }
@@ -771,13 +770,11 @@
   function renderPast() {
     var el = $("past"); if (!el) return;
     var l = curLoc(); if (l) loadLSR(l); // live even in test scenarios, like the model maps
-    var o = (doc && doc.obs) || [], st = (doc && doc.station) || {}, gauge = 0, hrs = 0;
-    o.forEach(function (x) { if (x.metar && x.p1 != null && Date.now() - x.ms <= 24 * H + 10 * 60000) { gauge += x.p1; hrs++; } });
     var rows = [];
-    if (gauge >= 0.005) rows.push('<div class="pr"><span class="pa">' + gauge.toFixed(2) + ' in</span><span class="pw">Rain gauge (melted snow counts)<small>' + esc(st.name || st.id || "Nearest station") + "</small></span><span class=\"pt\">Last 24 hr</span></div>");
     var list = (LSR.list || []).slice(), seen = {}, pick = [];
-    // nearest few, with snow first when it was snowing, one report per town and kind
-    ["snow", "ice", "rain"].forEach(function (k) { list.filter(function (r) { return r.k === k; }).forEach(function (r) { var id = k + r.city; if (seen[id] || pick.filter(function (q) { return q.k === k; }).length >= 4) return; seen[id] = 1; pick.push(r); }); });
+    // nearest few, one report per town
+    // shown only when snow actually fell: snowfall reports only (rain, ice and the rain gauge are left out)
+    ["snow"].forEach(function (k) { list.filter(function (r) { return r.k === k; }).forEach(function (r) { var id = k + r.city; if (seen[id] || pick.filter(function (q) { return q.k === k; }).length >= 4) return; seen[id] = 1; pick.push(r); }); });
     pick.forEach(function (r) {
       var amt = r.k === "snow" ? (r.m < 1 ? r.m.toFixed(1) : String(+r.m.toFixed(1))) + "″ snow" : r.m.toFixed(2) + " in " + (r.k === "ice" ? "ice" : "rain");
       var where = esc(String(r.city).toLowerCase().replace(/(^|[\s\-\/(])([a-z])/g, function (m, a, b) { return a + b.toUpperCase(); })) + (r.st ? ", " + esc(r.st) : ""), off = r.mi < 1.5 ? "here" : Math.round(r.mi) + " mi " + r.dir;
@@ -786,7 +783,7 @@
     el.hidden = !rows.length;
     if (!rows.length) { el.innerHTML = ""; return; }
     el.innerHTML = '<div class="ph"><b>Actual amounts</b><span>Observed · past 72 hours</span></div>' + rows.join("") +
-      (pick.length ? '<div class="pn">Totals reported to the National Weather Service (storm reports, via Iowa Environmental Mesonet).</div>' : "");
+      (pick.length ? '<div class="pn">Snowfall reported to the National Weather Service (storm reports, via Iowa Environmental Mesonet).</div>' : "");
   }
 
   // ---------- observations ----------
