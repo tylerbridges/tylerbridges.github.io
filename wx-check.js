@@ -212,8 +212,6 @@
                 if (!r.valid) res.warns.push("radar frame times unavailable");
               });
             })
-            .then(function () { return openTab("obs", function () { return d.querySelectorAll("#obscard tr").length >= 3 || /No recent observations/.test(d.getElementById("obscard").textContent); }, "Observations tab"); })
-            .then(function () { if (/No recent observations/.test(d.getElementById("obscard").textContent)) res.warns.push("no recent observations"); })
             .then(function () { return sweep ? sweepMaps(d, res).then(function () { return sweepImages(d, res); }) : null; });
         }).then(finish, function (e) { res.fails.push("check crashed: " + e.message); finish(); });
       };

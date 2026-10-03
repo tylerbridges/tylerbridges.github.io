@@ -735,6 +735,60 @@
     $("tot").innerHTML = html;
   }
 
+  // ---------- past 72 hours: what actually fell ----------
+  // Shown on Daily under the current conditions only when something was measured or reported:
+  //   - the station's own gauge: hourly METAR "precipitation last hour" summed over the last 24 hours (doc.obs);
+  //   - NWS Local Storm Reports within ~40 miles over the last 72 hours (snowfall, heavy rain, freezing rain / ice),
+  //     read from the Iowa Environmental Mesonet's archive (mesonet.agron.iastate.edu, CORS-open), nearest first.
+  var LSR = { key: "", t: 0, list: null, busy: false };
+  function milesBetween(a, b, c, d) { var R = 3958.8, r = Math.PI / 180, x = Math.sin((c - a) * r / 2), y = Math.sin((d - b) * r / 2); return 2 * R * Math.asin(Math.sqrt(x * x + Math.cos(a * r) * Math.cos(c * r) * y * y)); }
+  function bearing(a, b, c, d) { var r = Math.PI / 180, y = Math.sin((d - b) * r) * Math.cos(c * r), x = Math.cos(a * r) * Math.sin(c * r) - Math.sin(a * r) * Math.cos(c * r) * Math.cos((d - b) * r); return ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(((Math.atan2(y, x) / r + 360) % 360) / 45) % 8]; }
+  function lsrKind(p) {
+    var t = String(p.typetext || p.type_text || "").toUpperCase(), c = String(p.type || "").toUpperCase();
+    if (/SNOW/.test(t) || c === "S") return "snow";
+    if (/FREEZING RAIN|ICE STORM|SLEET/.test(t)) return "ice";
+    if (/RAIN/.test(t) || c === "R") return "rain";
+    return null;
+  }
+  function loadLSR(l) {
+    var key = l.lat.toFixed(2) + "," + l.lon.toFixed(2);
+    if (LSR.key === key && (LSR.busy || Date.now() - LSR.t < 15 * 60000)) return;
+    if (LSR.key !== key) LSR.list = null;
+    LSR.key = key; LSR.busy = true;
+    var u = "https://mesonet.agron.iastate.edu/geojson/lsr.geojson?hours=72&north=" + (l.lat + 0.6).toFixed(2) + "&south=" + (l.lat - 0.6).toFixed(2) + "&west=" + (l.lon - 0.8).toFixed(2) + "&east=" + (l.lon + 0.8).toFixed(2);
+    fetch(u).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (j) {
+      if (LSR.key !== key) return;
+      LSR.list = ((j && j.features) || []).map(function (f) {
+        var p = f.properties || {}, g = f.geometry && f.geometry.coordinates, la = +(p.lat != null ? p.lat : g && g[1]), lo = +(p.lon != null ? p.lon : g && g[0]);
+        var k = lsrKind(p), m = parseFloat(p.magnitude != null ? p.magnitude : p.mag), ms = Date.parse(p.valid || p.utc_valid || "");
+        if (!k || !(m > 0) || !isFinite(la) || !isFinite(lo)) return null;
+        var mi = milesBetween(l.lat, l.lon, la, lo); if (mi > 40) return null;
+        return { k: k, m: m, ms: ms, mi: mi, dir: bearing(l.lat, l.lon, la, lo), city: p.city || "", st: p.state || p.st || "", q: p.qualifier || "" };
+      }).filter(Boolean).sort(function (a, b) { return a.mi - b.mi; });
+      LSR.t = Date.now(); LSR.busy = false; renderPast();
+    }).catch(function () { if (LSR.key === key) { LSR.busy = false; LSR.t = Date.now(); LSR.list = LSR.list || []; } });
+  }
+  function renderPast() {
+    var el = $("past"); if (!el) return;
+    var l = curLoc(); if (l) loadLSR(l); // live even in test scenarios, like the model maps
+    var o = (doc && doc.obs) || [], st = (doc && doc.station) || {}, gauge = 0, hrs = 0;
+    o.forEach(function (x) { if (x.metar && x.p1 != null && Date.now() - x.ms <= 24 * H + 10 * 60000) { gauge += x.p1; hrs++; } });
+    var rows = [];
+    if (gauge >= 0.005) rows.push('<div class="pr"><span class="pa">' + gauge.toFixed(2) + ' in</span><span class="pw">Rain gauge (melted snow counts)<small>' + esc(st.name || st.id || "Nearest station") + "</small></span><span class=\"pt\">Last 24 hr</span></div>");
+    var list = (LSR.list || []).slice(), seen = {}, pick = [];
+    // nearest few, with snow first when it was snowing, one report per town and kind
+    ["snow", "ice", "rain"].forEach(function (k) { list.filter(function (r) { return r.k === k; }).forEach(function (r) { var id = k + r.city; if (seen[id] || pick.filter(function (q) { return q.k === k; }).length >= 4) return; seen[id] = 1; pick.push(r); }); });
+    pick.forEach(function (r) {
+      var amt = r.k === "snow" ? (r.m < 1 ? r.m.toFixed(1) : String(+r.m.toFixed(1))) + "″ snow" : r.m.toFixed(2) + " in " + (r.k === "ice" ? "ice" : "rain");
+      var where = esc(String(r.city).toLowerCase().replace(/(^|[\s\-\/(])([a-z])/g, function (m, a, b) { return a + b.toUpperCase(); })) + (r.st ? ", " + esc(r.st) : ""), off = r.mi < 1.5 ? "here" : Math.round(r.mi) + " mi " + r.dir;
+      rows.push('<div class="pr"><span class="pa">' + amt + '</span><span class="pw">' + where + "<small>" + off + (r.q === "E" ? " · estimated" : "") + '</small></span><span class="pt">' + (isFinite(r.ms) ? esc(fmt(r.ms, { weekday: "short", hour: "numeric" })) : "") + "</span></div>");
+    });
+    el.hidden = !rows.length;
+    if (!rows.length) { el.innerHTML = ""; return; }
+    el.innerHTML = '<div class="ph"><b>What fell</b><span>Past 72 hours</span></div>' + rows.join("") +
+      (pick.length ? '<div class="pn">Totals reported to the National Weather Service (storm reports, via Iowa Environmental Mesonet).</div>' : "");
+  }
+
   // ---------- observations ----------
   var OBS = null;
   function renderObs() {
@@ -904,7 +958,7 @@
 
   function renderAll() {
     if (doc && doc.loc && doc.loc.tz) TZ = doc.loc.tz;
-    renderFresh(); renderNow(); renderWeek(); if (tab === "hourly") G = renderGraph($("gin")); else G = null; renderTotals(); renderDetail(); renderObs(); renderFoot(); if (tab === "maps") renderMaps(); if (tab === "radar") radarOn();
+    renderFresh(); renderNow(); renderPast(); renderWeek(); if (tab === "hourly") G = renderGraph($("gin")); else G = null; renderTotals(); renderDetail(); renderObs(); renderFoot(); if (tab === "maps") renderMaps(); if (tab === "radar") radarOn();
     activeCard = -1; if (tab === "daily") requestAnimationFrame(syncStrip);
   }
 
@@ -991,9 +1045,9 @@
   function setTopH() { document.documentElement.style.setProperty("--toph", document.querySelector(".top").offsetHeight + "px"); }
   setTopH(); window.addEventListener("resize", setTopH);
   function showTab(t) {
-    if (t === "totals") t = "obs"; // old tab name
+    if (t === "totals") t = "maps"; // old tab name (the storm totals card is on Forecast)
     if (t === "forecast") t = "maps"; // the Maps tab is now called Forecast
-    if (t === "now") t = "daily"; // Now and Daily are one tab: current conditions on top, flowing into the days
+    if (t === "now" || t === "obs") t = "daily"; // Now and Daily are one tab; the Observations tab was dropped (Past 72 hours card on Daily)
     if (!$("nav").querySelector('[data-tab="' + t + '"]')) t = "daily";
     var changed = t !== tab; tab = t;
     document.querySelectorAll("#nav .chip").forEach(function (c) { c.classList.toggle("on", c.dataset.tab === t); });

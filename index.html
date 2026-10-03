@@ -669,6 +669,18 @@ h2{font:700 12px/1 var(--sans);letter-spacing:.08em}
 .ls-lbl{font-weight:700;letter-spacing:.08em}
 @keyframes lsup{from{transform:translateY(100%)}to{transform:none}}
 @media (prefers-reduced-motion:reduce){.ls-card{animation:none}}
+/* Past 72 hours on Daily: what actually fell (station gauge + NWS storm reports nearby) */
+.past{padding:12px 14px}
+.past .ph{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:6px}
+.past .ph b{font:700 15px var(--sans)}
+.past .ph span{font-size:12px;color:var(--muted)}
+.past .pr{display:grid;grid-template-columns:7.2em minmax(0,1fr) auto;gap:2px 12px;align-items:baseline;padding:7px 0;border-top:1px solid var(--grid)}
+.past .pr:first-of-type{border-top:0}
+.past .pa{font:700 17px var(--sans);font-variant-numeric:tabular-nums;white-space:nowrap}
+.past .pw{min-width:0;font-size:13.5px;color:var(--ink)}
+.past .pw small{display:block;font-size:12px;color:var(--muted)}
+.past .pt{font-size:12px;color:var(--muted);white-space:nowrap}
+.past .pn{margin-top:6px;font-size:11.5px;color:var(--muted)}
 </style>
 </head>
 <body>
@@ -680,7 +692,7 @@ h2{font:700 12px/1 var(--sans);letter-spacing:.08em}
       <button class="rbtn" id="rbtn" type="button" aria-label="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button>
     </div>
     <nav class="nav" id="nav">
-      <button type="button" class="chip on" data-tab="daily">Daily</button><button type="button" class="chip" data-tab="hourly">Hourly</button><button type="button" class="chip" data-tab="radar">Radar</button><button type="button" class="chip" data-tab="maps">Forecast</button><button type="button" class="chip" data-tab="obs">Observations</button>
+      <button type="button" class="chip on" data-tab="daily">Daily</button><button type="button" class="chip" data-tab="hourly">Hourly</button><button type="button" class="chip" data-tab="radar">Radar</button><button type="button" class="chip" data-tab="maps">Forecast</button>
     </nav>
     <div class="testbar" id="testbar" hidden><span>Test: <b id="testname"></b> · sample data, not a real forecast</span><button type="button" class="chip" id="testx">Exit</button></div>
   </header>
@@ -688,6 +700,7 @@ h2{font:700 12px/1 var(--sans);letter-spacing:.08em}
   <section id="now" class="sec" data-tab="daily">
     <div class="sec-h"><h2 id="nowtitle"></h2></div>
     <div class="card now"><div id="nowcard" class="nowin"></div></div>
+    <div class="card past" id="past" hidden></div>
   </section>
 
 
@@ -754,7 +767,7 @@ h2{font:700 12px/1 var(--sans);letter-spacing:.08em}
     <div class="dstack" id="det"></div>
   </section>
 
-  <section id="obs" class="sec" data-tab="obs" hidden>
+  <section id="obs" class="sec" data-tab="off" hidden>
     <div class="sec-h"><h2>Recent observations</h2><span class="meta" id="obsstn"></span></div>
     <div class="card obs" id="obscard"></div>
   </section>
@@ -778,13 +791,13 @@ h2{font:700 12px/1 var(--sans);letter-spacing:.08em}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=96"></script>
-<script src="wx-live.js?v=96"></script>
-<script src="wx-scenarios.js?v=96"></script>
-<script src="wx-vmap.js?v=96"></script>
-<script src="wx-radar.js?v=96"></script>
-<script src="wx-models.js?v=96"></script>
-<script src="wx-official.js?v=96"></script>
-<script src="app.js?v=96"></script>
+<script src="wx-normalize.js?v=97"></script>
+<script src="wx-live.js?v=97"></script>
+<script src="wx-scenarios.js?v=97"></script>
+<script src="wx-vmap.js?v=97"></script>
+<script src="wx-radar.js?v=97"></script>
+<script src="wx-models.js?v=97"></script>
+<script src="wx-official.js?v=97"></script>
+<script src="app.js?v=97"></script>
 </body>
 </html>
