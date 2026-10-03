@@ -432,8 +432,9 @@
       pts.forEach(function (q) {
         var ly = q.ly, lo = q.lo;
         o += '<circle cx="' + nx.toFixed(1) + '" cy="' + q.yy.toFixed(1) + '" r="3.2" fill="' + q.m.c + '" stroke="var(--surface)" stroke-width="1.5"/>' +
-          // a label that lands inside a shaded area (e.g. under the cloud-cover line) turns white with a grey outline so it stays readable
-          (q.m.area && ly - 5 > lo ? '<text x="' + (nx + 7).toFixed(1) + '" y="' + ly.toFixed(1) + '" font-size="11.5" font-weight="700" fill="#FFFFFF">'
+          // a label that lands inside a shaded area (e.g. under the cloud-cover line) uses the text colour (black in light
+          //   mode, white in dark) with a background-coloured outline so it stays readable over the grey
+          (q.m.area && ly - 5 > lo ? '<text x="' + (nx + 7).toFixed(1) + '" y="' + ly.toFixed(1) + '" font-size="11.5" font-weight="700" fill="var(--ink)" stroke="var(--surface)" stroke-width="3" paint-order="stroke" stroke-linejoin="round">'
             : '<text x="' + (nx + 7).toFixed(1) + '" y="' + ly.toFixed(1) + '" font-size="11.5" font-weight="700" fill="' + q.m.c + '" stroke="var(--surface)" stroke-width="3" paint-order="stroke" stroke-linejoin="round">') + q.v + q.m.u + "</text>";
       });
       return '<g class="nowg">' + o + "</g>";
