@@ -9,7 +9,7 @@ Optimize for a simple loop: request, implement, review, publish, verify.
 - Start with `git status`; when clean, `git pull --ff-only origin main`. Never discard pre-existing changes.
 - Commit task-scoped files with a descriptive message and push with `git push origin main` without waiting for approval. Never force-push.
 - After pushing, confirm `origin/main` has the commit and the GitHub Pages build finished, then load the live site and confirm it serves the change.
-- Reply to a change with a bulleted list of what was done (including commit/deploy status). No "Couldn't do" or "Your action items" sections.
+- Reply to a change with a very brief bulleted list of what was done, ending with whether it was pushed to main. Nothing else: no unverified/not-checked notes, no "Couldn't do" or "Your action items" sections.
 
 ## How the site works
 
