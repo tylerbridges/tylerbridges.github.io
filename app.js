@@ -464,7 +464,7 @@
 
     // 1 temperature
     var tv = s.t.concat(s.wc, s.hi).filter(function (v) { return v != null; });
-    var tt = nice(Math.min.apply(null, tv), Math.max.apply(null, tv), 10), h1 = 150, y1 = scale(tt, h1, 8);
+    var tt = nice(Math.min.apply(null, tv), Math.max.apply(null, tv), 10), h1 = 125, y1 = scale(tt, h1, 8);
     var hasWc = s.wc.some(function (v) { return v != null; }), hasHi = s.hi.some(function (v) { return v != null; });
     if (!only) out.push(panel("Temperature (°F)", li("var(--t)", "", "Temp") + (hasWc ? li("var(--wc)", "", "Wind chill") : "") + (hasHi ? li("var(--hi)", "", "Heat index") : ""), h1, tt, y1, "°",
       (hasWc ? '<path d="' + path(s.wc, y1) + '" fill="none" stroke="var(--wc)" stroke-width="2"/>' : "") +
@@ -475,7 +475,7 @@
     // 1b UV index (EPA hourly forecast; it covers about the next day only)
     var uvA = []; for (i = 0; i < n; i++) uvA.push(uvAt(start + i * H));
     if (false) { // UV graph removed at Tyler's request (EPA data covers only ~1 day)
-      var um = Math.max.apply(null, uvA.filter(function (v) { return v != null; })), ut = nice(0, Math.max(6, um), um > 8 ? 3 : 2), hu = 90, yu = scale(ut, hu, 6);
+      var um = Math.max.apply(null, uvA.filter(function (v) { return v != null; })), ut = nice(0, Math.max(6, um), um > 8 ? 3 : 2), hu = 75, yu = scale(ut, hu, 6);
       var ua = path(uvA, yu), segs = "", run = [];
       // shaded area under each continuous run
       for (i = 0; i <= n; i++) {
@@ -488,7 +488,7 @@
 
     // 2 wind
     var wmax = Math.max(20, Math.max.apply(null, s.wg.concat(s.ws).filter(function (v) { return v != null; })));
-    var wt = nice(0, wmax, wmax > 40 ? 20 : 10), h2 = 110, y2 = scale(wt, h2, 6);
+    var wt = nice(0, wmax, wmax > 40 ? 20 : 10), h2 = 92, y2 = scale(wt, h2, 6);
     if (!only) out.push(panel("Wind (mph)", li("var(--wind)", "", "Sustained") + li("var(--gust)", "", "Gusts"), h2, wt, y2, "",
       '<path d="' + path(s.wg, y2) + '" fill="none" stroke="var(--gust)" stroke-width="2.25"/>' +
       '<path d="' + path(s.ws, y2) + '" fill="none" stroke="var(--wind)" stroke-width="2.25"/>',
@@ -507,7 +507,7 @@
     //   piecewise: 0-10 gap, 10-20 SChc, 20-30 gap, 30-50 Chc, 50-60 gap, 60-70 Lkly, 70-80 gap, 80-100 Ocnl.
     // thunder/hail/fog each get their own labelled strip along the top, only when they occur
     var MU = MKT.filter(function (t) { return s[t[0]].some(function (v) { return v; }); }), MROW = 11, MY0 = 18;
-    var BH = 13, GH = 7, pTop = MU.length ? MY0 + MU.length * MROW + 8 : 34, pH = 4 * (BH + GH), pBase = pTop + pH;
+    var BH = 11, GH = 6, pTop = MU.length ? MY0 + MU.length * MROW + 8 : 34, pH = 4 * (BH + GH), pBase = pTop + pH;
     var PCT = [0, 10, 20, 30, 50, 60, 70, 80, 100], PY = [0, GH, GH + BH, 2 * GH + BH, 2 * (GH + BH), 3 * GH + 2 * BH, 3 * (GH + BH), 4 * GH + 3 * BH, pH];
     var yP = function (v) {
       v = Math.max(0, Math.min(100, v));
@@ -572,7 +572,7 @@
     var WXK = [PK];
 
     // 4 cloud cover
-    var pt = [0, 25, 50, 75, 100], h3 = 90, y3 = scale(pt, h3, 6);
+    var pt = [0, 25, 50, 75, 100], h3 = 75, y3 = scale(pt, h3, 6);
     var sky = path(s.sky, y3); var skyA = sky ? sky + "L" + X(n - 1) + " " + y3(0) + "L" + X(0) + " " + y3(0) + "Z" : "";
     var CLOUDK = out.length; // last, after Wind
     if (!only) out.push(panel("Cloud Cover (%)", li("var(--sky)", "blk", "Sky cover (cloud %)"), h3, pt, y3, "",
