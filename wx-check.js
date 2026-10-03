@@ -190,6 +190,15 @@
               res.model = m.model.toUpperCase() + " " + m.param + (m.ready ? " drawn" : " failed: " + (m.err || "timeout"));
               if (!m.ready) res.warns.push("model map didn't draw (" + (m.err || "timeout") + ")");
             })
+            // Official precipitation card: WPC's polygons drawn by wx-official.js (or WPC's image if the map service failed)
+            .then(function () {
+              if (MOCK) return null;
+              return poll(function () { return d.querySelector("#oqwrap .oqf") && !d.querySelector("#oqwrap .mmstat:not([hidden])") || d.getElementById("oqimg"); }, 30000).then(function (ok) {
+                var drawn = !!d.querySelector("#oqwrap .oqf"), per = (d.getElementById("oqper") || {}).textContent || "";
+                res.official = !ok ? "timed out" : drawn ? "drawn " + per : "WPC image (map service unavailable)";
+                if (!ok || !drawn) res.warns.push("official precipitation map didn't draw: " + res.official);
+              });
+            })
             // Radar tab: frames load, and whether the tile server allows pixel access (needed for the smooth colours)
             .then(function () {
               if (MOCK) return null;
@@ -374,7 +383,7 @@
         }).then(function (both) {
           var dr = both[0], fr = both[1], fails = dr.fails.concat(fr ? fr.fails : []), warns = dr.warns.concat(fr ? fr.warns : []);
           var tag = fails.length ? "FAIL" : warns.length ? "WARN" : "PASS"; counts[tag.toLowerCase()]++;
-          line("[" + tag + "] " + L[0] + " · load " + secs(dr.ms) + (dr.sources ? " · " + dr.sources : "") + (fr ? " · tabs " + fr.tabs.join(" ") + (fr.radar ? " · " + fr.radar : "") + (fr.model ? " · maps " + fr.model : "") : ""));
+          line("[" + tag + "] " + L[0] + " · load " + secs(dr.ms) + (dr.sources ? " · " + dr.sources : "") + (fr ? " · tabs " + fr.tabs.join(" ") + (fr.radar ? " · " + fr.radar : "") + (fr.model ? " · maps " + fr.model : "") + (fr.official ? " · official " + fr.official : "") : ""));
           if (dr.info.length) line("      " + dr.info.join(" · "));
           fails.forEach(function (s) { line("      ✗ " + s); }); warns.forEach(function (s) { line("      ! " + s); });
           if (fr && fr.images) { line("      NWS MAP IMAGES (first/last frame):"); fr.images.forEach(function (m) { line("        " + m[0] + ": " + m[1].join(" | ")); }); }

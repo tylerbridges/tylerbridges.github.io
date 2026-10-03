@@ -1131,8 +1131,9 @@
     renderImgMaps(); renderOfficial();
   }
   // Official NWS precipitation: the Weather Prediction Center's 24- and 48-hour forecasts (the human-issued national
-  //   forecast the NWS grids are built from; images, as WPC's data isn't browser-readable) plus this place's official
-  //   amounts from its weather.gov forecast grid for the next 24 and 48 hours.
+  //   forecast the NWS grids are built from), drawn from WPC's own forecast polygons by wx-official.js on the same base
+  //   map as the model viewer (tap for the value), plus this place's official amounts from its weather.gov forecast
+  //   grid for the next 24 and 48 hours. If NOAA's map service can't be reached, WPC's image is shown instead.
   // Kinds: precipitation (WPC's official 24-h Day 1 and 48-h Days 1–2 amounts), snow and ice (WPC's official winter
   //   forecasts: chance of 4/8/12" snow or 0.25" ice for Day 1 = next 24 h and Day 2 = 24–48 h). Under each map, this
   //   place's official rain/snow/ice for the next 24 or 48 hours from weather.gov.
@@ -1160,16 +1161,31 @@
     el.innerHTML = '<div class="oqh">' + chip("data-oqk", "qpf", "Precip", OQ.k === "qpf") + chip("data-oqk", "snow", "Snow", OQ.k === "snow") + chip("data-oqk", "ice", "Ice", OQ.k === "ice") + "</div>" +
       '<div class="oqh">' + chip("data-oqp", 24, "Next 24 hr", OQ.p === 24) + chip("data-oqp", 48, OQ.k === "qpf" ? "Next 48 hr" : "24–48 hr", OQ.p === 48) +
       "</div>" + (OQ.k === "snow" ? '<div class="oqh"><span class="oqlab">Chance of</span>' + ["04", "08", "12"].map(function (t) { return chip("data-oqt", t, +t + '"+', OQ.th === t); }).join("") + "</div>" : "") +
-      '<div class="oqimg" id="oqimg"><img src="' + img + bust + '" alt="' + esc(cap) + '"><span class="mfr num">' + esc(per) + "</span></div>" +
+      (window.WXOfficial ? '<div class="oqwrap" id="oqwrap"><span class="mfr num" id="oqper">' + esc(per) + '</span></div><div class="mleg" id="oqleg">' + WXOfficial.legend(OQ.k) + "</div>"
+        : '<div class="oqimg" id="oqimg"><img src="' + img + bust + '" alt="' + esc(cap) + '"><span class="mfr num">' + esc(per) + "</span></div>") +
       '<div class="oqnote"><b>' + esc(cap) + "</b> · NWS Weather Prediction Center · " + '<a href="' + WPC + (OQ.k === "qpf" ? "qpf/qpf2.shtml" : "wwd/winter_wx.shtml") + '" target="_blank" rel="noopener">Source</a></div>' + amt;
-    var im = el.querySelector("img"); im.onerror = function () { im.parentNode.innerHTML = '<div class="mmsg">This map isn\'t available right now.</div>'; };
+    var imgOk = function (box) {
+      box.className = "oqimg"; box.id = "oqimg"; box.innerHTML = '<img src="' + img + bust + '" alt="' + esc(cap) + '"><span class="mfr num">' + esc(per) + "</span>";
+      var im = box.querySelector("img"); im.onerror = function () { box.innerHTML = '<div class="mmsg">This map isn\'t available right now.</div>'; };
+    };
+    var wrap = $("oqwrap");
+    if (!wrap) return imgOk(el.querySelector("#oqimg"));
+    var k0 = OQ.k + OQ.p + OQ.th;
+    WXOfficial.show(wrap, curLoc(), OQ).then(function (r) {
+      if (!r || k0 !== OQ.k + OQ.p + OQ.th || !$("oqper")) return;
+      if (r.start && r.end) $("oqper").textContent = span(r.start, r.end); // the product's own period
+    }).catch(function () {
+      if (k0 !== OQ.k + OQ.p + OQ.th || $("oqwrap") !== wrap) return;
+      var leg = $("oqleg"); if (leg) leg.remove();
+      imgOk(wrap);
+    });
   }
   $("offq").addEventListener("click", function (e) {
     var b = e.target.closest("[data-oqk],[data-oqp],[data-oqt]");
     if (b) { if (b.dataset.oqk) OQ.k = b.dataset.oqk; if (b.dataset.oqp) OQ.p = +b.dataset.oqp; if (b.dataset.oqt) OQ.th = b.dataset.oqt; store("wx-oq2", OQ); renderOfficial(); return; }
     var im = e.target.closest("#oqimg img"); if (im) { $("mfimg").src = im.src; $("mfimg").alt = im.alt; $("mfsc").classList.remove("z"); $("mfull").hidden = false; }
   });
-  function mStop() { if (window.WXModels) WXModels.hide(); iStop(); }
+  function mStop() { if (window.WXModels) WXModels.hide(); if (window.WXOfficial) WXOfficial.hide(); iStop(); }
   document.addEventListener("keydown", function (e) {
     if (tab !== "maps" || !$("locsheet").hidden || /INPUT|TEXTAREA|SELECT/.test((e.target.tagName || "")) && e.target.type !== "range") return;
     if (e.key === "ArrowLeft") $("mprev").click(); else if (e.key === "ArrowRight") $("mnext").click();
