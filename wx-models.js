@@ -817,6 +817,7 @@
     ui.param.addEventListener("change", function () { setParam(this.value); });
     ui.run.addEventListener("change", function () { userRun = true; setRun(+this.value); });
     ui.play.addEventListener("click", function () { play(!playing); });
+    ui.time.addEventListener("click", function () { play(false); cur.k = 0; showHour(); });
     ui.prev.addEventListener("click", function () { play(false); step(-1); });
     ui.next.addEventListener("click", function () { play(false); step(1); });
     ui.range.addEventListener("input", function () { play(false); cur.k = +this.value; showHour(); });
@@ -885,6 +886,8 @@
     var big = p.day ? fmtT(v - 6 * H, { weekday: "short" }) + (p.day === "max" ? " day" : " night") : fmtT(v, { weekday: "short", hour: "numeric" });
     if (p.day) lab = (p.day === "max" ? "High, " : "Low, ") + fmtT(v - 12 * H, { hour: "numeric" }) + "–" + fmtT(v, { hour: "numeric" });
     ui.time.innerHTML = "<b>" + big + "</b><span>" + lab + "</span>";
+    ui.range.setAttribute("aria-valuetext", MODELS[cur.model].name + " · " + big + " · " + lab);
+    ui.time.setAttribute("title", "Return to the first forecast hour");
     ui.src.innerHTML = MODELS[cur.model].full + " " + hh(r.run) + "Z run · " + fmtT(r.run, { weekday: "short", hour: "numeric", minute: "2-digit" }) + " · NOAA";
   }
   function showHour() { readout = null; ui.ro.hidden = true; uiTime(); loadAround(); paint(6); status(); }

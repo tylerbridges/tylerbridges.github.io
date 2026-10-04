@@ -851,6 +851,20 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
   .model-tools .mhead{padding-left:0}
   .forecast-workspace .oqrow{padding-top:8px}
 }
+
+/* Model maps share Radar's floating playback controls. */
+.forecast-workspace .model-map{position:relative;overflow:hidden;border-radius:var(--r-card);isolation:isolate}
+.forecast-workspace .model-map #mmap{height:clamp(300px,90vw,480px);min-height:300px;border-radius:inherit}
+.forecast-workspace .model-bar{z-index:5}
+.forecast-workspace .model-bar .rtime{min-width:92px;max-width:46%}
+.forecast-workspace .model-bar .rtime span{white-space:normal;text-align:right}
+.forecast-workspace .model-map .mmstat{bottom:66px;max-width:calc(100% - 20px)}
+.model-caption{display:flex;align-items:center;gap:6px;padding:6px 10px 0}
+.model-caption .mtitle{flex:1;min-width:0;padding:0;text-align:center}
+.model-caption .rbtn{width:30px;height:30px;flex:none}
+.model-bar :focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+@media(min-width:900px){.forecast-workspace .model-map #mmap{height:clamp(420px,55vh,650px)}}
+
 #now{margin-bottom:4px}
 </style>
 </head>
@@ -908,14 +922,18 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
       </div>
       <div id="forecast-models" role="tabpanel" aria-labelledby="forecast-models-tab" hidden>
     <div class="card mview model-view">
-      <div class="mmapw"><div id="mmap"></div></div>
-      <div class="mtitle" id="mtitle"></div>
-      <div class="mctl">
+      <div class="mmapw model-map">
+        <div id="mmap"></div>
+        <div class="rbar model-bar">
+          <button type="button" class="rplay" id="mplay" aria-label="Play"></button>
+          <input type="range" class="rrange" id="mrange" min="0" max="0" step="1" value="0" aria-label="Model forecast time">
+          <button type="button" class="rtime num" id="mtime" aria-label="Return to the first forecast hour"><b></b><span></span></button>
+        </div>
+      </div>
+      <div class="model-caption">
         <button type="button" class="rbtn" id="mprev" aria-label="Previous hour"><svg viewBox="0 0 24 24" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button>
-        <button type="button" class="rbtn" id="mplay" aria-label="Play"></button>
-        <input type="range" id="mrange" min="0" max="0" value="0" aria-label="Forecast hour">
+        <div class="mtitle" id="mtitle"></div>
         <button type="button" class="rbtn" id="mnext" aria-label="Next hour"><svg viewBox="0 0 24 24" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button>
-        <div class="mtime num" id="mtime"></div>
       </div>
       <div class="map-regions" id="model-regions" role="group" aria-label="Model map extent"></div>
       <div class="model-tools">
@@ -982,8 +1000,8 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
 <script src="wx-scenarios.js?v=116"></script>
 <script src="wx-vmap.js?v=116"></script>
 <script src="wx-radar.js?v=116"></script>
-<script src="wx-models.js?v=120"></script>
+<script src="wx-models.js?v=121"></script>
 <script src="wx-official.js?v=120"></script>
-<script src="app.js?v=120"></script>
+<script src="app.js?v=121"></script>
 </body>
 </html>
