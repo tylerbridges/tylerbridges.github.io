@@ -29,28 +29,29 @@ function packExportDownload(t, content, extension, type){
   a.href = url; a.download = slug(t.name || t.where || "trip").toLowerCase() + "-packing-list." + extension;
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(url); }, 60000);
 }
-function packExportSheet(t){
-  var body = openSheet("Export packing list");
-  body.appendChild(el("p","muted","Includes all sections and items, even when your list is filtered or collapsed. Exports are separate copies; changes in Notes do not sync back."));
-  var keep = el("input"); keep.type = "checkbox"; keep.id = "pe-checked";
-  body.appendChild(fieldEl("Keep packed items checked (otherwise start unchecked)", keep));
-  var info = el("p","muted"); info.textContent = "Download the Apple Notes file and import it into Notes for section headings and native checklist items. On Mac: File → Import to Notes. Formatted copy is an alternative for pasting; use Notes’ checklist button if the checkbox symbols remain plain text."; body.appendChild(info);
-  var actions = el("div","actions"); actions.style.display = "flex"; actions.style.flexWrap = "wrap"; actions.style.gap = "8px";
-  var status = el("p","muted"); status.setAttribute("role","status");
-  var preview = el("textarea"); preview.id = "pe-preview"; preview.readOnly = true; preview.rows = 14; preview.style.width = "100%"; preview.style.fontSize = "16px";
-  function data(){ return packExportData(t, keep.checked); }
-  function refresh(){ var d = data(); preview.value = d.title + "\n" + (d.detail ? d.detail + "\n" : "") + "\n" + d.groups.map(function(g){ return g.title + "\n" + (g.note ? g.note + "\n" : "") + g.items.map(function(i){ return (i.checked ? "☑" : "☐") + " " + i.label; }).join("\n"); }).join("\n\n"); }
-  function button(label, id, cb){ var b = el("button",null,label); b.type = "button"; b.id = id; b.addEventListener("click", cb); actions.appendChild(b); }
-  button("Apple Notes file (.enex)", "pe-enex", function(){ packExportDownload(t, packExportEnex(data()), "enex", "application/xml"); });
-  button("Markdown (.md)", "pe-md", function(){ packExportDownload(t, packExportMarkdown(data()), "md", "text/markdown;charset=utf-8"); });
-  button("Copy formatted list", "pe-copy", function(){
-    var d = data(), pr;
-    try {
-      if (navigator.clipboard && navigator.clipboard.write && typeof ClipboardItem !== "undefined") pr = navigator.clipboard.write([new ClipboardItem({"text/html":new Blob([packExportHtml(d, false)], {type:"text/html"}), "text/plain":new Blob([preview.value], {type:"text/plain"})})]);
-      else if (navigator.clipboard && navigator.clipboard.writeText) pr = navigator.clipboard.writeText(preview.value);
-      else throw new Error("Clipboard unavailable");
-    } catch(e){ pr = Promise.reject(e); }
-    pr.then(function(){ status.textContent = "Copied. Paste into Notes; checkbox symbols may need conversion with Notes’ checklist button."; }).catch(function(){ preview.focus(); preview.select(); preview.setSelectionRange(0, preview.value.length); status.textContent = "Automatic copy is unavailable. Copy the selected preview below."; });
-  });
-  keep.addEventListener("change", refresh); refresh(); body.appendChild(actions); body.appendChild(status); body.appendChild(fieldEl("Packing list preview", preview));
+function packExportSheet(t, options){
+  options=options || {};
+  var body=openSheet(options.reviewNode ? "Review & export" : "Export packing list");if(options.reviewNode)body.id="rr-outfitSummary";
+  body.appendChild(el("p","muted","Includes every section and item. Exports are separate copies; changes in Notes do not sync back."));
+  var keep=el("input");keep.type="checkbox";keep.id="pe-checked";
+  var status=el("p","muted");status.setAttribute("role","status");
+  var preview=el("textarea");preview.id="pe-preview";preview.readOnly=true;preview.rows=14;preview.style.width="100%";preview.style.fontSize="16px";
+  var more=el("details","gen-opt"),moreActions=el("div","gen-actions"),primary=el("div","gen-actions"),buttons={},ready=!options.prepare;
+  more.appendChild(el("summary",null,"More export options"));more.appendChild(moreActions);if(!options.data)more.appendChild(fieldEl("Keep packed items checked (otherwise start unchecked)",keep));more.appendChild(fieldEl("Packing list preview",preview));
+  var preferred=lsGet("ta:meta/packingExport","enex");if(["enex","md","copy"].indexOf(preferred)<0)preferred="enex";
+  function data(){return options.data ? options.data : packExportData(t,keep.checked);}
+  function refresh(){var d=data();preview.value=d.title+"\n"+(d.detail ? d.detail+"\n":"")+"\n"+d.groups.map(function(g){return g.title+"\n"+(g.note ? g.note+"\n":"")+g.items.map(function(i){return (i.checked ? "☑":"☐")+" "+i.label;}).join("\n");}).join("\n\n");}
+  var help=el("p","gen-note");
+  function recordExport(){if(options.onExport)Promise.resolve().then(options.onExport).catch(function(){status.textContent+=" Packing feedback snapshot could not be saved; retry export to capture it.";});}
+  function prefer(format){preferred=format;lsSet("ta:meta/packingExport",format);layout();}
+  function layout(){Object.keys(buttons).forEach(function(k){var b=buttons[k];b.className=k===preferred ? "btn primary":"btn";(k===preferred ? primary:moreActions).appendChild(b);});help.textContent=preferred==="enex" ? "Native Notes checklists: download, then on Mac use Notes → File → Import to Notes.":preferred==="copy" ? "Paste into Notes. If checkbox symbols remain plain text, use Notes’ checklist button.":"Downloads a Markdown checklist for apps that support Markdown.";}
+  function button(format,label,cb){var b=generatorButton(label,function(){if(ready)cb();});b.id="pe-"+format;b.disabled=!ready;buttons[format]=b;}
+  button("enex","Apple Notes file (.enex)",function(){packExportDownload(t,packExportEnex(data()),"enex","application/xml");prefer("enex");status.textContent="Notes file downloaded. Import it into Apple Notes.";recordExport();});
+  button("md","Markdown (.md)",function(){packExportDownload(t,packExportMarkdown(data()),"md","text/markdown;charset=utf-8");prefer("md");status.textContent="Markdown file downloaded.";recordExport();});
+  button("copy","Copy formatted list",function(){var d=data(),pr;try{if(navigator.clipboard && navigator.clipboard.write && typeof ClipboardItem!=="undefined")pr=navigator.clipboard.write([new ClipboardItem({"text/html":new Blob([packExportHtml(d,false)],{type:"text/html"}),"text/plain":new Blob([preview.value],{type:"text/plain"})})]);else if(navigator.clipboard && navigator.clipboard.writeText)pr=navigator.clipboard.writeText(preview.value);else throw new Error("Clipboard unavailable");}catch(e){pr=Promise.reject(e);}pr.then(function(){prefer("copy");status.textContent="Copied. Paste into Notes; checkbox symbols may need conversion with Notes’ checklist button.";recordExport();}).catch(function(){more.open=true;preview.focus();preview.select();preview.setSelectionRange(0,preview.value.length);status.textContent="Automatic copy is unavailable. Copy the selected preview below.";});});
+  keep.addEventListener("change",refresh);refresh();layout();if(options.warningNode)body.appendChild(options.warningNode);body.appendChild(primary);body.appendChild(help);body.appendChild(status);
+  var retry=generatorButton("Retry saving",prepare);retry.hidden=true;body.appendChild(retry);
+  if(options.reviewNode)body.appendChild(options.reviewNode);body.appendChild(more);
+  function prepare(){ready=false;retry.hidden=true;status.textContent="Saving your confirmed list…";Object.keys(buttons).forEach(function(k){buttons[k].disabled=true;});Promise.resolve().then(options.prepare).then(function(){ready=true;status.textContent="Ready to export.";Object.keys(buttons).forEach(function(k){buttons[k].disabled=false;});}).catch(function(){status.textContent="Could not save for export. Check browser storage and retry.";retry.hidden=false;});}
+  if(options.prepare)prepare();return body;
 }

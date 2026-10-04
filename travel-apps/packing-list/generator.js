@@ -9,7 +9,7 @@ function generatorHome(){
   if(PACK_TEST_MODE)return packingTestHome();
   var w = el("div","stack"), hero = el("section","panel gen-hero");
   var nav = el("div","gen-nav"); nav.appendChild(generatorLink("Generate a packing list","#new",true)); nav.appendChild(generatorButton("My preferences",function(){ generatorPreferences(); }));
-  nav.appendChild(generatorButton("Test flow",packingTestMenu));
+  nav.appendChild(generatorButton("Packing learning",packingLearningSheet));nav.appendChild(generatorButton("Test flow",packingTestMenu));
   hero.appendChild(nav); w.appendChild(hero);
   if (ORDER.length){ w.appendChild(el("h2","k","Previous trip setups")); ORDER.forEach(function(id){ var t = TRIPS[id], a = el("a","panel tripcard"); a.href = "#" + id;
     a.appendChild(el("h3",null,t.name)); a.appendChild(el("p","muted",[t.where,t.start ? fmt(t.start) + " – " + fmt(t.end || t.start) : "Dates needed"].filter(Boolean).join(" · "))); w.appendChild(a); }); }
