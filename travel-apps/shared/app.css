@@ -1,0 +1,10 @@
+/* Additions for the standalone apps (the rest of the look comes from the dashboard's styles.css). */
+.stack{display:flex;flex-direction:column;gap:12px;}
+.tripcard h2{margin:0 0 2px;font-size:17px;}
+.tripcard p{margin:0;}
+.bkrow{display:flex;gap:8px;align-items:flex-start;justify-content:space-between;padding:8px 0;border-top:1px solid var(--line-2);}
+.bkrow:first-of-type{border-top:0;}
+.bkrow b{display:block;}
+input[type=password]{width:100%;font:inherit;font-size:16px;color:var(--ink);background:var(--surface-2);border:1px solid var(--line);border-radius:7px;padding:8px 9px;}
+input,select,textarea{font-size:16px !important;} /* no iPhone auto-zoom */
+input[type=time]{width:100%;font:inherit;color:var(--ink);background:var(--surface-2);border:1px solid var(--line);border-radius:7px;padding:8px 9px;}
