@@ -4,7 +4,7 @@ let pw;try{pw=await import(process.env.PLAYWRIGHT_MODULE || 'playwright');}catch
 const root=join(dirname(fileURLToPath(import.meta.url)),'..'),server=http.createServer(async(req,res)=>{let path=req.url.split('?')[0];if(path.endsWith('/'))path+='index.html';try{res.setHeader('Content-Type',({'.html':'text/html','.js':'text/javascript','.css':'text/css'})[extname(path)] || 'application/octet-stream');res.end(await readFile(join(root,path)));}catch{res.writeHead(404);res.end();}});
 await new Promise(r=>server.listen(0,'127.0.0.1',r));const base=process.env.PACKING_BASE_URL || `http://127.0.0.1:${server.address().port}/packing-list/`,browser=await pw.chromium.launch({executablePath:process.env.CHROMIUM_PATH || undefined}),p=await browser.newPage({viewport:{width:390,height:844}}),errors=[];p.on('pageerror',e=>errors.push(e.message));
 function assert(value,message){if(!value)throw new Error(message);}
-async function dinner(){await p.evaluate(()=>document.querySelector('.refine-one').open=true);await p.click('button:has-text("Dinner outfit:")');await p.waitForSelector('#rf-dinnerTop');}
+async function dinner(){await p.click('#rr-adjust');await p.click('button:has-text("Dinner outfit:")');await p.waitForSelector('#rf-dinnerTop');}
 async function apply(){await p.click('button:has-text("Apply & recalculate")');await p.waitForSelector('.sheet-bg',{state:'detached'});}
 try{
   await p.goto(base+'?test=1#new');await p.waitForSelector('#rs-type');await p.fill('#rs-where','Phoenix');await p.locator('.rp-sum button').first().click();

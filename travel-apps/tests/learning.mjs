@@ -121,4 +121,23 @@ assert(!c.packingLearningLoad().trips.T1);
 await c.packingLearningReset();
 assert.equal(Object.keys(c.packingLearningLoad().trips).length,0);
 assert.equal(memory.get('ta:meta/packing'),realProfile,'Resetting learning does not reset applied preferences');
-console.log('OK: local packing learning, explicit evidence, context, protected items, rule revalidation and sandbox isolation');
+// Saved preparation edits are observed automatically, separately from actual-use feedback.
+await c.db.doc(c.PACK_LEARNING_PATH).set({version:1,trips:{}});
+const auto=[];
+for(let i=0;i<5;i++){const trip=fixture('AUTO'+i);if(i<4)trip.state.overrides.removed[itemId]=true;trip.state.overrides.removed['pack:contacts']=true;trip.state.overrides.edited['pack:tshirts']={...trip.result.items.find(x=>x.id==='pack:tshirts'),quantity:9};if(i<3)trip.state.overrides.added['manual:'+i]={id:'manual:'+i,label:'Camera',quantity:1,section:'Gear'};trip.result=c.refineEvaluate(trip.state,profile,[]);await c.packingLearningObserve(trip.t,trip.state,trip.result);auto.push(trip);}
+let observed=c.packingLearningLoad(),patterns=c.packingLearningEditRecommendations(observed,profile);
+assert.equal(Object.keys(observed.trips).length,0,'Preparation edits must not become post-trip use evidence');
+assert.equal(patterns.find(x=>x.id===itemId).kind,'exclude');assert.equal(patterns.find(x=>x.id===itemId).count,4);
+assert.equal(patterns.find(x=>x.id==='pack:contacts'),undefined,'Automatic learning never proposes removing critical items');
+assert.equal(patterns.find(x=>x.id==='pack:tshirts').kind,'review','Clothing adjustments are review suggestions, not exclusions');
+assert(patterns.some(x=>x.kind==='addition' && x.label==='Camera'));
+assert(!c.generatorPrefs().refinementProfile?.excluded?.[itemId],'Observation does not silently change defaults');
+await c.packingLearningObserve(auto[0].t,auto[0].state,auto[0].result);assert.equal(Object.keys(c.packingLearningLoad().editTrips).length,5,'Repeated edits still count once per trip');
+delete auto[0].state.overrides.removed[itemId];auto[0].result=c.refineEvaluate(auto[0].state,profile,[]);await c.packingLearningObserve(auto[0].t,auto[0].state,auto[0].result);assert(!c.packingLearningEditRecommendations(c.packingLearningLoad(),profile).some(x=>x.id===itemId),'Undo must withdraw removal evidence');
+auto[0].state.overrides.removed[itemId]=true;auto[0].result=c.refineEvaluate(auto[0].state,profile,[]);await c.packingLearningObserve(auto[0].t,auto[0].state,auto[0].result);
+const cold=fixture('AUTO-COLD',{climate:'cold'});await c.packingLearningObserve(cold.t,cold.state,cold.result);assert.equal(c.packingLearningEditRecommendations(c.packingLearningLoad(),profile).find(x=>x.id===itemId).kind,'review','Contrary contexts block a shared default exclusion');
+await c.packingLearningForgetTrip('AUTO-COLD');await c.packingLearningObserve(cold.t,cold.state,cold.result);assert(!c.packingLearningLoad().editTrips['AUTO-COLD'],'Forgotten trips are not automatically observed again');
+let actual=c.packingLearningLoad();actual.trips.PROVEN=c.packingLearningReport(c.packingLearningSnapshot(auto[4].t,auto[4].state,auto[4].result),[{id:itemId,status:'used'}],false);assert.equal(c.packingLearningEditRecommendations(actual,profile).find(x=>x.id===itemId).kind,'review','Actual-use evidence blocks removal-based default exclusion');
+const editKey=c.packingLearningEditRecommendations(c.packingLearningLoad(),profile).find(x=>x.id===itemId).key;await c.packingLearningApplyEdit(editKey);assert(c.generatorPrefs().refinementProfile.excluded[itemId]);
+await c.packingLearningReset();await c.packingLearningObserve(auto[0].t,auto[0].state,auto[0].result);assert.equal(Object.keys(c.packingLearningLoad().editTrips).length,0,'Reset pauses automatic observation rather than immediately rebuilding history');
+console.log('OK: local automatic edit patterns, undo, protected items, additions, explicit feedback, rule revalidation and sandbox isolation');

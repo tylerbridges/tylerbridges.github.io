@@ -5,6 +5,39 @@ function packingLearningLoad(){
   var saved=lsGet("ta:"+PACK_LEARNING_PATH,null);
   return saved && saved.version===1 && saved.trips ? saved : {version:1,trips:{}};
 }
+// Preparation choices are automatic evidence of edits, never evidence of actual use in Notes.
+function packingLearningObserve(t,state,result){
+  var ledger=packingLearningLoad();if(state.legacy || ledger.observeEdits===false || (ledger.ignoredEditTrips || {})[t.id])return Promise.resolve();
+  var automatic=clone(state);automatic.overrides={removed:{},edited:{},added:{}};
+  var baseline=refineEvaluate(automatic,generatorPrefs(),[]),items={},added={};
+  baseline.items.forEach(function(item){var edited=state.overrides.edited[item.id],change=state.overrides.removed[item.id] ? "removed":edited && (edited.label!==item.label || edited.quantity!==item.quantity || edited.section!==item.section) ? JSON.stringify([edited.label,edited.quantity,edited.section]):"kept";
+    items[item.id]={id:item.id,label:item.label,context:packingLearningContext(state,item),safe:packingLearningSafe(item),change:change};
+  });
+  result.items.filter(function(item){return state.overrides.added[item.id] && !item.legacy;}).forEach(function(item){var id=refineId(item.label);added[id]={label:item.label,quantity:item.quantity,section:item.section};});
+  ledger.editTrips=ledger.editTrips || {};ledger.editTrips[t.id]={name:t.name || t.where,end:state.inputs.end,items:items,added:added,context:packingLearningContext(state,{rule:"added item"}),assumptions:{inputs:clone(state.inputs),refinements:clone(state.refinements)},at:Date.now()};
+  return db.doc(PACK_LEARNING_PATH).set(ledger);
+}
+function packingLearningEditRecommendations(ledger,profile){
+  var buckets={},all={},excluded=profile.refinementProfile && profile.refinementProfile.excluded || {};
+  Object.keys(ledger.editTrips || {}).forEach(function(tripId){var trip=ledger.editTrips[tripId];Object.keys(trip.items).forEach(function(id){var item=trip.items[id],key=JSON.stringify([id,item.context]),row={tripId:tripId,name:trip.name,end:trip.end,at:trip.at,item:item};(buckets[key] || (buckets[key]=[])).push(row);(all[id] || (all[id]=[])).push(row);});});
+  var suggestions=[];
+  Object.keys(buckets).forEach(function(key){var evidence=buckets[key].sort(function(a,b){return String(b.end).localeCompare(String(a.end)) || b.at-a.at || a.tripId.localeCompare(b.tripId);}).slice(0,5);if(evidence.length<5)return;var patterns={};evidence.forEach(function(row){if(row.item.change!=="kept")(patterns[row.item.change] || (patterns[row.item.change]=[])).push(row);});
+    Object.keys(patterns).forEach(function(change){if(patterns[change].length<4)return;var item=evidence[0].item;if(change==="removed" && !evidence.every(function(row){return row.item.safe;}))return;
+      var contrary=all[item.id].some(function(row){return row.item.context!==item.context && (row.item.change!=="removed" || !row.item.safe);}) || Object.values(ledger.trips).some(function(trip){return trip.reviewedAt && ["used","missing"].indexOf((trip.feedback || {})[item.id])>=0;}),kind=change==="removed" && !contrary ? "exclude":"review";
+      if(kind==="exclude" && excluded[item.id])return;suggestions.push({key:"edit:"+key,id:item.id,label:item.label,kind:kind,change:change,count:patterns[change].length,total:evidence.length,evidence:evidence});
+    });
+  });
+  var additions={};Object.keys(ledger.editTrips || {}).forEach(function(tripId){var trip=ledger.editTrips[tripId];Object.keys(trip.added || {}).forEach(function(id){var key=JSON.stringify([id,trip.context]),item=trip.added[id];(additions[key] || (additions[key]=[])).push({tripId:tripId,name:trip.name,item:item,context:trip.context});});});
+  Object.keys(additions).forEach(function(key){var rows=additions[key],context=rows[0].context,opportunities=Object.values(ledger.editTrips).filter(function(trip){return trip.context===context;}).sort(function(a,b){return String(b.end).localeCompare(String(a.end)) || b.at-a.at;}).slice(0,5),recent=rows.filter(function(row){return opportunities.some(function(trip){return ledger.editTrips[row.tripId]===trip;});});if(opportunities.length===5 && recent.length>=3)suggestions.push({key:"add:"+key,label:recent[0].item.label,kind:"addition",count:recent.length,total:5,evidence:recent});});
+  return suggestions;
+}
+function packingLearningApplyEdit(key){
+  var ledger=packingLearningLoad(),profile=generatorPrefs(),suggestion=packingLearningEditRecommendations(ledger,profile).find(function(x){return x.key===key && x.kind==="exclude";});
+  if(!suggestion)return Promise.reject(new Error("This edit pattern no longer supports a default change."));
+  var sample=ledger.editTrips[suggestion.evidence[0].tripId],state=refineNewState({where:"",start:sample.assumptions.inputs.start,end:sample.assumptions.inputs.end});state.inputs=clone(sample.assumptions.inputs);state.refinements=clone(sample.assumptions.refinements);
+  var item=refineEvaluate(state,profile,[]).items.find(function(x){return x.id===suggestion.id;});if(!item || !packingLearningSafe(item))return Promise.reject(new Error("Current rules protect this item or it is no longer automatic."));
+  return db.doc("meta/packing").set(refineExclude(profile,item));
+}
 function packingLearningContext(state,item){
   var i=state.inputs,r=state.refinements;
   // Compare opportunities under like trip assumptions; dates and destination are not identity.
@@ -90,8 +123,8 @@ function packingLearningApply(key){
   if(!item || !packingLearningSafe(item))return Promise.reject(new Error("The current rules protect this item or it is no longer automatic. Review its assumptions instead."));
   return db.doc("meta/packing").set(refineExclude(profile,item));
 }
-function packingLearningReset(){return db.doc(PACK_LEARNING_PATH).set({version:1,trips:{}});}
-function packingLearningForgetTrip(id){var ledger=packingLearningLoad();delete ledger.trips[id];return db.doc(PACK_LEARNING_PATH).set(ledger);}
+function packingLearningReset(){return db.doc(PACK_LEARNING_PATH).set({version:1,trips:{},editTrips:{},observeEdits:false});}
+function packingLearningForgetTrip(id){var ledger=packingLearningLoad();delete ledger.trips[id];if(ledger.editTrips)delete ledger.editTrips[id];ledger.ignoredEditTrips=ledger.ignoredEditTrips || {};ledger.ignoredEditTrips[id]=true;return db.doc(PACK_LEARNING_PATH).set(ledger);}
 function packingLearningContextLabel(snapshot){var i=snapshot.assumptions.inputs,r=snapshot.assumptions.refinements,a=Object.keys(i.activities || {}).filter(function(k){return i.activities[k];});return r.climate+" weather · "+(i.bag==="carryon" ? "carry-on":"checked bag")+" · "+refineDays(i.start,i.end)+" days"+(a.length ? " · "+a.join(", "):"");}
 function packingLearningFeedbackSheet(t,state,result){
   var body=openSheet("Learn from this trip");
@@ -117,11 +150,24 @@ function packingLearningFeedbackSheet(t,state,result){
   f.addEventListener("submit",function(event){event.preventDefault();if(select.value){error.textContent="Add your selected feedback before saving.";return;}save.disabled=true;packingLearningSaveReport(t,state,result,exceptions,used.checked).then(function(){feedbackDraft.clear();packingLearningSheet();}).catch(function(e){save.disabled=false;error.textContent=e.message || "Could not save feedback.";});});
   var feedbackDraft=packingDraftAttach(f,"feedback:"+t.id,JSON.stringify([snapshot.reviewedAt || null,snapshot.items,snapshot.assumptions]),{saveClicks:true,capture:function(){return {exceptions:exceptions};},beforeRestore:function(data){if(data.custom)exceptions=clone(data.custom.exceptions);},onRestore:function(){missingField.hidden=select.value!=="__missing__";draw();}});
 }
+function packingLearningChoiceText(item){if(!item.change)return "added";if(item.change==="kept" || item.change==="removed")return item.change;try{var choice=JSON.parse(item.change);return "changed to "+choice[0]+(choice[1]>1 ? " ×"+choice[1]:"")+" · "+choice[2];}catch(e){return "adjusted manually";}}
+function packingLearningEditPanel(body,ledger,profile){
+  var error=el("p","gen-error");error.setAttribute("role","status");body.appendChild(error);
+  body.appendChild(el("h3",null,"Automatic learning from edits"));body.appendChild(el("p","gen-note","Your saved edits are tracked locally, once per trip. Kept items are comparison opportunities, not proof of use. Patterns suggest changes; defaults only change when you approve. Notes edits are not visible here."));
+  var suggestions=packingLearningEditRecommendations(ledger,profile);if(!suggestions.length)body.appendChild(el("p","muted","No recurring edit pattern yet. Suggestions need five comparable trips: the same change on four, or the same addition on three."));
+  suggestions.forEach(function(s){var box=el("section","panel");box.appendChild(el("strong",null,s.label));box.appendChild(el("p",null,s.count+" of the last "+s.total+" comparable trip setups: "+(s.kind==="addition" ? "added manually":s.change==="removed" ? "removed before export":"same manual adjustment")));var evidence=el("details");evidence.appendChild(el("summary",null,"Inspect saved choices"));s.evidence.forEach(function(row){evidence.appendChild(el("p",null,row.name+" · "+packingLearningChoiceText(row.item)));});box.appendChild(evidence);
+    if(s.kind==="exclude")box.appendChild(generatorButton("Review default change",function(){var confirm=openSheet("Change usual packing default?");confirm.appendChild(el("p",null,"Usually don’t pack "+s.label+"? This changes future automatic lists. Required items remain protected; reset this in Defaults & exclusions."));var error=el("p","gen-error"),apply=generatorButton("Apply default exclusion",function(){apply.disabled=true;packingLearningApplyEdit(s.key).then(function(){packingLearningSheet();render();}).catch(function(e){apply.disabled=false;error.textContent=e.message;});},true);confirm.appendChild(apply);confirm.appendChild(error);confirm.appendChild(generatorButton("Keep current default",packingLearningSheet));}));
+    else box.appendChild(el("p","gen-note",s.kind==="addition" ? "Consider adding this to My usual items. It is not added automatically.":"Review the underlying quantity, bag or trip assumption. Learning will not silently override it."));body.appendChild(box);
+  });
+  var history=el("details","panel");history.appendChild(el("summary",null,"Saved edit history · "+Object.keys(ledger.editTrips || {}).length+" trips"));Object.keys(ledger.editTrips || {}).forEach(function(id){var trip=ledger.editTrips[id],row=el("div");row.appendChild(el("strong",null,trip.name));Object.values(trip.items).filter(function(item){return item.change!=="kept";}).forEach(function(item){row.appendChild(el("p",null,item.label+" · "+packingLearningChoiceText(item)));});Object.values(trip.added || {}).forEach(function(item){row.appendChild(el("p",null,item.label+" · added"));});row.appendChild(generatorButton("Forget this trip’s edit history",function(){packingLearningForgetTrip(id).then(packingLearningSheet).catch(function(){error.textContent="Could not forget edit history.";});}));history.appendChild(row);});body.appendChild(history);
+  body.appendChild(generatorButton(ledger.observeEdits===false ? "Resume automatic learning":"Pause automatic learning",function(){ledger.observeEdits=ledger.observeEdits===false;db.doc(PACK_LEARNING_PATH).set(ledger).then(packingLearningSheet).catch(function(){error.textContent="Could not save the learning setting.";});}));
+}
 function packingLearningSheet(){
   var body=openSheet("Packing learning"),ledger=packingLearningLoad(),profile=generatorPrefs(),suggestions=packingLearningRecommendations(ledger,profile),status=el("p","gen-error");status.setAttribute("role","status");body.appendChild(status);
   body.appendChild(el("p","gen-note","Stored only in this browser. No ChatGPT, model or API calls. The last five explicitly reviewed comparable trips drive suggestions; updating one trip still counts once. Defaults change only when you apply a suggestion."));
+  packingLearningEditPanel(body,ledger,profile);
   if(window.PACK_TEST_MODE)body.appendChild(el("p","gen-step","Sandbox evidence; real trip learning is separate."));
-  body.appendChild(el("h3",null,"Suggested adjustments"));
+  body.appendChild(el("h3",null,"Post-trip feedback suggestions"));
   if(!suggestions.length)body.appendChild(el("p","muted","No recurring pattern yet. Suggestions need five reviewed opportunities: at least four unneeded reports, or three missing reports. Unreviewed trips never count as use."));
   suggestions.forEach(function(suggestion){var box=el("div","panel");box.appendChild(el("strong",null,suggestion.label));box.appendChild(el("p",null,suggestion.count+" of the last "+suggestion.total+" reviewed opportunities: "+(suggestion.kind==="missing" ? "needed more / missing":"not needed")));
     var evidence=el("details");evidence.appendChild(el("summary",null,"Inspect evidence"));suggestion.evidence.concat(suggestion.contrary || []).forEach(function(row){evidence.appendChild(el("p",null,row.name+" · "+row.end+" · "+row.status));evidence.appendChild(el("p","gen-note",packingLearningContextLabel(ledger.trips[row.tripId])));});box.appendChild(evidence);
@@ -133,5 +179,5 @@ function packingLearningSheet(){
   });
   var trips=Object.keys(ledger.trips).filter(function(id){return ledger.trips[id].reviewedAt;});
   var history=el("details","panel");history.appendChild(el("summary",null,"Reviewed trips · "+trips.length));trips.forEach(function(id){var trip=ledger.trips[id],row=el("div","panel");row.appendChild(el("strong",null,trip.name+" · "+trip.end));Object.keys(trip.feedback).forEach(function(itemId){var item=trip.items[itemId];if(item)row.appendChild(el("p",null,item.label+" · "+trip.feedback[itemId]));});row.appendChild(generatorButton("Forget this trip’s feedback",function(){packingLearningForgetTrip(id).then(packingLearningSheet).catch(function(){status.textContent="Could not forget feedback.";});}));history.appendChild(row);});body.appendChild(history);
-  body.appendChild(generatorButton("Reset learning history",function(){var confirm=openSheet("Reset packing learning?");confirm.appendChild(el("p",null,"Delete captured lists and feedback history from this browser? Existing trips, manual edits and applied profile defaults stay saved."));var failure=el("p","gen-error");confirm.appendChild(failure);var reset=generatorButton("Reset learning history",function(){reset.disabled=true;packingLearningReset().then(packingLearningSheet).catch(function(){reset.disabled=false;failure.textContent="Could not reset learning.";});},true);confirm.appendChild(reset);confirm.appendChild(generatorButton("Keep history",packingLearningSheet));}));
+  body.appendChild(generatorButton("Reset learning history",function(){var confirm=openSheet("Reset packing learning?");confirm.appendChild(el("p",null,"Delete captured lists, automatic edit patterns and feedback history? Automatic observation will pause until you resume it. Existing trips, manual edits and applied profile defaults stay saved."));var failure=el("p","gen-error");confirm.appendChild(failure);var reset=generatorButton("Reset learning history",function(){reset.disabled=true;packingLearningReset().then(packingLearningSheet).catch(function(){reset.disabled=false;failure.textContent="Could not reset learning.";});},true);confirm.appendChild(reset);confirm.appendChild(generatorButton("Keep history",packingLearningSheet));}));
 }
