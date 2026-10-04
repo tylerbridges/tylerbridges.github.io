@@ -1068,11 +1068,13 @@
   //   the first time and on resize, so it never animates in from nowhere
   function movePill(animate) {
     var n = $("nav"), on = n.querySelector(".chip.on"), p = n.querySelector(".navpill"); if (!on || !p || !on.offsetWidth) return;
+    // the slide/squash only runs for a tab change; every other placement (load, resize, the bar shrinking or growing)
+    //   snaps, and the transition is switched on again only at the moment of the next tab change
     if (!animate) n.classList.remove("anim");
+    else if (!n.classList.contains("anim")) { n.classList.add("anim"); void p.offsetWidth; }
     p.style.width = on.offsetWidth + "px"; p.style.transform = "translateX(" + on.offsetLeft + "px)";
     if (animate) { p.classList.remove("go"); void p.offsetWidth; p.classList.add("go"); }
     n.classList.add("pilled");
-    if (!animate) requestAnimationFrame(function () { requestAnimationFrame(function () { n.classList.add("anim"); }); });
     if (n.scrollWidth > n.clientWidth) on.scrollIntoView({ block: "nearest", inline: "nearest", behavior: animate ? "smooth" : "auto" });
   }
   // auto-fit to the screen: the place name and the tab labels start from their CSS size (which already scales with
