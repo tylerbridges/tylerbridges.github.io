@@ -212,3 +212,13 @@ h2.k,.gen-opt h3,.psec-head h3,details.panel>summary{font-size:var(--t-foot);let
 [hidden]{display:none!important;}
 
 .gen-pref-row{flex-wrap:wrap;}.gen-pref-row>input[type=text]{width:auto;flex:1 1 120px;}.gen-pref-row>.chipchk{min-height:44px;flex:0 0 auto;}.gen-pref-row>.gen-note{flex-basis:100%;}
+
+/* Standalone app: compact, central trip decisions with focused editors. */
+.trip-plan-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0;}
+.trip-plan-card{display:flex;flex-direction:column;gap:7px;min-width:0;min-height:112px;width:100%;padding:14px;border:1px solid var(--line);border-radius:18px;background:var(--surface);color:var(--ink);font:inherit;text-align:left;text-decoration:none;cursor:pointer;overflow-wrap:anywhere;}
+.trip-plan-card:hover{border-color:var(--accent);}.trip-plan-card:focus-visible{outline:3px solid var(--accent);outline-offset:3px;}
+.trip-plan-title{font-size:15px;line-height:1.25;}.trip-plan-summary{font-size:13px;line-height:1.45;color:var(--ink-2);}.trip-plan-status{font-size:12px;line-height:1.35;color:var(--accent);margin-top:auto;}
+.trip-plan-wide{grid-column:1/-1;min-height:96px;}.trip-plan-card.needs-attention{border-color:var(--accent);background:var(--accent-soft);}
+.trip-plan-progress{font-size:13px;color:var(--ink-2);margin:8px 0;}.rs-optional>summary{cursor:pointer;font-weight:600;min-height:44px;display:list-item;align-content:center;}.rs-optional[open]>summary{margin-bottom:10px;}
+.trip-plan-confirm{display:block;font-size:12px;color:var(--accent);margin-top:4px;}.sheet-body .btn.needs-attention{border-color:var(--accent);}
+.rs-opt-summary{display:block;font-size:13px;line-height:1.45;font-weight:400;color:var(--ink-2);margin:4px 0 0 18px;overflow-wrap:anywhere;}
