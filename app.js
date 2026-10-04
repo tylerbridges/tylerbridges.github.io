@@ -1292,7 +1292,7 @@
     el.innerHTML = '<div class="oqh oqrow"><span class="oqseg">' + chip("data-oqk", "qpf", "Precip", OQ.k === "qpf") + chip("data-oqk", "snow", "Snow", OQ.k === "snow") + chip("data-oqk", "ice", "Ice", OQ.k === "ice") + "</span>" +
       '<span class="oqseg">' + chip("data-oqp", 24, OQ.k === "qpf" ? "24 hr" : "Day 1", OQ.p === 24) + chip("data-oqp", 48, OQ.k === "qpf" ? "48 hr" : "Day 2", OQ.p === 48) + "</span>" +
       (OQ.k === "snow" ? '<span class="oqseg">' + ["04", "08", "12"].map(function (t) { return chip("data-oqt", t, +t + '"+', OQ.th === t); }).join("") + "</span>" : "") + "</div>" +
-      (window.WXOfficial ? '<div class="oqwrap" id="oqwrap"><span class="mfr num" id="oqper">' + esc(per) + '</span></div><div class="oqcap" id="oqleg">' + esc(WXOfficial.caption(OQ)) + "</div>"
+      (window.WXOfficial ? '<div class="mleg oqkey" id="oqkey">' + WXOfficial.legend(OQ) + '</div><div class="oqwrap" id="oqwrap"><span class="mfr num" id="oqper">' + esc(per) + '</span></div><div class="oqcap" id="oqleg">' + esc(WXOfficial.caption(OQ)) + "</div>"
         : '<div class="oqimg" id="oqimg"><img src="' + img + bust + '" alt="' + esc(cap) + '"><span class="mfr num">' + esc(per) + "</span></div>") +
       '<div class="oqnote"><b>' + esc(cap) + "</b> · NWS Weather Prediction Center · " + '<a href="' + WPC + (OQ.k === "qpf" ? "qpf/qpf2.shtml" : "wwd/winter_wx.shtml") + '" target="_blank" rel="noopener">Source</a></div>' +
       (amt ? '<details class="oq-local"><summary>Local forecast amounts</summary>' + amt + '</details>' : '');
@@ -1301,7 +1301,7 @@
     regions.setAttribute("role", "group"); regions.setAttribute("aria-label", "NWS map extent");
     mapBox.after(regions); regions.after(controls);
     var imgOk = function (box) {
-      regions.hidden = true;
+      regions.hidden = true; var key = $("oqkey"); if (key) key.remove();
       box.className = "oqimg"; box.id = "oqimg"; box.innerHTML = '<img src="' + img + bust + '" alt="' + esc(cap) + '"><span class="mfr num">' + esc(per) + "</span>";
       var im = box.querySelector("img"); im.onerror = function () { box.innerHTML = '<div class="mmsg">This map isn\'t available right now.</div>'; };
     };

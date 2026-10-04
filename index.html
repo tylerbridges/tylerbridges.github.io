@@ -940,6 +940,11 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
 .model-view .mlbar{height:8px}
 .model-view .mlticks{height:13px;font-size:9.5px}
 .mlone .mlunit{flex:none;margin:0;font-size:10px;line-height:8px;color:var(--muted)}
+/* the NWS map's colour key: same fixed-height one-line key as the model maps */
+.oqkey{box-sizing:border-box;height:38px;padding:6px 12px 4px;display:flex;align-items:center;overflow:hidden}
+.oqkey > *{flex:1;min-width:0}
+.oqkey .mlbar{height:8px}.oqkey .mlticks{height:13px;font-size:9.5px}
+.oqkey .mltypes{gap:2px 12px;align-content:center}.oqkey .mlrow{font-size:11px}.oqkey .mlrow i{width:22px;height:9px}
 /* compact model controls (Oct 4): no hour-step row, no source line, no sub-label under the time; smaller buttons.
    #mprev/#mnext stay in the page (hidden) so the arrow keys still step hours */
 .forecast-workspace .model-caption{display:none}
@@ -1098,13 +1103,13 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=125"></script>
-<script src="wx-live.js?v=125"></script>
-<script src="wx-scenarios.js?v=125"></script>
-<script src="wx-vmap.js?v=125"></script>
-<script src="wx-radar.js?v=125"></script>
-<script src="wx-models.js?v=125"></script>
-<script src="wx-official.js?v=125"></script>
-<script src="app.js?v=125"></script>
+<script src="wx-normalize.js?v=126"></script>
+<script src="wx-live.js?v=126"></script>
+<script src="wx-scenarios.js?v=126"></script>
+<script src="wx-vmap.js?v=126"></script>
+<script src="wx-radar.js?v=126"></script>
+<script src="wx-models.js?v=126"></script>
+<script src="wx-official.js?v=126"></script>
+<script src="app.js?v=126"></script>
 </body>
 </html>

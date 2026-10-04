@@ -24,6 +24,23 @@
   var VM = root.WXVMap, D2R = Math.PI / 180, TS = 256, K = 1e4, TTL = 30 * 60000;
   var QL = [0.01, 0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5, 7, 10, 15, 20]; // WPC's contour levels
   var CATL = [null, "10%", "40%", "70%"], CATLONG = [null, "10–39%", "40–69%", "70%+"];
+  // colour scale (Oct 4: colours instead of county numbers by default): precipitation by inches on the same scale as the
+  //   model maps' total precipitation; snow and ice chances in three shades per category
+  var QCOL = [[0.01, "#c4ecc0"], [0.1, "#7ccb78"], [0.25, "#2fa84f"], [0.5, "#17733a"], [0.75, "#2b8cbe"], [1, "#1f5fb5"], [1.5, "#5b3fb3"], [2, "#932fae"], [3, "#cf3f8b"], [4, "#e8742f"], [6, "#f2b134"], [10, "#fff1a8"]];
+  var SCOL = [null, "#9cc8ec", "#2f6fc4", "#6a3fb5"], ICOL = [null, "#ee9fcd", "#c43f96", "#5b1667"];
+  function qcol(inches) { var c = QCOL[0][1]; QCOL.forEach(function (q) { if (inches >= q[0] - 1e-9) c = q[1]; }); return c; }
+  function bandCol(v, qpf, ice) { return qpf ? qcol(QL[v - 1]) : (ice ? ICOL : SCOL)[Math.min(3, v)]; }
+  // the key above the map, in the model maps' one-line style
+  function legend(st) {
+    if (st.k === "qpf") {
+      var n = QCOL.length - 1, every = 2;
+      return '<div class="mlone"><div class="mlscale"><div class="mlbar">' + QCOL.slice(0, n).map(function (q) { return '<b style="background:' + q[1] + '"></b>'; }).join("") + "</div>" +
+        '<div class="mlticks">' + QCOL.map(function (q, i) { return i % every && i !== n ? "" : '<span style="left:' + (i / n * 100).toFixed(2) + '%">' + (q[0] < 1 ? q[0].toFixed(2) : q[0]) + "</span>"; }).join("") + "</div></div><span class=\"mlunit\">in</span></div>";
+    }
+    var C = st.k === "ice" ? ICOL : SCOL;
+    return '<div class="mltypes">' + [1, 2, 3].map(function (k) { return '<div class="mlrow"><i style="background:' + C[k] + '"></i><span>' + CATLONG[k] + "</span></div>"; }).join("") +
+      '<div class="mlrow"><span>chance of ' + (st.k === "ice" ? '0.25"+ ice' : +st.th + '"+ snow') + "</span></div></div>";
+  }
   // rasterised WPC grid: covers CONUS and nearby waters
   var GX0 = -130, GY1 = 55, GR = 0.04, GW = 1750, GH = 900;
 
@@ -92,7 +109,7 @@
   }
   // band index (1-based; 0 = none) per 0.04° cell
   function prepProduct(fs, f, key) {
-    var d = { key: key, qpf: f === "qpf", start: null, end: null, issue: null, grid: null, vals: {}, rng: {} };
+    var d = { key: key, qpf: f === "qpf", start: null, end: null, issue: null, grid: null, vals: {}, rng: {}, bands: [] };
     var cv = document.createElement("canvas"); cv.width = GW; cv.height = GH;
     var cx = cv.getContext("2d"); cx.setTransform(1 / GR, 0, 0, -1 / GR, -GX0 / GR, GY1 / GR);
     fs.forEach(function (ft) {
@@ -105,6 +122,7 @@
       var p = new Path2D();
       ft.geometry.rings.forEach(function (r) { r.forEach(function (q, i) { if (i) p.lineTo(q[0], q[1]); else p.moveTo(q[0], q[1]); }); p.closePath(); });
       cx.fillStyle = "rgb(" + v * 12 + ",0,0)"; cx.fill(p, "evenodd");
+      var sh = shape(ft.geometry); if (sh) d.bands.push({ v: v, path: sh.path, bb: sh.bb });
     });
     var px = cx.getImageData(0, 0, GW, GH).data, g = new Uint8Array(GW * GH);
     for (var i = 0; i < g.length; i++) g[i] = Math.round(px[4 * i] / 12); // edge pixels blend between neighbouring bands
@@ -182,7 +200,7 @@
   var W = 0, HH = 0, M = 0, SW = 0, SH = 0, dpr = 1, view = { x: 0, y: 0, z: 6.6 }, drawn = null, raf = 0;
   var loc = null, cur = { k: "qpf", p: 24, th: "04" }, data = null, gen = 0, on = false;
   // map settings (gear menu, saved as wx-oqset): place names, county lines, number size, map colours, 0 for dry counties
-  var SET = { cities: true, lines: true, size: "m", theme: "auto", zeros: false }, setEl = null, gear = null;
+  var SET = { cities: true, lines: true, nums: false, size: "m", theme: "auto", zeros: false }, setEl = null, gear = null;
   try { var sv = JSON.parse(localStorage.getItem("wx-oqset") || "null"); if (sv) Object.keys(SET).forEach(function (k) { if (sv[k] != null) SET[k] = sv[k]; }); } catch (e) {}
   function saveSet() { try { localStorage.setItem("wx-oqset", JSON.stringify(SET)); } catch (e) {} }
   function isDark() { return SET.theme === "dark" ? true : SET.theme === "light" ? false : dark(); }
@@ -196,9 +214,10 @@
     setEl.innerHTML = '<div class="oqst">Map settings</div>' +
       setRow("Cities &amp; towns", "cities", [[true, "Show"], [false, "Hide"]]) +
       setRow("County lines", "lines", [[true, "Show"], [false, "Hide"]]) +
-      setRow("Number size", "size", [["s", "S"], ["m", "M"], ["l", "L"]]) +
+      setRow("County amounts", "nums", [[false, "Hide"], [true, "Show"]]) +
+      (SET.nums ? setRow("Number size", "size", [["s", "S"], ["m", "M"], ["l", "L"]]) : "") +
       setRow("Map colors", "theme", [["auto", "Auto"], ["light", "Light"], ["dark", "Dark"]]) +
-      setRow("Dry counties", "zeros", [[false, "Blank"], [true, "Show 0"]]);
+      (SET.nums ? setRow("Dry counties", "zeros", [[false, "Blank"], [true, "Show 0"]]) : "");
   }
   function mk(t, c, p) { var e = document.createElement(t); e.className = c; p.appendChild(e); return e; }
   function setup() {
@@ -244,6 +263,9 @@
     var list = Object.keys(counties).map(function (f) { return counties[f]; }).filter(function (c) { return vis(c.bb); });
     cx.setTransform(k, 0, 0, k, (SW / 2 - drawn.x * s) * dpr, (SH / 2 - drawn.y * s) * dpr);
     cx.lineJoin = "round";
+    // the forecast as colour bands (WPC's own polygons, exclusive bands with holes)
+    if (data && data.bands) data.bands.forEach(function (b) { if (!vis(b.bb)) return; cx.globalAlpha = 0.88; cx.fillStyle = bandCol(b.v, data.qpf, cur.k === "ice"); cx.fill(b.path, "evenodd"); });
+    cx.globalAlpha = 1;
     // county lines, then state lines over them
     if (drawn.z >= 4.6 && SET.lines) {
       var cp = new Path2D(); list.forEach(function (c) { cp.addPath(c.path); });
@@ -260,7 +282,7 @@
       cx.setTransform(1, 0, 0, 1, 0, 0); return r || avoid;
     };
     var boxes = vm ? po({ city: 1 }, []) : [];
-    if (data) boxes = labels(list, ink, dk, boxes);
+    if (data && SET.nums) boxes = labels(list, ink, dk, boxes); // county numbers only when turned on in Map settings
     if (vm) po({ town: 1, village: 1 }, boxes);
     if (loc) {
       var m = toScr(loc.lat, loc.lon);
@@ -380,8 +402,8 @@
 
   // one line under the map saying what the numbers are (no colour key)
   function caption(s) {
-    if (s.k === "qpf") return "Numbers: each county's average forecast precipitation, inches of liquid (rain + melted snow); <0.10 = 0.01 to 0.10. Tap a county for its range.";
-    return "Numbers: each county's chance of " + (s.k === "ice" ? '0.25"+ ice' : +s.th + '"+ snow') + " (10% = 10–39%, 40% = 40–69%, 70% = 70%+). Blank or 0%: under 10%.";
+    if (s.k === "qpf") return "Colours: official forecast precipitation, inches of liquid (rain + melted snow). Tap a county for its range and average.";
+    return "Colours: official chance of " + (s.k === "ice" ? '0.25"+ ice' : +s.th + '"+ snow') + ". Tap a county for its chance.";
   }
 
   // show(host, place, { k, p, th }) → Promise of { start, end, issue } once drawn; rejects if the data can't load
@@ -407,7 +429,7 @@
     }, function (e) { if (g === gen) { data = null; status(""); } throw e; });
   }
   root.WXOfficial = {
-    show: show, caption: caption,
+    show: show, caption: caption, legend: legend,
     hide: function () { on = false; },
     // for check.html: fetch and parse one product without drawing it
     _probe: function (s) { return loadProduct(layerOf(s)).then(function (d) { return { start: d.start, end: d.end, issue: d.issue }; }); },
