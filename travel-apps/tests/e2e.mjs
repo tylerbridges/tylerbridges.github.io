@@ -14,10 +14,10 @@ let apiCalls=0;p.on('request',q=>{if(/api\.(anthropic|openai)\.com/.test(q.url()
 p.on("pageerror", e => errs.push(e.message)); p.on("console", m => { if (m.type() === "error" && !/fonts\.g/.test(m.text())) errs.push(m.text()); });
 try {
   await p.goto(B + "packing-list/"); await p.click('button:has-text("My preferences")');
-  await p.locator('.gen-pref-item').filter({hasText:/^Kindle$/}).locator('input').uncheck(); await p.fill('#gp-custom','Medicine pouch');
+  await p.locator('.gen-pref-item').filter({hasText:/^Snacks$/}).locator('input').uncheck(); await p.fill('#gp-custom','Medicine pouch');
   await p.click('button:has-text("Save my preferences")'); await p.waitForSelector('.sheet-bg',{state:'detached'});
   await p.click('button:has-text("My preferences")');
-  if (await p.locator('.gen-pref-item').filter({hasText:/^Kindle$/}).locator('input').isChecked()) fail('preference exclusion not saved');
+  if (await p.locator('.gen-pref-item').filter({hasText:/^Snacks$/}).locator('input').isChecked()) fail('preference exclusion not saved');
   await p.click('button:has-text("Close")'); await p.click("text=Generate a packing list");
   async function mobileLayout(){ for (const width of [360,390,430]){ for (const colorScheme of ['light','dark']){
     await p.setViewportSize({width,height:844}); await p.emulateMedia({colorScheme});
@@ -30,14 +30,20 @@ try {
   const labels = () => p.$$eval('.refine-item strong', n => n.map(x => x.textContent));
   const initial = await labels();
   if (!initial.includes("Socks ×9") || !initial.includes("Contacts ×10")) fail("initial quantities");
-  if (initial.includes('Kindle') || !initial.includes('Medicine pouch')) fail('saved preferences not used');
+  if (initial.includes('Snacks') || !initial.includes('Medicine pouch')) fail('saved preferences not used');
   if(initial.includes('Small collapsible backpack'))fail('daypack included by default');
+  for(const label of ['Kindle','Hotspot','Belkin charging pad','Garmin','Garmin charger','Extra phone case'])if(initial.includes(label))fail('optional item included by default: '+label);
+  await p.click('button:has-text("Extras:")');await p.check('#rf-extra-garmin');await p.check('#rf-extra-kindle');await p.click('button:has-text("Apply & recalculate")');await p.waitForSelector('.sheet-bg',{state:'detached'});
+  if(!(await labels()).includes('Garmin') || !(await labels()).includes('Garmin charger') || !(await labels()).includes('Kindle'))fail('selected extras missing');
+  await p.reload();await p.waitForSelector('#rr-export');if(!(await labels()).includes('Garmin charger'))fail('selected extras lost on reload');
+  await p.click('button:has-text("Extras:")');await p.uncheck('#rf-extra-garmin');await p.uncheck('#rf-extra-kindle');await p.click('button:has-text("Apply & recalculate")');await p.waitForSelector('.sheet-bg',{state:'detached'});if((await labels()).includes('Garmin charger') || (await labels()).includes('Kindle'))fail('deselected extras retained');
+
   if(!initial.includes('Lulu shorts ×3') || !initial.includes('T-shirts ×4'))fail('daily workouts must share regular clothes with full shorts coverage');
   if(await p.locator('[data-item-id="pack:light-packable-puffer-jacket"]').evaluate(n=>n.closest('section').querySelector('h3').textContent)!=='Clothing')fail('carry-on moved puffer');
   if(await p.locator('.refine-item summary').count())fail('row explanations returned');
   await p.click('button:has-text("Packing rules")');if(!(await p.textContent('.sheet-body')).includes('Workouts most days'))fail('workout rules not inspectable');await p.click('button:has-text("Close")');
 
-  for(const [name,ids] of [['Packing',['rf-packing']],['Bag',['rf-bag']],['Weather',['rf-climate','rf-thermal','rf-rain']],['Activities',['rf-hike','rf-workout','rf-water','rf-fish','rf-daypack','rf-rugged']],['Events',['rf-formal','rf-dinners']],['Flight',['rf-longFlight']],['Laundry',['rf-laundry','rf-first','rf-interval']]]){
+  for(const [name,ids] of [['Packing',['rf-packing']],['Extras',['rf-extra-kindle','rf-extra-hotspot','rf-extra-chargingPad','rf-extra-garmin','rf-extra-phoneCase']],['Bag',['rf-bag']],['Weather',['rf-climate','rf-thermal','rf-rain']],['Activities',['rf-hike','rf-workout','rf-water','rf-fish','rf-daypack','rf-rugged']],['Events',['rf-formal','rf-dinners']],['Flight',['rf-longFlight']],['Laundry',['rf-laundry','rf-first','rf-interval']]]){
     await p.click(`button:has-text("${name}:")`);
     const actual=await p.locator('.sheet-body input, .sheet-body select').evaluateAll(nodes=>nodes.map(n=>n.id));
     if(JSON.stringify(actual)!==JSON.stringify(ids))fail(`${name} editor contains unrelated fields`);
@@ -64,18 +70,18 @@ try {
   if(!await p.evaluate(()=>window.testWorkSection===[...document.querySelectorAll('section.panel')].find(n=>n.querySelector('h3')?.textContent==='Work')))fail('unaffected work section was replaced');
   await p.reload(); await p.waitForSelector('#rr-export'); if (!(await labels()).includes('Socks ×7')) fail('override lost after reload');
   await p.locator('[data-item-id="pack:socks"]').getByRole('button',{name:'Return to automatic',exact:true}).click(); await p.waitForFunction(()=>document.querySelector('[data-item-id="pack:socks"] strong').textContent==='Socks ×5');
-  await p.locator('[data-item-id="pack:hotspot"]').getByRole('button',{name:'Remove',exact:true}).click(); await p.click('button:has-text("Usually don’t pack this")'); await p.waitForSelector('.sheet-bg',{state:'detached'});
-  if ((await labels()).includes('Hotspot')) fail('default exclusion not applied');
-  await p.click('button:has-text("Defaults & exclusions")'); if (!/Hotspot/.test(await p.textContent('.sheet-body'))) fail('default exclusion not inspectable');
+  await p.locator('[data-item-id="pack:wrinkle-release"]').getByRole('button',{name:'Remove',exact:true}).click(); await p.click('button:has-text("Usually don’t pack this")'); await p.waitForSelector('.sheet-bg',{state:'detached'});
+  if ((await labels()).includes('Wrinkle release')) fail('default exclusion not applied');
+  await p.click('button:has-text("Defaults & exclusions")'); if (!/Wrinkle release/.test(await p.textContent('.sheet-body'))) fail('default exclusion not inspectable');
   await p.click('button:has-text("Close")');
-  await p.locator('.refine-changes').getByRole('button',{name:'Undo',exact:true}).click(); await p.waitForFunction(()=>!!document.querySelector('[data-item-id="pack:hotspot"]'));
-  const prefs = await p.evaluate(()=>JSON.parse(localStorage.getItem('ta:meta/packing'))); if (prefs.refinementProfile?.excluded?.['pack:hotspot']) fail('Undo failed to restore profile default');
+  await p.locator('.refine-changes').getByRole('button',{name:'Undo',exact:true}).click(); await p.waitForFunction(()=>!!document.querySelector('[data-item-id="pack:wrinkle-release"]'));
+  const prefs = await p.evaluate(()=>JSON.parse(localStorage.getItem('ta:meta/packing'))); if (prefs.refinementProfile?.excluded?.['pack:wrinkle-release']) fail('Undo failed to restore profile default');
   await p.evaluate(()=>{window.originalStorageWrite=Storage.prototype.setItem;Storage.prototype.setItem=function(key,value){if(key.endsWith('/pack_meta/refinement'))throw new DOMException('Test storage quota','QuotaExceededError');return window.originalStorageWrite.call(this,key,value);};});
   await p.locator('[data-item-id="pack:socks"]').getByRole('button',{name:'Edit',exact:true}).click();await p.fill('#ri-quantity','99');await p.click('button:has-text("Save override")');await p.waitForSelector('.refine-error');
   if(!(await labels()).includes('Socks ×5'))fail('failed storage save changed the visible list');await p.click('button:has-text("Close")');
-  await p.locator('[data-item-id="pack:hotspot"]').getByRole('button',{name:'Remove',exact:true}).click();await p.click('button:has-text("Usually don’t pack this")');
+  await p.locator('[data-item-id="pack:wrinkle-release"]').getByRole('button',{name:'Remove',exact:true}).click();await p.click('button:has-text("Usually don’t pack this")');
   await p.waitForFunction(()=>document.querySelector('#view .gen-error')?.textContent.includes('rolled back'));
-  if(await p.evaluate(()=>!!JSON.parse(localStorage.getItem('ta:meta/packing')).refinementProfile?.excluded?.['pack:hotspot']))fail('default was not rolled back after a failed trip save');
+  if(await p.evaluate(()=>!!JSON.parse(localStorage.getItem('ta:meta/packing')).refinementProfile?.excluded?.['pack:wrinkle-release']))fail('default was not rolled back after a failed trip save');
   await p.click('button:has-text("Close")');await p.evaluate(()=>{Storage.prototype.setItem=window.originalStorageWrite;});
   await p.locator('[data-item-id="pack:work-computer"]').getByRole('button',{name:'Remove',exact:true}).click(); await p.click('button:has-text("Remove for this trip")'); await p.waitForSelector('.sheet-bg',{state:'detached'});
   await p.reload(); await p.waitForSelector('#rr-export'); if ((await labels()).includes('Work computer')) fail('trip removal lost on reload');

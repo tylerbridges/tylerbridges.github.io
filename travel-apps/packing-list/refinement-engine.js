@@ -1,6 +1,16 @@
 "use strict";
 // Standalone app: pure rule groups return item contributions; display text is never the source of quantities.
 var REFINE_ORDER = ["Wear to travel","Clothing","Personal bag & day gear","Toiletries","Formal wear","Work","Gear","Before leaving"];
+// Standalone app: trip extras are opt-in; Garmin and its charger are one choice.
+var REFINE_EXTRAS=[
+  {key:"kindle",label:"Kindle",items:["Kindle"]},
+  {key:"hotspot",label:"Hotspot",items:["Hotspot"]},
+  {key:"chargingPad",label:"Belkin charging pad",items:["Belkin charging pad"]},
+  {key:"garmin",label:"Garmin + charger",items:["Garmin","Garmin charger"]},
+  {key:"phoneCase",label:"Extra phone case",items:["Extra phone case"]}
+];
+function refineOptionalKey(label){var id=refineId(label),found=REFINE_EXTRAS.find(function(choice){return choice.items.some(function(item){return refineId(item)===id;});});return found ? found.key : null;}
+function refineExtras(state){var out=[];REFINE_EXTRAS.forEach(function(choice){if(state.refinements.extraItems[choice.key])choice.items.forEach(function(label){out.push(refineItem(label,"Personal bag & day gear","Selected trip extra: "+choice.label,{required:true}));});});return out;}
 function refineDays(start,end){
   if(!/^\d{4}-\d{2}-\d{2}$/.test(start || "") || !/^\d{4}-\d{2}-\d{2}$/.test(end || ""))throw new Error("Set valid trip dates before generating.");
   var a=Date.parse(start+"T00:00:00Z"),b=Date.parse(end+"T00:00:00Z");
@@ -39,7 +49,7 @@ function refineDefaults(state,profile,c){
   var out = [];
   var optional = /^(kindle|snacks|extra phone case|hotspot|belkin charging pad|wrinkle release|lint roller)$/i;
   (profile.extras || PACK_PREFS.extras).forEach(function(g){ (g.items || []).forEach(function(label){
-    if (qtyKey(label) || refineId(label) === "daypack") return;
+    if (qtyKey(label) || refineId(label) === "daypack" || refineOptionalKey(label)) return;
     var item = refineItem(label,g.title,"Your usual packing preferences",{optional:optional.test(qtyBase(label))});
     out.push(item);
   }); });
@@ -98,6 +108,7 @@ function refineWork(state,profile,c){
 function refineConsumables(state,profile,c){ return [refineItem("Contacts","Toiletries","Full trip plus two days, rounded to a multiple of five",{quantity:5*Math.ceil((c.days+2)/5),critical:true}),refineItem("Liquids quart bag (travel-size)","Toiletries","Your travel-size liquids rule applies on every trip",{required:true})]; }
 var REFINE_RULES = {
   clothing:{deps:["dates","laundry","packingMode","climate","thermal","activities"],run:refineClothing},
+  extras:{deps:["extraItems"],run:refineExtras},
   defaults:{deps:["profile"],run:refineDefaults},
   layers:{deps:["climate","thermal","rain"],run:refineLayers},
   activities:{deps:["activities","climate","thermal","rain","dates","laundry","packingMode","intl","mode","longFlight","ruggedHike","daypack","profile"],run:refineActivities},
@@ -111,7 +122,7 @@ function refineEvaluate(state,profile,changed){
   var c = refineContext(state), signature = JSON.stringify(profile), cache = {}, keys = {}, ran = [];
   // Standalone app: cache validity comes from actual dependency values, never caller hints alone.
   Object.keys(REFINE_RULES).forEach(function(id){var rule=REFINE_RULES[id];
-    keys[id]="preferences-2026-10-v2:"+JSON.stringify(rule.deps.map(function(key){if(key==="profile")return profile;if(key==="dates")return [state.inputs.start,state.inputs.end];return Object.prototype.hasOwnProperty.call(state.inputs,key) ? state.inputs[key] : state.refinements[key];}));
+    keys[id]="preferences-2026-10-v3:"+JSON.stringify(rule.deps.map(function(key){if(key==="profile")return profile;if(key==="dates")return [state.inputs.start,state.inputs.end];return Object.prototype.hasOwnProperty.call(state.inputs,key) ? state.inputs[key] : state.refinements[key];}));
     if(!state.ruleResults || !state.ruleResults[id] || !state.ruleKeys || state.ruleKeys[id]!==keys[id]){cache[id]=rule.run(state,profile,c);ran.push(id);}else cache[id]=state.ruleResults[id];
   });
   var merged = {}, order = [], excluded = profile.refinementProfile && profile.refinementProfile.excluded || {};
