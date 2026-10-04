@@ -171,8 +171,9 @@
       document.body.appendChild(f);
       function finish() { (w && w.__errs || []).forEach(function (e) { res.fails.push("script error: " + e); }); f.remove(); resolve(res); }
       function wide(t) { try { if (d.documentElement.scrollWidth > w.innerWidth + 1) res.warns.push("page wider than the screen on " + t); } catch (e) {} }
-      function openTab(t, cond, label, ms) {
+      function openTab(t, cond, label, ms, mapMode) {
         d.querySelector('#nav [data-tab="' + t + '"]').click();
+        if (mapMode) d.querySelector('[data-forecast-mode="' + mapMode + '"]').click();
         return poll(cond, ms || 5000).then(function (ok) { res.tabs.push(t + (ok ? "✓" : "✗")); if (!ok) res.fails.push(label + " is empty"); wide(t); return ok; });
       }
       f.onload = function () {
@@ -184,7 +185,7 @@
           return openTab("daily", function () { return d.querySelectorAll("#strip2 .ccard").length >= 6; }, "Daily tab")
             .then(function () { return openTab("hourly", function () { return d.querySelectorAll("#gin .pan").length >= 4; }, "Hourly tab"); })
             // Maps tab: the model map (wx-models.js) draws its first frame from NOAA's model files
-            .then(function () { return MOCK ? null : openTab("maps", function () { var m = w.WXModels && w.WXModels._state(); return m && (m.ready || m.err); }, "Maps tab", 30000); })
+            .then(function () { return MOCK ? null : openTab("maps", function () { var m = w.WXModels && w.WXModels._state(); return m && (m.ready || m.err); }, "Maps tab", 30000, "models"); })
             .then(function () {
               var m = !MOCK && w.WXModels && w.WXModels._state(); if (!m) return;
               res.model = m.model.toUpperCase() + " " + m.param + (m.ready ? " drawn" : " failed: " + (m.err || "timeout"));
@@ -193,6 +194,7 @@
             // Official precipitation card: WPC's polygons drawn by wx-official.js (or WPC's image if the map service failed)
             .then(function () {
               if (MOCK) return null;
+              d.querySelector('[data-forecast-mode="nws"]').click();
               return poll(function () { return d.querySelector("#oqwrap canvas") && !d.querySelector("#oqwrap .mmstat:not([hidden])") || d.getElementById("oqimg"); }, 30000).then(function (ok) {
                 var drawn = !!d.querySelector("#oqwrap canvas"), per = (d.getElementById("oqper") || {}).textContent || "";
                 res.official = !ok ? "timed out" : drawn ? "drawn " + per : "WPC image (map service unavailable)";
@@ -239,6 +241,8 @@
   // every Maps product, first and last frame, local and national where offered
   function sweepImages(d, res) {
     d.querySelector('#nav [data-tab="maps"]').click();
+    d.querySelector('[data-forecast-mode="nws"]').click();
+    var extra = d.getElementById("forecast-extra"); extra.open = true; extra.dispatchEvent(new Event("toggle"));
     var cats = [].map.call(d.querySelectorAll("#mcats [data-mcat]"), function (b) { return b.dataset.mcat; }), jobs = [], results = [];
     cats.forEach(function (c) {
       d.querySelector('#mcats [data-mcat="' + c + '"]').click();

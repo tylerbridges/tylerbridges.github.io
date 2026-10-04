@@ -1049,6 +1049,7 @@
     if (t === "now" || t === "obs") t = "daily"; // Now and Daily are one tab; the Observations tab was dropped (Past 72 hours card on Daily)
     if (!$("nav").querySelector('[data-tab="' + t + '"]')) t = "daily";
     var changed = t !== tab; tab = t;
+    document.querySelector(".wrap").classList.toggle("forecast-wide", t === "maps");
     document.querySelectorAll("#nav .chip").forEach(function (c) { c.classList.toggle("on", c.dataset.tab === t); });
     movePill(changed);
     document.querySelectorAll("section[data-tab]").forEach(function (s) {
@@ -1213,12 +1214,39 @@
 
   // ---------- model maps (wx-models.js) ----------
   // Pivotal Weather–style maps drawn in the browser from NOAA model output (HRRR, NAM 3 km, GFS), centred on the
-  //   current location, times in its time zone. The NWS storm totals card stays below them.
+  //   current location, times in its time zone. Only the selected map source runs.
+  var forecastMode = "nws";
   function renderMaps() {
     $("mtotloc").textContent = (doc && doc.loc && doc.loc.label) || "";
-    if (window.WXModels) WXModels.show($("mmap"), curLoc(), { fmt: fmt });
-    renderImgMaps(); renderOfficial();
+    document.querySelectorAll("[data-forecast-mode]").forEach(function (b) {
+      var selected = b.dataset.forecastMode === forecastMode;
+      b.setAttribute("aria-selected", String(selected)); b.tabIndex = selected ? 0 : -1;
+    });
+    $("forecast-nws").hidden = forecastMode !== "nws";
+    $("forecast-models").hidden = forecastMode !== "models";
+    $("forecast-extra").hidden = forecastMode !== "nws";
+    $("forecast-context").textContent = forecastMode === "nws" ? "NWS regional amounts · Tap a county" : "Model forecasts · Play or scrub ahead";
+    if (forecastMode === "models") {
+      if (window.WXOfficial) WXOfficial.hide(); iStop();
+      if (window.WXModels) WXModels.show($("mmap"), curLoc(), { fmt: fmt });
+    } else {
+      if (window.WXModels) WXModels.hide();
+      renderOfficial(); if ($("forecast-extra").open) renderImgMaps();
+    }
   }
+  document.querySelector(".forecast-modes").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-forecast-mode]"); if (!b || b.dataset.forecastMode === forecastMode) return;
+    forecastMode = b.dataset.forecastMode; renderMaps();
+  });
+  document.querySelector(".forecast-modes").addEventListener("keydown", function (e) {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+    e.preventDefault(); e.stopPropagation();
+    forecastMode = e.key === "Home" ? "nws" : e.key === "End" ? "models" : forecastMode === "nws" ? "models" : "nws";
+    renderMaps(); $("forecast-" + forecastMode + "-tab").focus();
+  });
+  $("forecast-extra").addEventListener("toggle", function () {
+    if (this.open && tab === "maps" && forecastMode === "nws") renderImgMaps(); else iStop();
+  });
   // Official NWS precipitation: the Weather Prediction Center's 24- and 48-hour forecasts (the human-issued national
   //   forecast the NWS grids are built from), drawn by wx-official.js as a monochrome county map with each county's
   //   amount printed on it (tap for the county and value), plus this place's official amounts from its weather.gov forecast
@@ -1253,7 +1281,8 @@
       (OQ.k === "snow" ? '<span class="oqseg">' + ["04", "08", "12"].map(function (t) { return chip("data-oqt", t, +t + '"+', OQ.th === t); }).join("") + "</span>" : "") + "</div>" +
       (window.WXOfficial ? '<div class="oqwrap" id="oqwrap"><span class="mfr num" id="oqper">' + esc(per) + '</span></div><div class="oqcap" id="oqleg">' + esc(WXOfficial.caption(OQ)) + "</div>"
         : '<div class="oqimg" id="oqimg"><img src="' + img + bust + '" alt="' + esc(cap) + '"><span class="mfr num">' + esc(per) + "</span></div>") +
-      '<div class="oqnote"><b>' + esc(cap) + "</b> · NWS Weather Prediction Center · " + '<a href="' + WPC + (OQ.k === "qpf" ? "qpf/qpf2.shtml" : "wwd/winter_wx.shtml") + '" target="_blank" rel="noopener">Source</a></div>' + amt;
+      '<div class="oqnote"><b>' + esc(cap) + "</b> · NWS Weather Prediction Center · " + '<a href="' + WPC + (OQ.k === "qpf" ? "qpf/qpf2.shtml" : "wwd/winter_wx.shtml") + '" target="_blank" rel="noopener">Source</a></div>' +
+      (amt ? '<details class="oq-local"><summary>Local forecast amounts</summary>' + amt + '</details>' : '');
     var imgOk = function (box) {
       box.className = "oqimg"; box.id = "oqimg"; box.innerHTML = '<img src="' + img + bust + '" alt="' + esc(cap) + '"><span class="mfr num">' + esc(per) + "</span>";
       var im = box.querySelector("img"); im.onerror = function () { box.innerHTML = '<div class="mmsg">This map isn\'t available right now.</div>'; };
@@ -1265,7 +1294,7 @@
       if (!r || k0 !== OQ.k + OQ.p + OQ.th || !$("oqper")) return;
       if (r.start && r.end) $("oqper").textContent = span(r.start, r.end); // the product's own period
     }).catch(function () {
-      if (k0 !== OQ.k + OQ.p + OQ.th || $("oqwrap") !== wrap) return;
+      if (k0 !== OQ.k + OQ.p + OQ.th || $("oqwrap") !== wrap || tab !== "maps" || forecastMode !== "nws") return;
       var leg = $("oqleg"); if (leg) leg.remove();
       imgOk(wrap);
     });
@@ -1277,7 +1306,7 @@
   });
   function mStop() { if (window.WXModels) WXModels.hide(); if (window.WXOfficial) WXOfficial.hide(); iStop(); }
   document.addEventListener("keydown", function (e) {
-    if (tab !== "maps" || !$("locsheet").hidden || /INPUT|TEXTAREA|SELECT/.test((e.target.tagName || "")) && e.target.type !== "range") return;
+    if (tab !== "maps" || forecastMode !== "models" || !$("locsheet").hidden || /INPUT|TEXTAREA|SELECT/.test((e.target.tagName || "")) && e.target.type !== "range") return;
     if (e.key === "ArrowLeft") $("mprev").click(); else if (e.key === "ArrowRight") $("mnext").click();
   });
 
