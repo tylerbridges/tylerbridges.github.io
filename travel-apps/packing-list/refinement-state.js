@@ -2,13 +2,22 @@
 // Standalone app: versioned assumptions and explicit overrides are saved separately from exported list documents.
 function refinePath(id){ return "trip/" + id + "/pack_meta/refinement"; }
 function refineNewState(t,setup){
-  setup = setup || {}; var activities = {}; ["hike","run","water","fish"].forEach(function(k){ activities[k] = !!setup[k]; });
+  setup = setup || {}; var activities = {}; ["hike","workout","water","fish"].forEach(function(k){ activities[k] = !!setup[k] || (k === "workout" && !!setup.run); });
   return {version:2,inputs:{where:t.where,start:t.start,end:t.end,mode:setup.mode || "fly",tripType:setup.tripType || "leisure",bag:setup.bag || "carryon",intl:!!setup.intl,activities:activities},
-    refinements:{climate:setup.climate || "unknown",rain:!!setup.rain,thermal:"neutral",packingMode:"standard",laundry:{available:setup.laundry === "cycle",firstWash:setup.interval || 4,interval:setup.interval || 4},formalDays:setup.formal || 0,dinners:setup.dinners || 0,work:setup.work || "none",longFlight:!!setup.longintl},
+    refinements:{climate:setup.climate || "unknown",rain:!!setup.rain,thermal:"neutral",packingMode:"standard",laundry:{available:setup.laundry === "cycle",firstWash:setup.interval || 4,interval:setup.interval || 4},formalDays:setup.formal || 0,dinners:setup.dinners || 0,work:setup.work || "none",ruggedHike:!!setup.ruggedHike,longFlight:!!setup.longintl},
     overrides:{removed:{},edited:{},added:{}},ruleResults:{},history:[],baseline:null};
 }
+// Standalone app: normalize old assumptions without changing preferences or explicit item overrides.
+function refineNormalizeState(state){
+  var a=state.inputs.activities;
+  if(!Object.prototype.hasOwnProperty.call(a,"workout"))a.workout=!!a.run;
+  delete a.run;
+  if(state.refinements.packingMode==="light")state.refinements.packingMode="standard";
+  if(state.refinements.ruggedHike == null)state.refinements.ruggedHike=false;
+  return state;
+}
 function refineLoad(t){
-  var saved = lsGet("ta:" + refinePath(t.id),null); if (saved && saved.version === 2) return saved;
+  var saved = lsGet("ta:" + refinePath(t.id),null); if (saved && saved.version === 2) return refineNormalizeState(saved);
   var state = refineNewState(t,t.generatorSetup), pending = lsGet("ta:trip/" + t.id + "/pack_meta/draft",null), old = pending || generatorSaved(t);
   if (old.groups && old.groups.length){
     // Legacy rows are preserved as explicit overrides, never guessed to be safe to regenerate.

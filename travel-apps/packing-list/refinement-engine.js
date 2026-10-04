@@ -24,32 +24,34 @@ function refineContext(state){
   var clothingDays = laundry.available ? Math.min(days,Math.max(firstGap,laterGap) + 1) : days;
   var climate = r.climate, cool = climate === "cool" || climate === "cold";
   if (r.thermal === "cold" && climate === "mild") cool = true;
-  // Feeling hot can drop optional cool-weather insulation, never actual cold-weather protection.
-  if (r.thermal === "hot" && climate === "cool") cool = false;
+  // Standalone app: running hot never removes cool/cold-weather clothing protection.
   return {days:days,clothingDays:clothingDays,cool:cool,cold:climate === "cold",unknown:climate === "unknown",inputs:i,r:r};
 }
 function refineClothing(state,profile,c){
-  var r = c.r, d = c.clothingDays, extra = r.packingMode === "extra" ? 1 : 0, light = r.packingMode === "light";
-  var shirts = Math.max(1,light ? Math.ceil(d / 2) : d) + extra, bottoms = Math.ceil(d / (light ? 3 : 2)) + extra;
-  var jog = c.cool || c.cold ? Math.ceil(bottoms / 2) : 0, out = [];
+  var r = c.r, d = c.clothingDays, extra = r.packingMode === "extra" ? 1 : 0;
+  var shirts = d + extra, bottoms = Math.ceil(d / 2) + extra;
+  var jog = c.cool || c.cold ? Math.ceil((c.inputs.activities.workout ? Math.ceil(d / 2) : bottoms) / 2) : 0, out = [];
   ["Shirt","Pants","Underwear","Socks"].forEach(function(x){ out.push(refineItem(x,"Wear to travel","Departure outfit counts toward clothing totals",{category:"clothing"})); });
-  [["T-shirts",shirts - 1],["Underwear",2*d - 1 + 2*extra],["Socks",2*d - 1 + 2*extra],["Lulu shorts",bottoms-jog],["Lulu joggers",jog]].forEach(function(x){ if (x[1]) out.push(refineItem(x[0],"Clothing",(r.laundry.available ? "Laundry coverage: " + d + " days" : "Full-trip clothing: " + d + " days") + (light ? "; lighter rewear plan" : extra ? "; one extra clothing day" : ""),{quantity:x[1],category:"clothing"})); });
+  [["T-shirts",shirts - 1],["Underwear",2*d - 1 + 2*extra],["Socks",2*d - 1 + 2*extra],["Lulu shorts",bottoms-jog],["Lulu joggers",jog]].forEach(function(x){ if (x[1]) out.push(refineItem(x[0],"Clothing",(r.laundry.available ? "Laundry coverage: " + d + " days" : "Full-trip clothing: " + d + " days") + (extra ? "; one extra clothing day" : ""),{quantity:x[1],category:"clothing"})); });
   return out;
 }
 function refineDefaults(state,profile,c){
-  var out = [], light = c.r.packingMode === "light";
+  var out = [];
   var optional = /^(kindle|snacks|extra phone case|hotspot|belkin charging pad|wrinkle release|lint roller)$/i;
   (profile.extras || PACK_PREFS.extras).forEach(function(g){ (g.items || []).forEach(function(label){
     if (qtyKey(label)) return;
     var item = refineItem(label,g.title,"Your usual packing preferences",{optional:optional.test(qtyBase(label))});
-    if (!light || !item.optional) out.push(item);
+    out.push(item);
   }); });
   (profile.generatorExtras || []).forEach(function(label){ out.push(refineItem(label,"Personal bag & day gear","Your always-bring items",{required:true})); });
   return out;
 }
 function refineLayers(state,profile,c){
   var out = [], r = c.r;
-  if (c.cool || c.cold) out.push(refineItem("Light packable puffer jacket","Clothing","Temperature and thermal preference",{required:c.cold}));
+  if (c.cool || c.cold){
+    out.push(refineItem("Sweatshirt / hoodie","Wear to travel","Hoodie and puffer for cool/cold weather, including when you run hot",{required:true}));
+    out.push(refineItem("Light packable puffer jacket","Clothing","Hoodie and puffer for cool/cold weather, including when you run hot",{required:true}));
+  }
   if (c.cold) ["Gloves","Beanie","Thermal base layers"].forEach(function(x){ out.push(refineItem(x,"Clothing","Cold-weather protection",{required:true})); });
   if (r.rain) out.push(refineItem("Rain jacket","Clothing","Rain protection; rain does not change temperature",{required:true}));
   return out;
@@ -57,15 +59,22 @@ function refineLayers(state,profile,c){
 function refineActivities(state,profile,c){
   var a = c.inputs.activities, out = [], maybe = profile.maybe || PACK_PREFS.maybe;
   ["hike","water","fish"].forEach(function(tag){ if (!a[tag]) return;
-    maybe.filter(function(g){ return g.tag === tag; }).forEach(function(g){ g.items.forEach(function(label){ out.push(refineItem(label,g.title,"Required for " + tag,{required:true})); }); });
+    maybe.filter(function(g){ return g.tag === tag; }).forEach(function(g){ g.items.forEach(function(label){ if(tag === "hike" && refineId(label) === "hiking-footwear" && !c.r.ruggedHike)return;out.push(refineItem(label,g.title,"Required for " + tag,{required:true})); }); });
   });
   if (a.hike){
+    out.push(refineItem(c.r.ruggedHike ? "Hiking boots / trail shoes" : "Brooks running shoes",c.r.ruggedHike ? "Clothing" : "Wear to travel",c.r.ruggedHike ? "Rugged or wet trails require hiking footwear" : "Your Brooks cover ordinary hikes",{required:true}));
     [["Small collapsible backpack","Personal bag & day gear"],["Water bottle","Personal bag & day gear"],["Hat","Wear to travel"]].forEach(function(x){ out.push(refineItem(x[0],x[1],"Hiking dependency",{required:true})); });
     if (c.unknown) out.push(refineItem("Rain jacket","Clothing","Hiking weather is unconfirmed; conservative weather protection",{required:true}));
     if (c.cool || c.cold) out.push(refineItem("Light packable puffer jacket","Clothing","Hiking insulation",{required:true}));
   }
-  if (a.run){ out.push(refineItem("Brooks running shoes","Wear to travel","Running uses your existing shoes",{required:true})); out.push(refineItem("Water bottle","Personal bag & day gear","Running hydration",{required:true})); }
-  if (a.run && !c.r.laundry.available){ out.push(refineItem("T-shirts","Clothing","Running without laundry needs one spare T-shirt",{quantity:Math.max(1,c.r.packingMode === "light" ? Math.ceil(c.days/2) : c.days),category:"clothing"})); }
+  if (a.workout){
+    out.push(refineItem("Brooks running shoes","Wear to travel","Workouts use your usual shoes",{required:true}));
+    out.push(refineItem("Water bottle","Personal bag & day gear","Workout hydration",{required:true}));
+    out.push(refineItem("Shirt","Wear to travel","Workouts use regular T-shirts; the travel shirt counts",{required:true,category:"clothing"}));
+    var extra=c.r.packingMode === "extra" ? 1 : 0, shirts=c.clothingDays-1+extra;
+    if(shirts>0)out.push(refineItem("T-shirts","Clothing","Workouts most days: a fresh regular T-shirt daily; laundry and travel shirt count",{quantity:shirts,required:true,category:"clothing"}));
+    out.push(refineItem("Lulu shorts","Clothing","Workouts most days: regular shorts cover two days per pair, including in cool weather; laundry counts",{quantity:Math.ceil(c.clothingDays/2)+extra,required:true,category:"clothing"}));
+  }
   if (c.inputs.intl){ maybe.filter(function(g){ return g.tag === "intl"; }).forEach(function(g){ g.items.forEach(function(x){ out.push(refineItem(x,g.title,"International travel",{required:true})); }); }); }
   if (c.inputs.intl && c.inputs.mode === "fly" && c.r.longFlight) maybe.filter(function(g){ return g.tag === "longintl"; }).forEach(function(g){ g.items.forEach(function(x){ out.push(refineItem(x,g.title,"Long international flight")); }); });
   return out;
@@ -87,20 +96,21 @@ function refineWork(state,profile,c){
 }
 function refineConsumables(state,profile,c){ return [refineItem("Contacts","Toiletries","Full trip plus two days, rounded to a multiple of five",{quantity:5*Math.ceil((c.days+2)/5),critical:true}),refineItem("Liquids quart bag (travel-size)","Toiletries","Your travel-size liquids rule applies on every trip",{required:true})]; }
 var REFINE_RULES = {
-  clothing:{deps:["dates","laundry","packingMode","climate","thermal"],run:refineClothing},
-  defaults:{deps:["profile","packingMode"],run:refineDefaults},
+  clothing:{deps:["dates","laundry","packingMode","climate","thermal","activities"],run:refineClothing},
+  defaults:{deps:["profile"],run:refineDefaults},
   layers:{deps:["climate","thermal","rain"],run:refineLayers},
-  activities:{deps:["activities","climate","thermal","rain","dates","laundry","packingMode","intl","mode","longFlight","profile"],run:refineActivities},
+  activities:{deps:["activities","climate","thermal","rain","dates","laundry","packingMode","intl","mode","longFlight","ruggedHike","profile"],run:refineActivities},
   events:{deps:["formalDays","dinners","profile"],run:refineEvents},
   work:{deps:["work","profile"],run:refineWork},
   consumables:{deps:["dates"],run:refineConsumables}
 };
 function refineLabel(item){ return item.label + (item.quantity > 1 || item.category === "clothing" || item.id === "pack:contacts" ? " ×" + item.quantity : ""); }
 function refineEvaluate(state,profile,changed){
+  refineNormalizeState(state);
   var c = refineContext(state), signature = JSON.stringify(profile), cache = {}, keys = {}, ran = [];
   // Standalone app: cache validity comes from actual dependency values, never caller hints alone.
   Object.keys(REFINE_RULES).forEach(function(id){var rule=REFINE_RULES[id];
-    keys[id]=JSON.stringify(rule.deps.map(function(key){if(key==="profile")return profile;if(key==="dates")return [state.inputs.start,state.inputs.end];return Object.prototype.hasOwnProperty.call(state.inputs,key) ? state.inputs[key] : state.refinements[key];}));
+    keys[id]="preferences-2026-10-v1:"+JSON.stringify(rule.deps.map(function(key){if(key==="profile")return profile;if(key==="dates")return [state.inputs.start,state.inputs.end];return Object.prototype.hasOwnProperty.call(state.inputs,key) ? state.inputs[key] : state.refinements[key];}));
     if(!state.ruleResults || !state.ruleResults[id] || !state.ruleKeys || state.ruleKeys[id]!==keys[id]){cache[id]=rule.run(state,profile,c);ran.push(id);}else cache[id]=state.ruleResults[id];
   });
   var merged = {}, order = [], excluded = profile.refinementProfile && profile.refinementProfile.excluded || {};
@@ -120,14 +130,13 @@ function refineEvaluate(state,profile,changed){
   Object.keys(overrides.added).forEach(function(id){ if (!overrides.removed[id]){ var original=merged[id];if(original && (original.critical || original.required) && overrides.added[id].quantity<original.quantity)warnings.push({id:"quantity:"+id,itemId:id,text:original.label+" is pinned below the calculated requirement ("+overrides.added[id].quantity+" vs "+original.quantity+"). Check coverage."}); items = items.filter(function(x){return x.id!==id;}); items.push(Object.assign({},overrides.added[id],{id:id,manual:true,reasons:[overrides.added[id].legacy ? "Preserved legacy item" : "Your pinned item"]})); } });
   if (c.inputs.bag === "carryon"){
     if (items.some(function(x){ return /monitors/.test(x.id); })) warnings.push({id:"work-baggage",text:"Full work setup includes monitors. Check carry-on capacity or switch to laptop only; nothing was silently removed."});
-    var insulation = items.find(function(x){ return /puffer/.test(x.id); });
-    if (insulation && !insulation.manual){ insulation.section = "Wear to travel"; insulation.reasons = insulation.reasons.concat(["Carry-on constraint: wear this bulky layer during transit"]); }
     var shoes = items.filter(function(x){ return /shoes|footwear/.test(x.id); }); if (shoes.length > 2) warnings.push({id:"shoes-baggage",text:"Hiking and formal events require extra footwear. Check bag space; your running shoes are worn in transit."});
   }
   if (c.unknown) warnings.push({id:"weather",text:"Weather is unconfirmed. Choose expected conditions; no forecast has been inferred from the destination."});
   if(c.r.longFlight && (!c.inputs.intl || c.inputs.mode!=="fly"))warnings.push({id:"long-flight",text:"Long international flight comfort is selected, but this trip is not marked as international flying. Update Trip basics; those comfort items have not been added."});
-  if (c.days > 10 && !c.r.laundry.available) warnings.push({id:"long-trip",text:"Long trip without laundry: quantities cover every day. Add a laundry plan or explicitly choose more rewear; no silent quantity cap was applied."});
-  if (c.inputs.activities.run && !items.some(function(x){ return x.id === "wear:brooks-running-shoes"; })) warnings.push({id:"running-shoes",text:"Running is selected, but running shoes are missing."});
+  if (c.days > 10 && !c.r.laundry.available) warnings.push({id:"long-trip",text:"Long trip without laundry: quantities cover every day. Add a laundry plan or explicitly edit quantities; no silent quantity cap was applied."});
+  if ((c.inputs.activities.workout || (c.inputs.activities.hike && !c.r.ruggedHike)) && !items.some(function(x){ return x.id === "wear:brooks-running-shoes"; })) warnings.push({id:"activity-shoes",text:"Workouts or ordinary hiking are selected, but your Brooks are missing."});
+  if(c.inputs.activities.hike && c.r.ruggedHike && !items.some(function(x){return x.id === "pack:hiking-footwear";}))warnings.push({id:"hiking-footwear",text:"Rugged or wet trails are selected, but hiking footwear is missing."});
   if (c.r.work !== "none" && !items.some(function(x){ return x.id === "pack:work-computer-charger"; })) warnings.push({id:"work-power",text:"Work is selected, but laptop power is missing."});
   if (c.inputs.activities.hike && !items.some(function(x){ return /rain-jacket|rain-protection/.test(x.id); }) && (c.r.rain || c.unknown)) warnings.push({id:"hiking-rain",text:"Hiking weather protection is missing for wet or unconfirmed conditions."});
   var groups = REFINE_ORDER.filter(function(title){ return title !== "Before leaving"; }).map(function(title){ return {title:title,items:items.filter(function(x){ return x.section === title; })}; }).filter(function(g){ return g.items.length; });

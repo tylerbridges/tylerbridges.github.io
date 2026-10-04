@@ -25,17 +25,30 @@ try {
   }}}
   await mobileLayout();
   await p.fill("#rs-where", "Phoenix, AZ"); await p.fill("#rs-start", "2026-10-08"); await p.fill("#rs-end", "2026-10-12");
+  await p.check("#rs-workout"); await p.selectOption("#rs-climate","cool");
   await p.click('button:has-text("Generate my list")'); await p.waitForSelector("#rr-export");
   const labels = () => p.$$eval('.refine-item strong', n => n.map(x => x.textContent));
   const initial = await labels();
   if (!initial.includes("Socks ×9") || !initial.includes("Contacts ×10")) fail("initial quantities");
   if (initial.includes('Kindle') || !initial.includes('Medicine pouch')) fail('saved preferences not used');
-  for(const [name,ids] of [['Packing',['rf-packing']],['Bag',['rf-bag']],['Weather',['rf-climate','rf-thermal','rf-rain']],['Activities',['rf-hike','rf-run','rf-water','rf-fish']],['Events',['rf-formal','rf-dinners']],['Flight',['rf-longFlight']],['Laundry',['rf-laundry','rf-first','rf-interval']]]){
+  if(!initial.includes('Lulu shorts ×3') || !initial.includes('T-shirts ×4'))fail('daily workouts must share regular clothes with full shorts coverage');
+  if(await p.locator('[data-item-id="pack:light-packable-puffer-jacket"]').evaluate(n=>n.closest('section').querySelector('h3').textContent)!=='Clothing')fail('carry-on moved puffer');
+  if(await p.locator('.refine-item summary').count())fail('row explanations returned');
+  await p.click('button:has-text("Packing rules")');if(!(await p.textContent('.sheet-body')).includes('Workouts most days'))fail('workout rules not inspectable');await p.click('button:has-text("Close")');
+
+  for(const [name,ids] of [['Packing',['rf-packing']],['Bag',['rf-bag']],['Weather',['rf-climate','rf-thermal','rf-rain']],['Activities',['rf-hike','rf-workout','rf-water','rf-fish','rf-rugged']],['Events',['rf-formal','rf-dinners']],['Flight',['rf-longFlight']],['Laundry',['rf-laundry','rf-first','rf-interval']]]){
     await p.click(`button:has-text("${name}:")`);
     const actual=await p.locator('.sheet-body input, .sheet-body select').evaluateAll(nodes=>nodes.map(n=>n.id));
     if(JSON.stringify(actual)!==JSON.stringify(ids))fail(`${name} editor contains unrelated fields`);
+    if(name==='Packing' && (await p.locator('#rf-packing').textContent()).includes('lighter'))fail('pack lighter still offered');
     await mobileLayout();await p.click('button:has-text("Apply & recalculate")');await p.waitForSelector('.sheet-bg',{state:'detached'});
   }
+  await p.click('button:has-text("Weather:")');await p.selectOption('#rf-thermal','hot');await p.click('button:has-text("Apply & recalculate")');await p.waitForSelector('.sheet-bg',{state:'detached'});
+  if(!(await labels()).includes('Light packable puffer jacket'))fail('running hot removed cool-weather puffer');
+  await p.click('button:has-text("Activities:")');if(await p.locator('#rf-rugged').isVisible())fail('rugged toggle visible without hiking');await p.check('#rf-hike');if(!await p.locator('#rf-rugged').isVisible())fail('rugged toggle missing');await p.click('button:has-text("Apply & recalculate")');await p.waitForSelector('.sheet-bg',{state:'detached'});
+  if((await labels()).includes('Hiking boots / trail shoes'))fail('ordinary hiking added extra footwear');
+  await p.click('button:has-text("Activities:")');await p.check('#rf-rugged');await p.click('button:has-text("Apply & recalculate")');await p.waitForSelector('.sheet-bg',{state:'detached'});if(!(await labels()).includes('Hiking boots / trail shoes'))fail('rugged hiking footwear missing');
+  await p.click('button:has-text("Activities:")');await p.uncheck('#rf-hike');await p.click('button:has-text("Apply & recalculate")');await p.waitForSelector('.sheet-bg',{state:'detached'});if((await labels()).includes('Hiking boots / trail shoes'))fail('obsolete hiking footwear retained');
   await p.click('button:has-text("Work:")'); if(await p.locator('.sheet-body input, .sheet-body select').count()!==1)fail('work editor contains unrelated fields'); await p.selectOption('#rf-work','work'); await p.click('button:has-text("Apply & recalculate")'); await p.waitForSelector('.sheet-bg',{state:'detached'});
   if (!(await labels()).includes('Work computer charger')) fail('work power dependency');
   await p.evaluate(()=>{window.testWorkSection=[...document.querySelectorAll('section.panel')].find(n=>n.querySelector('h3')?.textContent==='Work');});
