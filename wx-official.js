@@ -389,6 +389,8 @@
     if (!el) setup();
     if (el.parentNode !== host) host.appendChild(el);
     (controlsHost || el).appendChild(reg);
+    (controlsHost || el).appendChild(gear);
+    (controlsHost || el).appendChild(setEl);
     var moved2 = !loc || Math.abs(loc.lat - l.lat) > 1e-4 || Math.abs(loc.lon - l.lon) > 1e-4;
     loc = { lat: l.lat, lon: l.lon };
     if (moved2) view = { x: wx(loc.lon), y: wy(loc.lat), z: view.z || 6.6 };

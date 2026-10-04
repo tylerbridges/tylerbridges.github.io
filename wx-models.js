@@ -806,6 +806,7 @@
     ui = {
       st: mk("div", "mmstat", el), ro: mk("div", "mmro", el), reg: mk("div", "mmreg", el),
       model: box.querySelector("#mmodel"), param: box.querySelector("#mparam"), run: box.querySelector("#mrun"),
+      locate: box.querySelector("#mlocate"), home: box.querySelector("#mhome"), locationStatus: box.querySelector("#mlocation-status"),
       play: box.querySelector("#mplay"), prev: box.querySelector("#mprev"), next: box.querySelector("#mnext"), range: box.querySelector("#mrange"), time: box.querySelector("#mtime"),
       leg: box.querySelector("#mleg"), src: box.querySelector("#msrc"), title: box.querySelector("#mtitle"), quick: box.querySelector("#mquick")
     };
@@ -816,6 +817,21 @@
     ui.model.addEventListener("click", function (e) { var b = e.target.closest("[data-m]"); if (!b || b.disabled) return; switchModel(b.dataset.m); });
     ui.param.addEventListener("change", function () { setParam(this.value); });
     ui.run.addEventListener("change", function () { userRun = true; setRun(+this.value); });
+    ui.locate.addEventListener("click", function () {
+      if (!root.navigator.geolocation) { ui.locationStatus.textContent = "Location isn't available in this browser"; return; }
+      ui.locate.disabled = true; ui.locationStatus.textContent = "Finding your location…";
+      root.navigator.geolocation.getCurrentPosition(function (p) {
+        ui.locate.disabled = false; ui.locationStatus.textContent = "";
+        if (on) fly(wx(p.coords.longitude), wy(p.coords.latitude), Math.max(view.z, 8));
+      }, function (err) {
+        ui.locate.disabled = false;
+        ui.locationStatus.textContent = err && err.code === 1 ? "Location permission is off for this site" : "Couldn't get your location";
+      }, { enableHighAccuracy: true, maximumAge: 15000, timeout: 20000 });
+    });
+    ui.home.addEventListener("click", function () {
+      ui.locationStatus.textContent = "";
+      if (loc) fly(wx(loc.lon), wy(loc.lat), 7.4);
+    });
     ui.play.addEventListener("click", function () { play(!playing); });
     ui.time.addEventListener("click", function () { play(false); cur.k = 0; showHour(); });
     ui.prev.addEventListener("click", function () { play(false); step(-1); });
