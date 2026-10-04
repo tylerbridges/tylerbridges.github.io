@@ -16,7 +16,16 @@ const { chromium, webkit } = require('playwright'), assert = require('node:asser
         await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
         for (const prior of ['sources', 'winter', 'timing']) {
           await page.locator('.forecast-tools-open').scrollIntoViewIfNeeded();
-          await page.waitForTimeout(350); // Let the existing floating header finish resizing after scrolling.
+          // Wait for the floating header and browser scroll anchoring to settle before measuring a tap.
+          await page.evaluate(async () => {
+            let stable = 0, previous = '';
+            for (let i = 0; i < 120 && stable < 12; i++) {
+              await new Promise(requestAnimationFrame);
+              const top = document.querySelector('.top').getBoundingClientRect();
+              const sample = [scrollX, scrollY, top.height, document.documentElement.scrollHeight].join('/');
+              stable = sample === previous ? stable + 1 : 0; previous = sample;
+            }
+          });
           const before = await page.evaluate(() => ({ x: scrollX, y: scrollY }));
           // Tap without Playwright's automatic scroll to expose modal focus/scroll jumps.
           await page.locator('.forecast-tools-open').evaluate(button => button.click());
@@ -36,7 +45,7 @@ const { chromium, webkit } = require('playwright'), assert = require('node:asser
             assert.ok(Math.abs(frame.top - frames[0].top) < 1 && Math.abs(frame.tabsTop - frames[0].tabsTop) < 1, 'First opening moved panel/category row');
             assert.equal(frame.overflow, false, engine.name() + '/' + width + '/horizontal overflow');
             assert.equal(frame.inside, true, engine.name() + '/' + width + '/buttons outside panel');
-            assert.ok(Math.abs(frame.x - before.x) < 1 && Math.abs(frame.y - before.y) < 2, engine.name() + '/' + width + '/opening moved page');
+            assert.ok(Math.abs(frame.x - before.x) < 1 && Math.abs(frame.y - before.y) < 2, engine.name() + '/' + width + '/' + theme + '/' + prior + '/opening moved page: ' + JSON.stringify({ before, frame }));
           }
           const anchor = await page.locator('#forecast-tools').evaluate(dialog => ({ top: dialog.getBoundingClientRect().top, tabsTop: dialog.querySelector('.forecast-tools-tabs').getBoundingClientRect().top, buttons: Array.from(dialog.querySelectorAll('[data-tool-tab]'), b => { const r = b.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; }) }));
           for (const category of ['winter', 'compare', 'reports', 'maps', 'sources', 'timing']) {
