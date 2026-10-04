@@ -1051,7 +1051,7 @@
     var changed = t !== tab; tab = t;
     document.querySelector(".wrap").classList.toggle("forecast-wide", t === "maps");
     document.querySelectorAll("#nav .chip").forEach(function (c) { c.classList.toggle("on", c.dataset.tab === t); });
-    movePill(changed);
+    movePill(changed && !pillSnap);
     document.querySelectorAll("section[data-tab]").forEach(function (s) {
       s.hidden = s.dataset.tab !== t;
     });
@@ -1066,6 +1066,7 @@
   }
   // the glass pill behind the selected tab: slides (with a short squash) to the new tab; placed without animation
   //   the first time and on resize, so it never animates in from nowhere
+  var pillSnap = false;
   function movePill(animate) {
     var n = $("nav"), on = n.querySelector(".chip.on"), p = n.querySelector(".navpill"); if (!on || !p || !on.offsetWidth) return;
     // the slide/squash only runs for a tab change; every other placement (load, resize, the bar shrinking or growing)
@@ -1118,7 +1119,8 @@
     window.addEventListener("scroll", function () { if (!tick) { tick = true; requestAnimationFrame(upd); } }, { passive: true });
     return function (small) { acc = 0; set(small); };
   })();
-  $("nav").addEventListener("click", function (e) { var c = e.target.closest("[data-tab]"); if (c) { dockSet(false); showTab(c.dataset.tab); } });
+  // a tab tapped on the small bar opens it and snaps the bar (and its pill) to full size without the slide
+  $("nav").addEventListener("click", function (e) { var c = e.target.closest("[data-tab]"); if (!c) return; var mini = $("tabdock").classList.contains("mini"); dockSet(false); pillSnap = mini; showTab(c.dataset.tab); pillSnap = false; });
   $("days").addEventListener("click", function (e) {
     var c = e.target.closest(".chip"); if (!c) return;
     document.querySelectorAll("#days .chip").forEach(function (x) { x.classList.toggle("on", x === c); });

@@ -221,6 +221,15 @@
   }
   var INSI = '<svg viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/><circle cx="12" cy="12" r="2.2" class="f"/></svg>';
   var cross = null, iro = null, insBtn = null, insp = (function () { try { return !!localStorage.getItem("wx-oqinsp"); } catch (e) { return false; } })();
+  // crosshair button: off → on and centred on the forecast location; on but moved away → back to the location;
+  //   on and already on the location → off
+  function atHomeView() { return !!loc && Math.hypot(view.x - wx(loc.lon), view.y - wy(loc.lat)) * scaleZ(view.z) < 3; }
+  function inspTap() {
+    if (insp && atHomeView()) insp = false;
+    else { insp = true; if (loc) fly(wx(loc.lon), wy(loc.lat), view.z); }
+    try { localStorage.setItem("wx-oqinsp", insp ? "1" : ""); } catch (e) {}
+    inspUi();
+  }
   function inspUi() { if (!cross) return; cross.hidden = !insp; insBtn.classList.toggle("on", insp); insBtn.setAttribute("aria-pressed", String(insp)); if (insp) ro.hidden = true; inspect(); }
   // the WPC band at that exact point (not the county average), then the county name
   function pointVal(lat, lon) {
@@ -240,7 +249,7 @@
     // inspector (as in RadarScope): fixed crosshair in the middle; the forecast at that exact spot shows above it as you pan
     cross = mk("div", "mcross", el); iro = mk("div", "minsro num", el); cross.hidden = iro.hidden = true;
     insBtn = mk("button", "rloc oqins", el); insBtn.type = "button"; insBtn.setAttribute("aria-label", "Inspect a point"); insBtn.innerHTML = INSI;
-    insBtn.addEventListener("click", function () { insp = !insp; try { localStorage.setItem("wx-oqinsp", insp ? "1" : ""); } catch (e) {} inspUi(); });
+    insBtn.addEventListener("click", function () { inspTap(); });
     inspUi();
     gear = mk("button", "oqgear", el); gear.type = "button"; gear.innerHTML = GEAR; gear.setAttribute("aria-label", "Map settings");
     setEl = mk("div", "oqset", el); setEl.hidden = true;

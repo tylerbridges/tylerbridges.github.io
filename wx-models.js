@@ -848,7 +848,7 @@
     // inspector (as in RadarScope): a fixed crosshair in the middle of the map; pan the map under it and the value at that
     //   spot shows right above it, updating as you move, change hour or product
     ui.insp = box.querySelector("#minspect"); ui.cross.hidden = ui.iro.hidden = true;
-    if (ui.insp) ui.insp.addEventListener("click", function () { insp = !insp; try { localStorage.setItem("wx-minsp", insp ? "1" : ""); } catch (e) {} inspUi(); });
+    if (ui.insp) ui.insp.addEventListener("click", function () { inspTap(); });
     ui.locate.addEventListener("click", locate);
     ui.home.addEventListener("click", toForecast);
     ui.play.addEventListener("click", function () { play(!playing); });
@@ -1096,6 +1096,15 @@
     return { n: n, cx: cx, cy: cy, d: d, z: view.z, w: at(cx - r.left, cy - r.top) };
   }
   var insp = (function () { try { return !!localStorage.getItem("wx-minsp"); } catch (e) { return false; } })();
+  // crosshair button: off → on and centred on the forecast location; on but moved away → back to the location;
+  //   on and already on the location → off
+  function atHomeView() { return !!loc && Math.hypot(view.x - wx(loc.lon), view.y - wy(loc.lat)) * scaleZ(view.z) < 3; }
+  function inspTap() {
+    if (insp && atHomeView()) insp = false;
+    else { insp = true; if (loc) fly(wx(loc.lon), wy(loc.lat), view.z); }
+    try { localStorage.setItem("wx-minsp", insp ? "1" : ""); } catch (e) {}
+    inspUi();
+  }
   function inspUi() { if (!ui.cross) return; ui.cross.hidden = !insp; if (ui.insp) { ui.insp.classList.toggle("on", insp); ui.insp.setAttribute("aria-pressed", String(insp)); } if (insp) ui.ro.hidden = true; inspect(); }
   function inspect() {
     if (!ui.iro) return; if (!insp || !on) { ui.iro.hidden = true; return; }
