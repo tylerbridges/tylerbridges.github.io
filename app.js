@@ -1085,8 +1085,8 @@
   function fitTop() {
     var b = document.querySelector("#placebtn b"), lab = $("plabel");
     if (b && lab) { b.style.fontSize = ""; var px = parseFloat(getComputedStyle(b).fontSize) || 24; while (lab.scrollWidth > lab.clientWidth + 1 && px > 17) { px -= 0.5; b.style.fontSize = px + "px"; } }
-    var chips = document.querySelectorAll("#nav .chip"), m = Infinity;
-    chips.forEach(function (c) { fitText(c, 11); m = Math.min(m, parseFloat(c.style.fontSize || getComputedStyle(c).fontSize)); });
+    var chips = document.querySelectorAll("#nav .chip span"), m = Infinity; // tab labels under their icons
+    chips.forEach(function (c) { fitText(c, 9.5); m = Math.min(m, parseFloat(c.style.fontSize || getComputedStyle(c).fontSize)); });
     if (isFinite(m)) chips.forEach(function (c) { c.style.fontSize = m + "px"; }); // all tabs share one size
     movePill(false);
   }

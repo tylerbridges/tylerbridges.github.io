@@ -909,6 +909,18 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
 .forecast-workspace #mquick{display:flex;gap:2px;padding:2px;margin:0 10px 6px;border-radius:999px;background:var(--sunk);overflow:visible}
 .forecast-workspace #mquick .chip{flex:1;min-height:32px;padding:4px 10px;font-size:14px;font-weight:700;background:transparent;border:0;color:var(--ink2)}
 .forecast-workspace #mquick .chip.on{background:var(--accent);color:#fff}
+/* tabs: a floating glass tab bar at the bottom, as in airport-wx (icon over label, 64 px, capsule on the selected tab — the
+   same sliding pill and squash as before); the page fades under it as it scrolls past */
+.tabdock{position:fixed;left:0;right:0;bottom:0;z-index:40;pointer-events:none;padding:0 calc(env(safe-area-inset-right,0px) + 14px) calc(max(env(safe-area-inset-bottom,0px),12px) + 4px) calc(env(safe-area-inset-left,0px) + 14px)}
+.tabdock::before{content:"";position:absolute;left:0;right:0;bottom:0;height:calc(100% + 28px);pointer-events:none;background:linear-gradient(to top,color-mix(in srgb,var(--ground) 72%,transparent),color-mix(in srgb,var(--ground) 30%,transparent) 55%,transparent)}
+.tabdock #nav{position:relative;pointer-events:auto;max-width:560px;margin:0 auto;height:64px;box-sizing:border-box;padding:5px;gap:2px;border-radius:32px;overflow:hidden;background:color-mix(in srgb,var(--surface) 94%,transparent);-webkit-backdrop-filter:blur(28px) saturate(1.8);backdrop-filter:blur(28px) saturate(1.8);border:1px solid var(--glass-edge);box-shadow:inset 0 1px 0 var(--glass-hi),var(--glass-sh)}
+.tabdock #nav .chip{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;min-height:44px;padding:0 2px;border-radius:26px;font-size:11px;font-weight:600;letter-spacing:.01em;color:var(--muted);background:transparent}
+.tabdock #nav .chip svg{width:25px;height:25px;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.tabdock #nav .chip span{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tabdock #nav .chip.on{color:var(--accent)}
+.tabdock .navpill{top:5px;bottom:5px;border-radius:26px}
+.wrap{padding-bottom:calc(max(env(safe-area-inset-bottom,0px),12px) + 92px)}
+#toast{bottom:calc(max(env(safe-area-inset-bottom,0px),12px) + 82px)}
 /* the key keeps one fixed height whatever the map (Precip or Amounts), so the map never jumps when switching */
 .model-view > .mleg{box-sizing:border-box;height:38px;padding:6px 12px 4px;display:flex;align-items:center;overflow:hidden}
 .model-view > .mleg > *{flex:1;min-width:0}
@@ -955,9 +967,6 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
       <span class="fresh" id="fresh"><i class="dot" id="fdot"></i><span id="ftxt">Loading…</span></span>
       <button class="rbtn" id="rbtn" type="button" aria-label="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button>
     </div>
-    <nav class="nav" id="nav">
-      <span class="navpill" aria-hidden="true"></span><button type="button" class="chip on" data-tab="daily">Daily</button><button type="button" class="chip" data-tab="hourly">Hourly</button><button type="button" class="chip" data-tab="radar">Radar</button><button type="button" class="chip" data-tab="maps">Forecast</button>
-    </nav>
     <div class="testbar" id="testbar" hidden><span>Test: <b id="testname"></b> · sample data, not a real forecast</span><button type="button" class="chip" id="testx">Exit</button></div>
   </header>
 
@@ -1064,6 +1073,7 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
 
   <footer class="foot" id="foot"></footer>
 </div>
+<div class="tabdock" id="tabdock"><nav class="nav" id="nav" aria-label="Sections"><span class="navpill" aria-hidden="true"></span><button type="button" class="chip on" data-tab="daily"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="3.5"/><path d="M3.5 10h17M8.5 3v4M15.5 3v4"/></svg><span>Daily</span></button><button type="button" class="chip" data-tab="hourly"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.75"/><path d="M12 7.25V12l3.25 2"/></svg><span>Hourly</span></button><button type="button" class="chip" data-tab="radar"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.75"/><circle cx="12" cy="12" r="4.5"/><path d="M12 12l6.2-6.2"/></svg><span>Radar</span></button><button type="button" class="chip" data-tab="maps"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4.5 3.5 6.6v13l5.5-2.1 6 2.1 5.5-2.1v-13L15 6.6Z"/><path d="M9 4.5v13M15 6.6v13"/></svg><span>Forecast</span></button></nav></div>
 <div id="toast" hidden></div>
 <div id="mfull" hidden><button type="button" class="mfx" id="mfx" aria-label="Close">&times;</button><div class="mfsc" id="mfsc"><img id="mfimg" alt=""></div><div class="mfhint">Tap map to zoom in/out</div></div>
 <div id="locsheet" hidden>
@@ -1080,13 +1090,13 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=123"></script>
-<script src="wx-live.js?v=123"></script>
-<script src="wx-scenarios.js?v=123"></script>
-<script src="wx-vmap.js?v=123"></script>
-<script src="wx-radar.js?v=123"></script>
-<script src="wx-models.js?v=123"></script>
-<script src="wx-official.js?v=123"></script>
-<script src="app.js?v=123"></script>
+<script src="wx-normalize.js?v=124"></script>
+<script src="wx-live.js?v=124"></script>
+<script src="wx-scenarios.js?v=124"></script>
+<script src="wx-vmap.js?v=124"></script>
+<script src="wx-radar.js?v=124"></script>
+<script src="wx-models.js?v=124"></script>
+<script src="wx-official.js?v=124"></script>
+<script src="app.js?v=124"></script>
 </body>
 </html>
