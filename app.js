@@ -1101,15 +1101,15 @@
   // the bottom tab bar shrinks to a small centred text-only bar while you scroll down (still tappable), and grows back to
   //   full size when you tap a tab, scroll up, or reach the top or end of the page
   var dockSet = (function () {
-    var dock = $("tabdock"), last = window.scrollY, acc = 0, tick = false, follow = 0;
+    var dock = $("tabdock"), last = window.scrollY, acc = 0, tick = false;
     if (!dock) return function () {};
     // keep the selected-tab pill on its tab while the bar resizes
-    function track() { cancelAnimationFrame(follow); var t0 = performance.now(); (function f(t) { movePill(false); if (t - t0 < 360) follow = requestAnimationFrame(f); })(t0); }
-    function set(small) { if (dock.classList.contains("mini") === small) return; dock.classList.toggle("mini", small); track(); }
+    // the bar snaps between sizes (no size animation), and the pill is placed once without sliding, so nothing jiggles
+    function set(small) { if (dock.classList.contains("mini") === small) return; dock.classList.toggle("mini", small); movePill(false); }
     function upd() {
       tick = false; var y = window.scrollY, d = y - last; last = y;
-      var end = y + window.innerHeight >= document.documentElement.scrollHeight - 40;
-      if (y < 60 || end) { acc = 0; set(false); return; }
+      // stays small at the end of the page; only scrolling back up (or a tap on a tab) restores it
+      if (y < 60) { acc = 0; set(false); return; }
       acc = (acc > 0) === (d > 0) ? acc + d : d;
       if (acc > 24) set(true); else if (acc < -12) set(false);
     }
