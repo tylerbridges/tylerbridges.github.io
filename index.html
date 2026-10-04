@@ -506,6 +506,9 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
 .oqnote a{color:var(--accent)}
 .oqwrap{position:relative}
 .oqwrap .mm{height:min(100vw,420px);min-height:280px}
+/* landscape maps (about 4:3) so the Forecast tab scrolls past them easily */
+.mm{height:min(calc(100svh - var(--toph,96px) - 250px),78vw,520px);min-height:260px}
+.oqwrap .mm{height:min(72vw,400px);min-height:240px}
 .oqwrap .mfr{z-index:2;left:auto;right:8px;top:8px}
 .oqwrap .mm{background:#fff}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .oqwrap .mm{background:#000}}
@@ -779,7 +782,7 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
 /* today's title above the conditions card, styled like the day cards' titles */
 #nowtitle{font:800 clamp(17px,4.9vw,21px)/1.2 var(--sans);letter-spacing:-.02em;text-transform:none;color:var(--ink);display:flex;flex-direction:column;gap:2px;padding:0 4px}
 #nowtitle .dhl3{font:600 13.5px var(--sans);letter-spacing:0}
-#now .sec-h{margin-bottom:-2px}
+#now .sec-h{margin:-3px 0 3px} /* the same ~14 px above and below today's date */
 /* the current-conditions card uses the day cards' insets (12 px sides/top, tight foot) and the same 22 px gap below */
 .card.now{padding:12px 12px 4px!important}
 #nowday .nowfc{padding:4px 12px 0;margin:0 -12px}
@@ -894,13 +897,13 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=110"></script>
-<script src="wx-live.js?v=110"></script>
-<script src="wx-scenarios.js?v=110"></script>
-<script src="wx-vmap.js?v=110"></script>
-<script src="wx-radar.js?v=110"></script>
-<script src="wx-models.js?v=110"></script>
-<script src="wx-official.js?v=110"></script>
-<script src="app.js?v=110"></script>
+<script src="wx-normalize.js?v=111"></script>
+<script src="wx-live.js?v=111"></script>
+<script src="wx-scenarios.js?v=111"></script>
+<script src="wx-vmap.js?v=111"></script>
+<script src="wx-radar.js?v=111"></script>
+<script src="wx-models.js?v=111"></script>
+<script src="wx-official.js?v=111"></script>
+<script src="app.js?v=111"></script>
 </body>
 </html>
