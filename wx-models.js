@@ -1156,7 +1156,7 @@
   function exactWindow(r, p, model, start, end) {
     var a = (start - r.run) / H, b = (end - r.run) / H;
     return a >= 0 && b > a && Number.isInteger(a) && Number.isInteger(b) &&
-      r.hours.indexOf(b) >= 0 && (a === 0 || r.hours.indexOf(a) >= 0) && okHour(p, model, r.run, b);
+      r.hours.indexOf(b) >= 0 && (a === 0 || r.hours.indexOf(a) >= 0 && okHour(p, model, r.run, a)) && okHour(p, model, r.run, b);
   }
   function compareWindow(o) {
     if (!workers() || !loc) return Promise.reject(new Error("Open Models first"));

@@ -21,7 +21,7 @@ const { chromium } = require('playwright'), assert = require('node:assert/strict
     assert.ok(await p.locator('#weather-outlook').isVisible());
     assert.match(await p.locator('#weather-timing').innerText(), /NWS timing/);
     const search = await p.evaluate(async () => {
-      const h = (await WXLive.search('Denver, CO'))[0];
+      const h = await WXLive.geocode('Denver, CO');
       return { label: h.label, covered: await WXLive.covers(h.lat, h.lon) };
     });
     assert.ok(search.covered); assert.match(search.label, /Denver/);

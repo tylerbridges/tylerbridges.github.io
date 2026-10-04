@@ -29,17 +29,17 @@
   }
   function events(g, now) {
     var out = [], s = g.s || {}, first = Math.max(0, Math.floor((now - g.start) / H)), last = Math.min(g.n, Math.ceil((now + 48 * H - g.start) / H));
-    function add(label, param, predicate, probability) {
+    function add(label, param, predicate, probability, chanceLabel) {
       var current = null;
       for (var i = first; i < last; i++) {
         if (!predicate(i)) { current = null; continue; }
-        if (!current) { current = { label: label, param: param, start: g.start + i * H, end: g.start + (i + 1) * H, chance: null }; out.push(current); }
+        if (!current) { current = { label: label, param: param, start: g.start + i * H, end: g.start + (i + 1) * H, chance: null, chanceLabel: chanceLabel || "Precipitation chance" }; out.push(current); }
         else current.end = g.start + (i + 1) * H;
-        var p = probability && probability[i]; if (Number.isFinite(p)) current.chance = Math.max(current.chance || 0, p);
+        var p = probability && probability[i]; if (Number.isFinite(p) && p > 0) current.chance = Math.max(current.chance || 0, p);
       }
     }
     add("Rain possible", "ptype", function (i) { return !!(s.rain || [])[i]; }, s.pop);
-    add("Thunderstorms possible", "ptype", function (i) { return !!(s.thunder || [])[i] || Number.isFinite((s.thp || [])[i]) && s.thp[i] >= 20; }, s.thp);
+    add("Thunderstorms possible", "ptype", function (i) { return !!(s.thunder || [])[i] || Number.isFinite((s.thp || [])[i]) && s.thp[i] >= 20; }, s.thp, "Thunderstorm chance");
     [["snow", "Snow possible"], ["sleet", "Sleet possible"], ["fzra", "Freezing rain possible"]].forEach(function (k) {
       add(k[1], "ptype", function (i) { return !!(s[k[0]] || [])[i]; }, s.pop);
     });
@@ -62,7 +62,7 @@
     var alerts = (context.alerts || []).filter(function (a) { var end = a.ends || a.expires; return !end || end > now; });
     var unknown = !g.s.wxKnown || g.s.wxKnown.slice(first, last).some(function (v) { return !v; });
     host.innerHTML = '<p><b>' + (context.via === "test" ? "Sample NWS timeline · model maps remain live" : "NWS timing · next 48 hours") + '</b> · issued ' + esc(stamp(g.updated || (context.updated || {}).grid)) + '</p><div class="weather-timeline">' +
-      timingRows.map(function (r, i) { return '<button type="button" data-weather-time="' + i + '"><b>' + esc(r.label) + '</b><span>' + esc(period(r.start, r.end)) + '</span>' + (r.chance != null ? '<span>Chance up to ' + r.chance + '%</span>' : "") + (r.detail ? '<span>' + esc(r.detail) + '</span>' : "") + '</button>'; }).join("") + '</div>' +
+      timingRows.map(function (r, i) { return '<button type="button" data-weather-time="' + i + '"><b>' + esc(r.label) + '</b><span>' + esc(period(r.start, r.end)) + '</span>' + (r.chance != null ? '<span>' + esc(r.chanceLabel) + ' up to ' + r.chance + '%</span>' : "") + (r.detail ? '<span>' + esc(r.detail) + '</span>' : "") + '</button>'; }).join("") + '</div>' +
       (!timingRows.length ? '<p>No rain, thunderstorms, winter precipitation, 32°F crossings or gusts ≥25 mph appear in the available hourly forecast.</p>' : "") +
       (unknown || g.start + g.n * H < now + 48 * H ? '<p>Some hours are unavailable. Missing hours do not establish dry or safe conditions.</p>' : "") +
       alerts.map(function (a) { return '<p class="outlook-hazard"><b>' + esc(a.event) + '</b> · ' + esc(a.headline || a.event) + (a.onset && (a.ends || a.expires) ? '<br>' + esc(period(a.onset, a.ends || a.expires)) : "") + '</p>'; }).join("") +
