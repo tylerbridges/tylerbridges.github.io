@@ -27,7 +27,7 @@ try {
   }}}
   await mobileLayout();
   await p.fill("#rs-where", "Phoenix, AZ"); await p.locator(".rp-sum button").first().click(); for (let i = 0; i < 24; i++){ const m = await p.locator(".rp-head b").textContent(); if (m === "October 2026") break; await p.locator(".rp-head button").nth(new Date(m + " 1") < new Date(2026, 9, 1) ? 1 : 0).click(); } await p.locator('.rp-grid button[aria-label*="Oct 8"]').click(); await p.locator('.rp-grid button[aria-label*="Oct 12"]').click(); if (!/5 days/.test(await p.locator(".rp-hint").textContent())) fail("date range picker did not set dates");
-  await p.check("#rs-workout"); await p.locator(".rs-optional > summary").click(); await p.selectOption("#rs-climate","cool");
+  await p.check("#rs-workout"); await p.selectOption("#rs-climate","cool");
   await p.click('button:has-text("Generate my list")'); await p.waitForSelector("#rr-export");
   const labels = () => p.$$eval('.refine-item strong', n => n.map(x => x.textContent));
   const initial = await labels();

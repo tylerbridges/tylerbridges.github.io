@@ -219,6 +219,12 @@ h2.k,.gen-opt h3,.psec-head h3,details.panel>summary{font-size:var(--t-foot);let
 .trip-plan-card:hover{border-color:var(--accent);}.trip-plan-card:focus-visible{outline:3px solid var(--accent);outline-offset:3px;}
 .trip-plan-title{font-size:15px;line-height:1.25;}.trip-plan-summary{font-size:13px;line-height:1.45;color:var(--ink-2);}.trip-plan-status{font-size:12px;line-height:1.35;color:var(--accent);margin-top:auto;}
 .trip-plan-wide{grid-column:1/-1;min-height:96px;}.trip-plan-card.needs-attention{border-color:var(--accent);background:var(--accent-soft);}
-.trip-plan-progress{font-size:13px;color:var(--ink-2);margin:8px 0;}.rs-optional>summary{cursor:pointer;font-weight:600;min-height:44px;display:list-item;align-content:center;}.rs-optional[open]>summary{margin-bottom:10px;}
+.trip-plan-progress{font-size:13px;color:var(--ink-2);margin:8px 0;}
 .trip-plan-confirm{display:block;font-size:12px;color:var(--accent);margin-top:4px;}.sheet-body .btn.needs-attention{border-color:var(--accent);}
-.rs-opt-summary{display:block;font-size:13px;line-height:1.45;font-weight:400;color:var(--ink-2);margin:4px 0 0 18px;overflow-wrap:anywhere;}
+
+
+/* Standalone app: matching setup sections and aligned optional dropdowns. */
+.rs-form .rs-section-title{margin:0;font-size:var(--t-foot);font-weight:600;line-height:1.4;text-transform:none;letter-spacing:0;color:var(--ink-2);}
+.rs-form .rs-optional{border-top:1px solid var(--glass-line);padding-top:16px;gap:12px;}
+.rs-form .rs-optional-fields{align-items:end;}.rs-form .rs-optional-fields>.field>label{min-height:2.8em;line-height:1.4;}
+.rs-form .rs-optional .rs-group{gap:6px;}.rs-form .rs-optional .sub{margin:0;font-size:var(--t-foot);font-weight:600;color:var(--ink-2);}
