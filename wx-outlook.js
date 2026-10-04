@@ -10,11 +10,11 @@
     var host = document.getElementById("winter-odds"); if (!host || !odds) return;
     if (!odds.covered) { host.innerHTML = "<p>WPC winter probability maps cover the contiguous U.S. Local NWS forecasts remain available for this location.</p>"; return; }
     host.innerHTML = '<p>Official WPC regional probability bands near ' + esc(context.loc.label) + '. These are chances of exceeding a threshold, not predicted inches or exact point probabilities.</p>' + [1, 2].map(function (day) {
-      var rows = odds.rows.filter(function (r) { return r.day === day; }), first = rows.filter(function (r) { return r.state === "available"; })[0];
+      var rows = odds.rows.filter(function (r) { return r.day === day; }), first = rows.filter(function (r) { return r.state === "available" && r.end > Date.now(); })[0];
       return '<div class="odds-day"><b>Day ' + day + (first ? " · " + esc(period(first.start, first.end)) : " · period unavailable") + '</b><div class="odds-grid">' + rows.map(function (r) {
         var label = r.k === "snow" ? r.threshold + '″+ snow' : '0.25″+ ice', available = r.state === "available";
         var extra = available && first && (r.start !== first.start || r.end !== first.end || r.issue !== first.issue) ? " · " + period(r.start, r.end) + " · issued " + stamp(r.issue) : "";
-        return '<button type="button" data-weather-odds="' + odds.rows.indexOf(r) + '"' + (available ? "" : " disabled") + ' title="' + esc(available ? "NWS issued " + stamp(r.issue) + " · " + period(r.start, r.end) : "No current probability data") + '"><span>' + label + '</span><b>' + esc(available ? r.chance : r.state === "expired" ? "Expired" : "Unavailable") + '</b>' + (extra ? '<span>' + esc(extra) + '</span>' : "") + '</button>';
+        return '<button type="button" data-weather-odds="' + odds.rows.indexOf(r) + '"' + (available ? "" : " disabled") + ' title="' + esc(available ? "NWS issued " + stamp(r.issue) + " · " + period(r.start, r.end) : "No current probability data") + '"><span>' + label + '</span><b>' + esc(available ? r.chance : r.state === "expired" || r.end && r.end <= Date.now() ? "Expired" : "Unavailable") + '</b>' + (extra ? '<span>' + esc(extra) + '</span>' : "") + '</button>';
       }).join("") + "</div>" + (first ? '<p>NWS issued ' + esc(stamp(first.issue)) + '</p>' : "") + "</div>";
     }).join("") + '<p>Tap a threshold to open its map. <a href="https://www.wpc.ncep.noaa.gov/wwd/winter_wx.shtml" target="_blank" rel="noopener">NWS winter outlook</a></p>';
   }

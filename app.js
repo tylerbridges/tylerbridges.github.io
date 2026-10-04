@@ -1288,7 +1288,7 @@
       onOdds: function (r) { OQ = { k: r.k, p: r.day === 2 ? 48 : 24, th: String(r.threshold).padStart(2, "0") }; forecastMode = "nws"; renderMaps(); },
       onTime: function (r) {
         forecastMode = "models"; renderMaps();
-        WXModels.openTime(r.param, r.start).then(function (t) {
+        WXModels.openTime(r.param, r.start, r.param === "qpf" ? r.end : null).then(function (t) {
           if (t != null) { toast("Model forecast · " + fmt(t, { weekday: "short", hour: "numeric", timeZoneName: "short" })); $("mmap").scrollIntoView({ block: "start", behavior: "auto" }); }
           else toast("No model hour is available right now");
         }).catch(function () { toast("Model data couldn't load"); });

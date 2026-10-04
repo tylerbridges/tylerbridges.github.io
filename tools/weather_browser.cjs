@@ -72,6 +72,15 @@ function file(h) {
     assert.ok(Math.abs(calc.qpf - 18 / 25.4) < 1e-5); assert.equal(Number.isNaN(calc.missing), true);
     assert.ok(Math.abs(calc.native - 0.24 * 39.3701) < 1e-5); console.log('Controlled GRIB results:', calc);
     await p.click('#model-window-clear');
+    const target = Math.ceil(Date.now() / (6 * H)) * 6 * H;
+    await p.evaluate(async ({ target, H }) => {
+      WXModels._set({ model: 'hrrr' });
+      await WXModels.openTime('qpf', target, target + 6 * H);
+    }, { target, H });
+    await p.waitForFunction(() => WXModels._state().ready && WXModels._state().window);
+    const period = (await p.evaluate(() => WXModels._state())).window;
+    assert.equal(period.start, target); assert.equal(period.end, target + 6 * H);
+    await p.click('#model-window-clear');
     for (const theme of ['light', 'dark']) for (const width of [360, 390, 430, 1440]) {
       await p.setViewportSize({ width, height: 844 }); await p.evaluate(t => document.documentElement.dataset.theme = t, theme);
       for (const tab of ['daily', 'hourly', 'radar', 'maps']) {

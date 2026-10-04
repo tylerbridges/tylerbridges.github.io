@@ -517,6 +517,12 @@
     if (runs[model] && Date.now() - runs[model].at < 5 * 60000) return Promise.resolve(runs[model].list);
     var Mo = MODELS[model], c = Mo.cycle * H, t0 = Math.floor(Date.now() / c) * c, cand = [];
     for (var i = 0; i < (model === "hrrr" ? 8 : 5); i++) cand.push(t0 - i * c);
+    // Keep prior 48-hour HRRR cycles available for exact-window run trends.
+    if (model === "hrrr") {
+      var synoptic = Math.floor(Date.now() / (6 * H)) * 6 * H;
+      for (var j = 0; j < 4; j++) { var older = synoptic - j * 6 * H; if (cand.indexOf(older) < 0) cand.push(older); }
+      cand.sort(function (a, b) { return b - a; });
+    }
     return Promise.all(cand.map(function (r) { return listRun(model, r).then(function (hs) { return { run: r, hours: hs, max: Mo.max(r) }; }); })).then(function (L) {
       // every listing failed: NOAA's bucket couldn't be reached (try again on the next refresh)
       if (L.every(function (x) { return !x.hours; })) { runs[model] = { at: 0, list: [], fail: true }; return []; }
@@ -922,7 +928,7 @@
     ui.range.max = Math.max(0, hs.length - 1); ui.range.value = cur.k; ui.range.disabled = hs.length < 2;
     ui.play.disabled = hs.length < 2; ui.prev.disabled = hs.length < 2; ui.next.disabled = hs.length < 2; ui.time.disabled = !!lockedWindow;
     var lock = document.getElementById("model-window-lock");
-    if (lock) { lock.hidden = !lockedWindow; if (lockedWindow) lock.querySelector("span").textContent = "Comparison window locked · " + fmtT(lockedWindow.start, { weekday: "short", hour: "numeric", timeZoneName: "short" }) + " – " + fmtT(lockedWindow.end, { weekday: "short", hour: "numeric", timeZoneName: "short" }); }
+    if (lock) { lock.hidden = !lockedWindow; if (lockedWindow) lock.querySelector("span").textContent = "Forecast period locked · " + fmtT(lockedWindow.start, { weekday: "short", hour: "numeric", timeZoneName: "short" }) + " – " + fmtT(lockedWindow.end, { weekday: "short", hour: "numeric", timeZoneName: "short" }); }
     var p = PBY[cur.param];
     ui.title.textContent = MODELS[cur.model].name + " · " + productName(p);
     if (!r || h == null) { ui.time.innerHTML = ""; ui.src.textContent = "Run unavailable"; if (ui.note) ui.note.textContent = ""; if (ui.hdr) ui.hdr.innerHTML = ""; return; }
@@ -1178,13 +1184,20 @@
     uiModels(); uiParams(); uiQuick(); uiRuns(); legend(); showHour(); return true;
   }
   function clearWindow() { if (!lockedWindow) return; var end = lockedWindow.end; lockedWindow = null; setRun(cur.run, end); }
-  function openTime(param, t) {
+  function openTime(param, t, end) {
     if (!PBY[param]) return Promise.resolve(null);
     var token = ++timeRequest, m = has(PBY[param], cur.model) && modelOk(cur.model) ? cur.model : modelOk("hrrr") ? "hrrr" : "gfs";
     if (cur.model !== m || !cur.run) switchModel(m);
     return findRuns(m).then(function (L) {
       if (token !== timeRequest || cur.model !== m || !on) return null;
       var r = R() || pickRun(L, m); if (!r) return null;
+      if (PBY[param].accum && end != null) {
+        return compareWindow({ param: param, models: [m], start: t, end: end }).then(function (rows) {
+          if (token !== timeRequest || cur.model !== m || !on) return null;
+          var row = rows.filter(function (x) { return x.state === "available"; })[0];
+          return row && useWindow(row) ? row.end : null;
+        });
+      }
       setParam(param); setRun(r.run, t); return cur.run + hours()[cur.k] * H;
     });
   }
