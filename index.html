@@ -509,8 +509,8 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
 /* landscape maps (about 4:3) so the Forecast tab scrolls past them easily */
 .mm{height:min(calc(100svh - var(--toph,96px) - 250px),78vw,520px);min-height:260px}
 .oqwrap .mm{height:min(72vw,400px);min-height:240px}
-/* the radar map is the same size as the Forecast tab's official map */
-.rmap{height:min(72vw,400px)!important;min-height:240px!important;max-height:none!important}
+/* the radar map: a little taller than the Forecast tab's maps */
+.rmap{height:min(88vw,480px)!important;min-height:280px!important;max-height:none!important}
 /* the card's filters on one compact row of small segmented groups */
 .offq .oqrow{display:flex;flex-wrap:wrap;gap:5px;padding:0 10px 8px;align-items:center}
 .oqseg{display:inline-flex;gap:0;padding:2px;border-radius:999px;background:var(--sunk)}
@@ -777,6 +777,11 @@ h2{font-weight:700;letter-spacing:.08em}
 /* quieter, readable small print */
 .foot{font-size:13px;padding-inline:4px}
 .foot .notice{font-size:12.5px}
+/* the notice sits at the very bottom of every tab (pushed down on short pages) in small, faint text that blends into the ground */
+.wrap{min-height:100vh;min-height:100svh;box-sizing:border-box;padding-bottom:calc(12px + env(safe-area-inset-bottom,0px))}
+.foot{margin-top:auto;padding-top:28px}
+.foot .notice{font-size:10.5px!important;line-height:1.45;color:var(--muted);opacity:.55}
+.foot .notice b{color:inherit;font-weight:600}
 .past .pn{font-size:12.5px}
 .rsrc{font-size:12px}
 /* ===== auto-fit: sizes scale smoothly with the screen width (clamp), and fitTop() in app.js trims the place name
@@ -907,13 +912,13 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=115"></script>
-<script src="wx-live.js?v=115"></script>
-<script src="wx-scenarios.js?v=115"></script>
-<script src="wx-vmap.js?v=115"></script>
-<script src="wx-radar.js?v=115"></script>
-<script src="wx-models.js?v=115"></script>
-<script src="wx-official.js?v=115"></script>
-<script src="app.js?v=115"></script>
+<script src="wx-normalize.js?v=116"></script>
+<script src="wx-live.js?v=116"></script>
+<script src="wx-scenarios.js?v=116"></script>
+<script src="wx-vmap.js?v=116"></script>
+<script src="wx-radar.js?v=116"></script>
+<script src="wx-models.js?v=116"></script>
+<script src="wx-official.js?v=116"></script>
+<script src="app.js?v=116"></script>
 </body>
 </html>
