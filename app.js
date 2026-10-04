@@ -1108,9 +1108,14 @@
     if (!dock) return function () {};
     // keep the selected-tab pill on its tab while the bar resizes
     // the bar snaps between sizes (no size animation), and the pill is placed once without sliding, so nothing jiggles
-    function set(small) { if (dock.classList.contains("mini") === small) return; dock.classList.toggle("mini", small); movePill(false); }
+    // the header snaps a line shorter at the same time (the "Updated …" line hides), giving the page more room
+    //   the browser then shifts the scroll position by the header's change (scroll anchoring); that shift isn't the user
+    //   scrolling, so it's ignored (otherwise it flips the state straight back, over and over)
+    var quiet = 0;
+    function set(small) { if (dock.classList.contains("mini") === small) return; dock.classList.toggle("mini", small); document.documentElement.classList.toggle("scrolled", small); setTopH(); movePill(false); acc = 0; quiet = performance.now() + 200; requestAnimationFrame(function () { last = window.scrollY; }); }
     function upd() {
       tick = false; var y = window.scrollY, d = y - last; last = y;
+      if (performance.now() < quiet) return;
       // stays small at the end of the page; only scrolling back up (or a tap on a tab) restores it
       if (y < 60) { acc = 0; set(false); return; }
       acc = (acc > 0) === (d > 0) ? acc + d : d;
