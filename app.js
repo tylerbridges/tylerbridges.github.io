@@ -1098,6 +1098,19 @@
   var TAB_KEEP = 30 * 60000;
   function touchTab() { try { localStorage.setItem("wx-tab-at", String(Date.now())); } catch (e) {} }
   function tabStale() { try { return Date.now() - (+localStorage.getItem("wx-tab-at") || 0) > TAB_KEEP; } catch (e) { return false; } }
+  // the bottom tab bar slides away while you scroll down and comes back as soon as you scroll up (or near the top/end)
+  (function () {
+    var dock = $("tabdock"), last = window.scrollY, acc = 0, tick = false;
+    if (!dock) return;
+    function upd() {
+      tick = false; var y = window.scrollY, d = y - last; last = y;
+      var end = y + window.innerHeight >= document.documentElement.scrollHeight - 40;
+      if (y < 60 || end) { acc = 0; dock.classList.remove("hide"); return; }
+      acc = (acc > 0) === (d > 0) ? acc + d : d;
+      if (acc > 24) dock.classList.add("hide"); else if (acc < -12) dock.classList.remove("hide");
+    }
+    window.addEventListener("scroll", function () { if (!tick) { tick = true; requestAnimationFrame(upd); } }, { passive: true });
+  })();
   $("nav").addEventListener("click", function (e) { var c = e.target.closest("[data-tab]"); if (c) showTab(c.dataset.tab); });
   $("days").addEventListener("click", function (e) {
     var c = e.target.closest(".chip"); if (!c) return;

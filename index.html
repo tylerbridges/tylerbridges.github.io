@@ -919,8 +919,16 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
 .tabdock #nav .chip span{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tabdock #nav .chip.on{color:var(--accent)}
 .tabdock .navpill{top:5px;bottom:5px;border-radius:26px}
-.wrap{padding-bottom:calc(max(env(safe-area-inset-bottom,0px),12px) + 92px)}
-#toast{bottom:calc(max(env(safe-area-inset-bottom,0px),12px) + 82px)}
+/* a little lower, flatter and smaller (Oct 4), and it slides away while scrolling down, back on scrolling up */
+.tabdock{padding-bottom:max(calc(env(safe-area-inset-bottom,0px) - 12px),8px);transition:transform .32s cubic-bezier(.2,.8,.2,1),opacity .2s ease}
+.tabdock.hide{transform:translateY(calc(100% + 24px));opacity:0}
+.tabdock #nav{height:52px;padding:4px;border-radius:26px}
+.tabdock #nav .chip{min-height:0;gap:0;border-radius:22px;font-size:10px}
+.tabdock #nav .chip svg{width:21px;height:21px}
+.tabdock .navpill{top:4px;bottom:4px;border-radius:22px}
+@media (prefers-reduced-motion: reduce){.tabdock{transition:none}}
+.wrap{padding-bottom:calc(max(env(safe-area-inset-bottom,0px),12px) + 76px)}
+#toast{bottom:calc(max(env(safe-area-inset-bottom,0px),12px) + 66px)}
 /* the key keeps one fixed height whatever the map (Precip or Amounts), so the map never jumps when switching */
 .model-view > .mleg{box-sizing:border-box;height:38px;padding:6px 12px 4px;display:flex;align-items:center;overflow:hidden}
 .model-view > .mleg > *{flex:1;min-width:0}
@@ -1090,13 +1098,13 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=124"></script>
-<script src="wx-live.js?v=124"></script>
-<script src="wx-scenarios.js?v=124"></script>
-<script src="wx-vmap.js?v=124"></script>
-<script src="wx-radar.js?v=124"></script>
-<script src="wx-models.js?v=124"></script>
-<script src="wx-official.js?v=124"></script>
-<script src="app.js?v=124"></script>
+<script src="wx-normalize.js?v=125"></script>
+<script src="wx-live.js?v=125"></script>
+<script src="wx-scenarios.js?v=125"></script>
+<script src="wx-vmap.js?v=125"></script>
+<script src="wx-radar.js?v=125"></script>
+<script src="wx-models.js?v=125"></script>
+<script src="wx-official.js?v=125"></script>
+<script src="app.js?v=125"></script>
 </body>
 </html>
