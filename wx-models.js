@@ -572,13 +572,20 @@
     job.cb = function (r) {
       fr.loading = false;
       if (r.err) { if (!fr.r) fr.err = r.err; } else { fr.r = prep(r.r); fr.box = job.m.box; fr.err = null; }
+      if (!r.err && fr.r && fr.r.types && on && PBY[cur.param].types) legend();
       if (on && hours()[cur.k] === h) paint(6);
       status();
     };
     if (front) Q.unshift(job); else Q.push(job);
     pump(); status();
   }
-  function prep(r) { if (!r.empty) r.P = projFor(r.g); return r; }
+  function prep(r) {
+    if (r.empty) return r;
+    r.P = projFor(r.g);
+    // which precipitation types have a visible echo in this frame (for the legend)
+    if (r.t && r.v) { var T = r.t.a, V = r.v.a, has = {}, out = []; for (var i = 0; i < T.length; i++) { var t = T[i]; if (t && !has[t] && V[i] >= (t === 1 ? 10 : 5)) { has[t] = 1; out.push(t); } } r.types = out; }
+    return r;
+  }
   var PJ = {};
   function projFor(g) { var k = JSON.stringify([g.t, g.nx, g.ny, g.la1, g.lo1, g.dx, g.lov]); return PJ[k] || (PJ[k] = { k: k, p: proj(g) }); }
   function loadAround() {
@@ -815,6 +822,8 @@
     ui.reg.innerHTML = '<button type="button" data-z="7.4">Local</button><button type="button" data-z="5.7">Region</button><button type="button" data-z="us">U.S.</button>';
     ui.reg.addEventListener("click", function (e) { var b = e.target.closest("button"); if (!b) return; var z = b.dataset.z; if (z === "us") fly(wx(-96.5), wy(38.5), 3.9); else fly(wx(loc.lon), wy(loc.lat), +z); });
     ui.model.addEventListener("click", function (e) { var b = e.target.closest("[data-m]"); if (!b || b.disabled) return; switchModel(b.dataset.m); });
+    // the model is a compact menu (one row with the map and run menus) rather than six buttons
+    ui.model.addEventListener("change", function (e) { var v = e.target.value; if (v && v !== cur.model && modelOk(v)) switchModel(v); });
     ui.param.addEventListener("change", function () { setParam(this.value); });
     ui.run.addEventListener("change", function () { userRun = true; setRun(+this.value); });
     ui.locate.addEventListener("click", function () {
@@ -852,7 +861,7 @@
   }
   function modelOk(m) { var Mo = MODELS[m]; return !loc || (Mo.covers ? Mo.covers(loc) : !Mo.conus || inConus(loc)); }
   function uiModels() {
-    ui.model.innerHTML = Object.keys(MODELS).map(function (m) { return '<button type="button" class="chip' + (m === cur.model ? " on" : "") + '" data-m="' + m + '"' + (modelOk(m) ? "" : " disabled") + ">" + MODELS[m].name + "</button>"; }).join("");
+    ui.model.innerHTML = '<select class="msel mmsel" aria-label="Model">' + Object.keys(MODELS).map(function (m) { return '<option value="' + m + '"' + (m === cur.model ? " selected" : "") + (modelOk(m) ? "" : " disabled") + ">" + MODELS[m].name + "</option>"; }).join("") + "</select>";
   }
   function uiParams() {
     var gs = [], html = "";
@@ -872,8 +881,12 @@
   function legend() {
     var p = PBY[cur.param], html = "";
     if (p.types) {
-      html = [1, 2, 3, 4].map(function (t) { var st2 = PT[t].stops; return '<div class="mlrow"><span>' + PTN[t] + '</span><i style="background:linear-gradient(90deg,' + st2.map(function (s2) { return "rgba(" + s2[1].slice(0, 3).join(",") + "," + Math.max(0.5, s2[1][3]) + ")"; }).join(",") + ')"></i></div>'; }).join("");
-      html = '<div class="mltypes">' + html + '</div><div class="mlunit">Simulated radar</div>';
+      // only the types that show anywhere on this run's loaded hours (no snow/sleet key in summer); rain until known
+      var seen = {}, pre = cur.model + "|" + cur.run + "|" + cur.param + "|";
+      Object.keys(frames).forEach(function (k) { var f = frames[k]; if (k.indexOf(pre) === 0 && f && f.r && f.r.types) f.r.types.forEach(function (t) { seen[t] = 1; }); });
+      var show = [1, 2, 5, 3, 4].filter(function (t) { return seen[t]; }); if (!show.length) show = [1];
+      html = show.map(function (t) { var st2 = PT[t].stops; return '<div class="mlrow"><span>' + PTN[t] + '</span><i style="background:linear-gradient(90deg,' + st2.map(function (s2) { return "rgba(" + s2[1].slice(0, 3).join(",") + "," + Math.max(0.5, s2[1][3]) + ")"; }).join(",") + ')"></i></div>'; }).join("");
+      html = '<div class="mltypes">' + html + "</div>";
     } else {
       var sc = SC[p.sc], stp = sc.stops;
       if (sc.band) {

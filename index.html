@@ -873,6 +873,33 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
 .model-caption .rbtn{width:30px;height:30px;flex:none}
 .model-bar :focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 @media(min-width:900px){.forecast-workspace .model-map #mmap{height:clamp(420px,55vh,650px)}}
+/* Forecast, simplified: source switch on top, the key right above a landscape map, then the controls in few rows */
+.forecast-workspace .mm,.forecast-workspace .model-map #mmap{height:clamp(230px,66vw,420px)!important;min-height:230px!important}
+@media(min-width:900px){.forecast-workspace .mm,.forecast-workspace .model-map #mmap{height:clamp(360px,48vh,560px)!important}}
+.forecast-workspace > .forecast-toolbar{border-top:0;border-bottom:1px solid var(--grid);padding:8px 12px}
+.forecast-toolbar h2{margin:0}
+.forecast-context{display:none}
+.model-view > .mleg{padding:8px 12px 6px}
+.mltypes{display:flex;flex-wrap:wrap;gap:4px 14px}
+.mlrow{gap:6px}
+.mlrow span{width:auto}
+.mlrow i{flex:none;width:44px}
+.model-tools{padding-top:6px}
+.forecast-workspace .model-tools .mhead{display:flex;gap:6px;padding:0 10px 4px;align-items:center}
+.forecast-workspace .model-tools .mhead > *{min-width:0}
+.forecast-workspace .model-tools #mmodel{display:block;padding:0;flex:0 0 auto;overflow:visible}
+.forecast-workspace .model-tools .mmsel{width:auto;max-width:112px}
+.forecast-workspace .model-tools #mparam{flex:1 1 auto;width:0}
+.forecast-workspace .model-tools .mrun{flex:0 0 auto;width:auto;max-width:34%}
+.forecast-workspace .mquick{display:flex;flex-wrap:nowrap;overflow-x:auto;padding:0 10px 6px}
+.model-nav{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:2px 10px 0;flex-wrap:wrap}
+.model-nav .map-regions,.model-nav .model-location{padding:0}
+.forecast-workspace .model-caption{padding-top:4px}
+@media(min-width:900px){.forecast-workspace .model-tools{display:block}}
+.forecast-workspace .model-tools .mhead .msel{flex:0 0 auto;width:auto;min-width:0;padding-inline:8px 22px;background-position:right 6px center}
+.forecast-workspace .model-tools .mmsel{max-width:84px}
+.forecast-workspace .model-tools .mrun{max-width:92px}
+.forecast-workspace .model-tools .mhead #mparam{flex:1 1 0;width:0;max-width:none}
 
 #now{margin-bottom:4px}
 </style>
@@ -921,14 +948,18 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
 
   <section id="maps" class="sec" data-tab="maps" hidden>
     <div class="card forecast-workspace">
+      <div class="forecast-toolbar"><h2>Forecast maps</h2><div class="forecast-modes" role="tablist" aria-label="Forecast map source">
+        <button type="button" id="forecast-nws-tab" role="tab" aria-selected="true" aria-controls="forecast-nws" data-forecast-mode="nws">NWS</button>
+        <button type="button" id="forecast-models-tab" role="tab" aria-selected="false" aria-controls="forecast-models" tabindex="-1" data-forecast-mode="models">Models</button>
+      </div></div>
       <div id="forecast-nws" role="tabpanel" aria-labelledby="forecast-nws-tab">
     <div class="card offq" id="offq"></div>
       </div>
       <div id="forecast-models" role="tabpanel" aria-labelledby="forecast-models-tab" hidden>
     <div class="card mview model-view">
+      <div class="mleg" id="mleg"></div>
       <div class="mmapw model-map">
         <div id="mmap"></div>
-
       </div>
         <div class="rbar model-bar">
           <button type="button" class="rplay" id="mplay" aria-label="Play"></button>
@@ -940,25 +971,21 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
         <div class="mtitle" id="mtitle"></div>
         <button type="button" class="rbtn" id="mnext" aria-label="Next hour"><svg viewBox="0 0 24 24" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button>
       </div>
+      <div class="model-tools">
+      <div class="mmodel mquick" id="mquick" role="group" aria-label="Map"></div>
+      <div class="mhead"><div class="mmodel" id="mmodel" role="group" aria-label="Model"></div><select id="mparam" class="msel" aria-label="All maps"></select><select id="mrun" class="msel mrun" aria-label="Model run"></select></div>
+      </div>
+      <div class="model-nav">
+      <div class="map-regions" id="model-regions" role="group" aria-label="Model map extent"></div>
       <div class="model-location">
         <button type="button" class="rloc" id="mlocate" aria-label="Go to my current location"><svg viewBox="0 0 24 24"><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2" class="f"/></svg></button>
         <button type="button" class="rloc" id="mhome" aria-label="Back to the forecast location"><svg viewBox="0 0 24 24"><path d="M12 21.5s-6.5-6.2-6.5-11.2a6.5 6.5 0 0 1 13 0c0 5-6.5 11.2-6.5 11.2Z"/><circle cx="12" cy="10.3" r="2.3" class="f"/></svg></button>
         <span id="mlocation-status" role="status"></span>
       </div>
-      <div class="map-regions" id="model-regions" role="group" aria-label="Model map extent"></div>
-      <div class="model-tools">
-      <div class="mmodel" id="mmodel" role="group" aria-label="Model"></div>
-      <div class="mmodel mquick" id="mquick" role="group" aria-label="Map"></div>
-      <div class="mhead"><select id="mparam" class="msel" aria-label="All maps"></select><select id="mrun" class="msel mrun" aria-label="Model run"></select></div>
       </div>
-      <div class="mleg" id="mleg"></div>
       <div class="msrc" id="msrc"></div>
     </div>
       </div>
-      <div class="forecast-toolbar"><h2>Forecast maps</h2><div class="forecast-modes" role="tablist" aria-label="Forecast map source">
-        <button type="button" id="forecast-nws-tab" role="tab" aria-selected="true" aria-controls="forecast-nws" data-forecast-mode="nws">NWS</button>
-        <button type="button" id="forecast-models-tab" role="tab" aria-selected="false" aria-controls="forecast-models" tabindex="-1" data-forecast-mode="models">Models</button>
-      </div></div>
       <p class="forecast-context" id="forecast-context">Official regional precipitation amounts · Tap a county for details</p>
     <details class="forecast-extra" id="forecast-extra"><summary>More NWS maps &amp; outlooks</summary>
     <div class="mcats" id="mcats"></div>
@@ -1010,11 +1037,11 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=116"></script>
-<script src="wx-live.js?v=116"></script>
-<script src="wx-scenarios.js?v=116"></script>
-<script src="wx-vmap.js?v=116"></script>
-<script src="wx-radar.js?v=116"></script>
+<script src="wx-normalize.js?v=117"></script>
+<script src="wx-live.js?v=117"></script>
+<script src="wx-scenarios.js?v=117"></script>
+<script src="wx-vmap.js?v=117"></script>
+<script src="wx-radar.js?v=117"></script>
 <script src="wx-models.js?v=121"></script>
 <script src="wx-official.js?v=121"></script>
 <script src="app.js?v=121"></script>
