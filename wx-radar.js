@@ -742,6 +742,8 @@
   }
   function checkPending() {
     if (frames && frames.src === "iemq" && !iemqOK && ready(frames) >= 1) { if (errAll(frames)) { iemqOK = false; setFrames(iemFrames()); preload(); paint(2); legend(); } else iemqOK = true; }
+    // last resort: if even the unfiltered mosaic's tiles all fail, say so instead of a blank map with a running clock
+    if (frames && frames.src === "iem" && ready(frames) >= 1 && errAll(frames) && !ui.msg) { checking = false; ui.msg = "Radar couldn't load right now"; }
     if (frames && frames.src === "s3" && !s3OK && ready(frames) >= 1) { if (errAll(frames)) { s3OK = false; s3Why = "couldn't decode NOAA's files" + (wErr ? " (" + wErr + ")" : ""); frames = null; loadFrames(); return; } else s3OK = true; }
     nowLine();
     if (pending && ready(pending) >= 1) { setFrames(pending); pending = null; checking = false; upd = Date.now(); paint(2); }

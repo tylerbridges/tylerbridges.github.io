@@ -1480,7 +1480,7 @@
   function lsCard() { return document.querySelector("#locsheet .ls-card"); }
   function lsOpen() {
     clearTimeout(lsT); var c = lsCard(); c.style.transition = ""; c.style.transform = ""; c.style.animation = "";
-    $("locsheet").classList.remove("closing"); $("locsheet").hidden = false; renderLs(); setTimeout(function () { try { $("lsq").focus(); } catch (e) {} }, 50);
+    $("locsheet").classList.remove("closing"); $("locsheet").hidden = false; document.documentElement.classList.add("lsopen"); renderLs(); setTimeout(function () { try { $("lsq").focus(); } catch (e) {} }, 50);
   }
   // closing slides the sheet down (quickly) rather than cutting it
   function lsClose() {
@@ -1488,6 +1488,7 @@
     var reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
     try { document.activeElement && document.activeElement.blur && document.activeElement.blur(); } catch (e) {}
     lsStatus("");
+    document.documentElement.classList.remove("lsopen");
     if (reduce) { ls.hidden = true; return; }
     ls.classList.add("closing"); c.style.animation = "none"; c.style.transition = "transform .22s cubic-bezier(.4,0,1,1)"; c.style.transform = "translateY(105%)";
     lsT = setTimeout(function () { ls.hidden = true; ls.classList.remove("closing"); c.style.transition = ""; c.style.transform = ""; c.style.animation = ""; }, 220);
@@ -1625,6 +1626,11 @@
   if (qs.get("test")) setTest(qs.get("test"));
   if (cached && cached.loc && same(cached.loc, loc) && !TEST) doc = cached;
   renderAll(); showTab(startTab);
+  // a #tab in the URL picks the tab once; drop it so the browser doesn't scroll to that section's id (which left the
+  //   top of the tab under the header) and so a reload follows the saved tab; later hash changes switch tabs too
+  function dropHash() { if (location.hash) try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {} }
+  dropHash(); window.scrollTo(0, 0);
+  window.addEventListener("hashchange", function () { var h = location.hash.replace("#", ""); if (h) { showTab(h); dropHash(); window.scrollTo(0, 0); } });
   if (qQ) {
     WXLive.geocode(qQ).then(function (hit) { if (hit) useLoc(hit); else { toast("No US location found for \"" + qQ + "\""); useLoc(loc); } }).catch(function () { useLoc(loc); });
   } else useLoc(loc);
