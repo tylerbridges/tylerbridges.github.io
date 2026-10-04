@@ -909,6 +909,17 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
 .forecast-workspace #mquick{display:flex;gap:2px;padding:2px;margin:0 10px 6px;border-radius:999px;background:var(--sunk);overflow:visible}
 .forecast-workspace #mquick .chip{flex:1;min-height:32px;padding:4px 10px;font-size:14px;font-weight:700;background:transparent;border:0;color:var(--ink2)}
 .forecast-workspace #mquick .chip.on{background:var(--accent);color:#fff}
+/* the key keeps one fixed height whatever the map (Precip or Amounts), so the map never jumps when switching */
+.model-view > .mleg{box-sizing:border-box;height:38px;padding:6px 12px 4px;display:flex;align-items:center;overflow:hidden}
+.model-view > .mleg > *{flex:1;min-width:0}
+.model-view .mltypes{gap:2px 12px;align-content:center}
+.model-view .mlrow{font-size:11px}
+.model-view .mlrow i{width:30px;height:7px}
+.mlone{display:flex;align-items:flex-start;gap:6px}
+.mlscale{flex:1;min-width:0}
+.model-view .mlbar{height:8px}
+.model-view .mlticks{height:13px;font-size:9.5px}
+.mlone .mlunit{flex:none;margin:0;font-size:10px;line-height:8px;color:var(--muted)}
 /* compact model controls (Oct 4): no hour-step row, no source line, no sub-label under the time; smaller buttons.
    #mprev/#mnext stay in the page (hidden) so the arrow keys still step hours */
 .forecast-workspace .model-caption{display:none}
@@ -1069,13 +1080,13 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=122"></script>
-<script src="wx-live.js?v=122"></script>
-<script src="wx-scenarios.js?v=122"></script>
-<script src="wx-vmap.js?v=122"></script>
-<script src="wx-radar.js?v=122"></script>
-<script src="wx-models.js?v=122"></script>
-<script src="wx-official.js?v=122"></script>
-<script src="app.js?v=122"></script>
+<script src="wx-normalize.js?v=123"></script>
+<script src="wx-live.js?v=123"></script>
+<script src="wx-scenarios.js?v=123"></script>
+<script src="wx-vmap.js?v=123"></script>
+<script src="wx-radar.js?v=123"></script>
+<script src="wx-models.js?v=123"></script>
+<script src="wx-official.js?v=123"></script>
+<script src="app.js?v=123"></script>
 </body>
 </html>

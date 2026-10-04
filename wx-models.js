@@ -903,7 +903,8 @@
         html = '<div class="mlbar" style="background:linear-gradient(90deg,' + stp.map(function (s2) { return "rgb(" + s2[1].slice(0, 3).join(",") + ") " + ((s2[0] - lo) / (hi - lo) * 100).toFixed(2) + "%"; }).join(",") + ')"></div>';
         html += '<div class="mlticks">' + sc.ticks.map(function (t) { return '<span style="left:' + ((t - lo) / (hi - lo) * 100).toFixed(2) + '%">' + t + "</span>"; }).join("") + "</div>";
       }
-      html += '<div class="mlunit">' + sc.unit + "</div>";
+      // one compact line, the same height as the precip-type key: scale with its ticks, then the unit
+      html = '<div class="mlone"><div class="mlscale">' + html + '</div><span class="mlunit">' + sc.unit + "</span></div>";
     }
     ui.leg.innerHTML = html;
   }
