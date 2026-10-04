@@ -1529,11 +1529,42 @@
   })();
   function lsStatus(msg, err) { var e = $("lsstat"); e.hidden = !msg; e.textContent = msg || ""; e.classList.toggle("err", !!err); }
   var STAR = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="m12 3 2.6 5.85 6.4.62-4.85 4.3 1.4 6.28L12 16.9l-5.55 3.15 1.4-6.28-4.85-4.3 6.4-.62Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>';
+  // a small weather emoji beside each place in the Location sheet: forecast.weather.gov's MapClick JSON (one request,
+  //   CORS-open) gives the latest observation's image name (e.g. "nsct.png"), else the current period's icon; mapped onto
+  //   the same emoji as the rest of the site, kept 20 min per place
+  var LSWX = store("wx-lswx") || {};
+  var MC = { skc: "skc", few: "few", sct: "sct", bkn: "bkn", ovc: "ovc", ra: "rain", shra: "rain", hi_shwrs: "rain", minus_ra: "rain", ra1: "rain",
+    tsra: "tsra", hi_tsra: "tsra", scttsra: "tsra", svrtsra: "tsra", sn: "snow", blizzard: "blizzard", fzra: "fzra", ip: "sleet", raip: "sleet", rasn: "ra_sn", mix: "ra_sn",
+    fg: "fog", hz: "haze", fu: "smoke", du: "dust", wind: "wind", hot: "hot", cold: "cold", tor: "tornado", fc: "tornado", hur: "hurricane", tro: "tropical" };
+  function lsKey(r) { return (+r.lat).toFixed(2) + "," + (+r.lon).toFixed(2); }
+  function lsWx(r) { var c = r && r.lat != null && LSWX[lsKey(r)]; return c && Date.now() - c.t < 20 * 60000 ? emo(c.c, c.d) : null; }
+  function mcIcon(s) {
+    s = String(s || "").split("/").pop().replace(/^DualImage\.php\?i=/, "").replace(/[&?].*$/, "").replace(/\.(png|jpg|gif)$/i, "").toLowerCase();
+    if (!s || s === "null" || s === "na") return null;
+    var night = /^hi_n/.test(s), b = s.replace(/^hi_n/, "hi_").replace(/\d+$/, "");
+    if (!MC[b] && b[0] === "n" && MC[b.slice(1).replace(/\d+$/, "")]) { night = true; b = b.slice(1); }
+    b = b.replace(/\d+$/, ""); var c = MC[b] || (/tsra/.test(b) ? "tsra" : /sn/.test(b) ? "snow" : /ra/.test(b) ? "rain" : null);
+    return c ? { c: c, d: !night } : null;
+  }
+  function lsWxLoad(r, cb) {
+    if (!r || r.lat == null) return;
+    var k = lsKey(r), have = lsWx(r); if (have) return;
+    // one request per place at a time; every row waiting on it gets the answer
+    if (lsWxLoad.q[k]) { lsWxLoad.q[k].push(cb); return; } var q = lsWxLoad.q[k] = [cb];
+    fetch("https://forecast.weather.gov/MapClick.php?lat=" + (+r.lat).toFixed(4) + "&lon=" + (+r.lon).toFixed(4) + "&FcstType=json").then(function (x) { if (!x.ok) throw 0; return x.json(); }).then(function (j) {
+      var ic = mcIcon(j && j.currentobservation && j.currentobservation.Weatherimage) || mcIcon(j && j.data && (j.data.iconLink || [])[0]);
+      if (!ic) return;
+      LSWX[k] = { c: ic.c, d: ic.d, t: Date.now() };
+      Object.keys(LSWX).forEach(function (q) { if (Date.now() - LSWX[q].t > 864e5) delete LSWX[q]; });
+      store("wx-lswx", LSWX); var e = emo(ic.c, ic.d); q.forEach(function (f) { f(e); });
+    }).catch(function () {}).then(function () { delete lsWxLoad.q[k]; });
+  }
+  lsWxLoad.q = {};
   function renderLs() {
     var favWrap = $("lsfavwrap"), rows = [];
     function row(r) {
       var i = rows.push(r) - 1, f = isFav(r), name = esc(r.label || (r.lat + ", " + r.lon));
-      return '<div class="ls-row"><button type="button" class="ls-go" data-r="' + i + '">' + name + (same(r, loc) ? "<small>Showing now</small>" : "") + "</button>" +
+      return '<div class="ls-row"><button type="button" class="ls-go" data-r="' + i + '"><span class="ls-n"><span class="ls-wx" data-wx="' + i + '" aria-hidden="true">' + (lsWx(r) || "") + "</span>" + name + "</span>" + (same(r, loc) ? "<small>Showing now</small>" : "") + "</button>" +
         (favWrap ? '<button type="button" class="ls-star' + (f ? " on" : "") + '" data-fav="' + i + '" aria-pressed="' + f + '" aria-label="' + (f ? "Remove " + name + " from favorites" : "Add " + name + " to favorites") + '">' + STAR + "</button>" : "") + "</div>";
     }
     var rec = recents.filter(function (r) { return r && !isFav(r); });
@@ -1543,6 +1574,7 @@
     $("lsrec").innerHTML = rec.map(row).join("");
     if ($("lsreclbl")) $("lsreclbl").hidden = !rec.length;
     renderLs.rows = rows;
+    rows.forEach(function (r, i) { lsWxLoad(r, function (e) { var x = document.querySelector('#locsheet [data-wx="' + i + '"]'); if (x && renderLs.rows === rows) x.innerHTML = e; }); });
     if ($("lstest") && window.WXScenario) $("lstest").innerHTML = WXScenario.list.map(function (x) {
       return '<div class="ls-row"><button type="button" class="ls-go" data-test="' + x.id + '"><span>' + esc(x.name) + '<span class="d">' + esc(x.desc) + "</span></span>" + (TEST === x.id ? "<small>Showing now</small>" : "") + "</button></div>";
     }).join("");
