@@ -989,7 +989,8 @@
   }
 
   // ---------- interactions ----------
-  $("rbtn").addEventListener("click", function () { checkVersion(true); refresh(true); });
+  // the refresh button reloads the whole page, like the browser's reload (the saved tab brings you back where you were)
+  $("rbtn").addEventListener("click", function () { $("rbtn").classList.add("spin"); try { touchTab(); } catch (e) {} location.reload(); });
   function stripClick(e) {
     var c = e.target.closest("[data-i]"); if (!c) return;
     showTab("daily");
