@@ -920,13 +920,17 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
 .tabdock #nav .chip.on{color:var(--accent)}
 .tabdock .navpill{top:5px;bottom:5px;border-radius:26px}
 /* a little lower, flatter and smaller (Oct 4), and it slides away while scrolling down, back on scrolling up */
-.tabdock{padding-bottom:max(calc(env(safe-area-inset-bottom,0px) - 12px),8px);transition:transform .32s cubic-bezier(.2,.8,.2,1),opacity .2s ease}
-.tabdock.hide{transform:translateY(calc(100% + 24px));opacity:0}
-.tabdock #nav{height:52px;padding:4px;border-radius:26px}
+.tabdock{padding-bottom:max(calc(env(safe-area-inset-bottom,0px) - 12px),8px)}
+.tabdock #nav{height:52px;padding:4px;border-radius:26px;max-width:560px;transition:max-width .3s cubic-bezier(.2,.8,.2,1),height .3s cubic-bezier(.2,.8,.2,1)}
 .tabdock #nav .chip{min-height:0;gap:0;border-radius:22px;font-size:10px}
-.tabdock #nav .chip svg{width:21px;height:21px}
+.tabdock #nav .chip svg{width:21px;height:21px;transition:width .3s ease,height .3s ease,opacity .2s ease}
 .tabdock .navpill{top:4px;bottom:4px;border-radius:22px}
-@media (prefers-reduced-motion: reduce){.tabdock{transition:none}}
+/* scrolled down: a small centred bar with just the names (no icons); tapping a name opens it and restores the full bar */
+.tabdock.mini #nav{max-width:290px;height:36px;padding:3px}
+.tabdock.mini #nav .chip{font-size:12px;border-radius:18px}
+.tabdock.mini #nav .chip svg{width:0;height:0;opacity:0}
+.tabdock.mini .navpill{top:3px;bottom:3px;border-radius:18px}
+@media (prefers-reduced-motion: reduce){.tabdock #nav,.tabdock #nav .chip svg{transition:none}}
 .wrap{padding-bottom:calc(max(env(safe-area-inset-bottom,0px),12px) + 76px)}
 #toast{bottom:calc(max(env(safe-area-inset-bottom,0px),12px) + 66px)}
 /* the key keeps one fixed height whatever the map (Precip or Amounts), so the map never jumps when switching */
@@ -1103,13 +1107,13 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=126"></script>
-<script src="wx-live.js?v=126"></script>
-<script src="wx-scenarios.js?v=126"></script>
-<script src="wx-vmap.js?v=126"></script>
-<script src="wx-radar.js?v=126"></script>
-<script src="wx-models.js?v=126"></script>
-<script src="wx-official.js?v=126"></script>
-<script src="app.js?v=126"></script>
+<script src="wx-normalize.js?v=127"></script>
+<script src="wx-live.js?v=127"></script>
+<script src="wx-scenarios.js?v=127"></script>
+<script src="wx-vmap.js?v=127"></script>
+<script src="wx-radar.js?v=127"></script>
+<script src="wx-models.js?v=127"></script>
+<script src="wx-official.js?v=127"></script>
+<script src="app.js?v=127"></script>
 </body>
 </html>

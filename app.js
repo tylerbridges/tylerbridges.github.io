@@ -1098,20 +1098,25 @@
   var TAB_KEEP = 30 * 60000;
   function touchTab() { try { localStorage.setItem("wx-tab-at", String(Date.now())); } catch (e) {} }
   function tabStale() { try { return Date.now() - (+localStorage.getItem("wx-tab-at") || 0) > TAB_KEEP; } catch (e) { return false; } }
-  // the bottom tab bar slides away while you scroll down and comes back as soon as you scroll up (or near the top/end)
-  (function () {
-    var dock = $("tabdock"), last = window.scrollY, acc = 0, tick = false;
-    if (!dock) return;
+  // the bottom tab bar shrinks to a small centred text-only bar while you scroll down (still tappable), and grows back to
+  //   full size when you tap a tab, scroll up, or reach the top or end of the page
+  var dockSet = (function () {
+    var dock = $("tabdock"), last = window.scrollY, acc = 0, tick = false, follow = 0;
+    if (!dock) return function () {};
+    // keep the selected-tab pill on its tab while the bar resizes
+    function track() { cancelAnimationFrame(follow); var t0 = performance.now(); (function f(t) { movePill(false); if (t - t0 < 360) follow = requestAnimationFrame(f); })(t0); }
+    function set(small) { if (dock.classList.contains("mini") === small) return; dock.classList.toggle("mini", small); track(); }
     function upd() {
       tick = false; var y = window.scrollY, d = y - last; last = y;
       var end = y + window.innerHeight >= document.documentElement.scrollHeight - 40;
-      if (y < 60 || end) { acc = 0; dock.classList.remove("hide"); return; }
+      if (y < 60 || end) { acc = 0; set(false); return; }
       acc = (acc > 0) === (d > 0) ? acc + d : d;
-      if (acc > 24) dock.classList.add("hide"); else if (acc < -12) dock.classList.remove("hide");
+      if (acc > 24) set(true); else if (acc < -12) set(false);
     }
     window.addEventListener("scroll", function () { if (!tick) { tick = true; requestAnimationFrame(upd); } }, { passive: true });
+    return function (small) { acc = 0; set(small); };
   })();
-  $("nav").addEventListener("click", function (e) { var c = e.target.closest("[data-tab]"); if (c) showTab(c.dataset.tab); });
+  $("nav").addEventListener("click", function (e) { var c = e.target.closest("[data-tab]"); if (c) { dockSet(false); showTab(c.dataset.tab); } });
   $("days").addEventListener("click", function (e) {
     var c = e.target.closest(".chip"); if (!c) return;
     document.querySelectorAll("#days .chip").forEach(function (x) { x.classList.toggle("on", x === c); });
