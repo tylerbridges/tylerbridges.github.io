@@ -11,6 +11,8 @@ const { chromium, webkit } = require('playwright'), assert = require('node:asser
       await page.waitForFunction(() => document.querySelectorAll('[data-weather-time]').length > 0);
       for (const width of [320, 360, 390, 430, 844]) for (const theme of ['light', 'dark']) {
         await page.setViewportSize({ width, height: width === 844 ? 390 : 690 });
+        await page.goto('http://localhost:8003/?test=ice#forecast');
+        await page.waitForFunction(() => document.querySelectorAll('[data-weather-time]').length > 0);
         await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
         for (const prior of ['sources', 'winter', 'timing']) {
           await page.locator('.forecast-tools-open').scrollIntoViewIfNeeded();
@@ -23,7 +25,7 @@ const { chromium, webkit } = require('playwright'), assert = require('node:asser
             for (let i = 0; i < 12; i++) {
               await new Promise(requestAnimationFrame);
               const dialog = document.querySelector('#forecast-tools'), bounds = dialog.getBoundingClientRect();
-              samples.push({ x: scrollX, y: scrollY, overflow: dialog.scrollWidth > dialog.clientWidth + 1,
+              samples.push({ top: bounds.top, tabsTop: dialog.querySelector('.forecast-tools-tabs').getBoundingClientRect().top, x: scrollX, y: scrollY, overflow: dialog.scrollWidth > dialog.clientWidth + 1,
                 inside: Array.from(dialog.querySelectorAll('.forecast-tools-tabs button,#forecast-tools-close')).every(button => {
                   const r = button.getBoundingClientRect(); return r.left >= bounds.left + 4 && r.right <= bounds.right - 4 && r.top >= bounds.top && r.bottom <= bounds.bottom;
                 }) });
@@ -31,17 +33,34 @@ const { chromium, webkit } = require('playwright'), assert = require('node:asser
             return samples;
           });
           for (const frame of frames) {
+            assert.ok(Math.abs(frame.top - frames[0].top) < 1 && Math.abs(frame.tabsTop - frames[0].tabsTop) < 1, 'First opening moved panel/category row');
             assert.equal(frame.overflow, false, engine.name() + '/' + width + '/horizontal overflow');
             assert.equal(frame.inside, true, engine.name() + '/' + width + '/buttons outside panel');
             assert.ok(Math.abs(frame.x - before.x) < 1 && Math.abs(frame.y - before.y) < 2, engine.name() + '/' + width + '/opening moved page');
           }
+          const anchor = await page.locator('#forecast-tools').evaluate(dialog => ({ top: dialog.getBoundingClientRect().top, tabsTop: dialog.querySelector('.forecast-tools-tabs').getBoundingClientRect().top, buttons: Array.from(dialog.querySelectorAll('[data-tool-tab]'), b => { const r = b.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; }) }));
+          for (const category of ['winter', 'compare', 'reports', 'maps', 'sources', 'timing']) {
+            await page.click('#tool-tab-' + category);
+            const after = await page.locator('#forecast-tools').evaluate(dialog => ({ top: dialog.getBoundingClientRect().top, tabsTop: dialog.querySelector('.forecast-tools-tabs').getBoundingClientRect().top, buttons: Array.from(dialog.querySelectorAll('[data-tool-tab]'), b => { const r = b.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; }) }));
+            assert.ok(Math.abs(anchor.top - after.top) < 1 && Math.abs(anchor.tabsTop - after.tabsTop) < 1, engine.name() + '/' + width + '/' + category + '/category controls moved');
+            after.buttons.forEach((button, i) => {
+              for (const key of ['x', 'y', 'width', 'height']) assert.ok(Math.abs(button[key] - anchor.buttons[i][key]) < 1, category + '/button ' + i + '/' + key + ' moved');
+            });
+          }
+          await page.evaluate(() => {
+            const panel = document.querySelector('#tool-timing');
+            panel.insertAdjacentHTML('beforeend', '<p>Late-arriving content</p>'.repeat(40));
+            panel.scrollTop = panel.scrollHeight;
+          });
+          const scrolled = await page.locator('#forecast-tools').evaluate(dialog => ({ top: dialog.getBoundingClientRect().top, tabsTop: dialog.querySelector('.forecast-tools-tabs').getBoundingClientRect().top, buttons: Array.from(dialog.querySelectorAll('[data-tool-tab]'), b => { const r = b.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; }) }));
+          assert.ok(Math.abs(anchor.top - scrolled.top) < 1 && Math.abs(anchor.tabsTop - scrolled.tabsTop) < 1, 'Late content/scroll moved category controls');
           await page.click('#tool-tab-' + prior);
           await page.keyboard.press('Escape');
           await page.locator('#forecast-tools').waitFor({ state: 'hidden' });
         }
       }
       assert.deepEqual(errors, []);
-      console.log('PASS ' + engine.name() + ': repeated More openings, button bounds, no page jumps; five widths, both themes');
+      console.log('PASS ' + engine.name() + ': fresh/repeated More openings, fixed categories across all panels, late-content scroll, button bounds, no page jumps; five widths, both themes');
     } finally { await browser.close(); }
   }
 })().catch(error => { console.error(error); process.exit(1); });

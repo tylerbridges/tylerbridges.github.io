@@ -1,7 +1,7 @@
 name: Weather verification
 on:
   push:
-    branches: [weather-outlook-recovery-139, main]
+    branches: [weather-outlook-recovery-139, forecast-dialog-anchor-143, main]
     paths:
       - index.html
       - app.js
@@ -31,11 +31,12 @@ jobs:
       - name: Install browser check tools
         run: |
           npm install --prefix "$RUNNER_TEMP/weather-qa" playwright
-          "$RUNNER_TEMP/weather-qa/node_modules/.bin/playwright" install --with-deps chromium
+          "$RUNNER_TEMP/weather-qa/node_modules/.bin/playwright" install --with-deps chromium webkit
       - name: Browser checks with controlled GRIB2 fields
         run: |
           python -m http.server 8003 > "$RUNNER_TEMP/weather-server.log" 2>&1 &
           NODE_PATH="$RUNNER_TEMP/weather-qa/node_modules" node tools/weather_browser.cjs
+          NODE_PATH="$RUNNER_TEMP/weather-qa/node_modules" node tools/weather_tools_layout.cjs --webkit
       - name: Browser checks with live weather
         run: NODE_PATH="$RUNNER_TEMP/weather-qa/node_modules" node tools/weather_live.cjs
       - name: Deep radar audit

@@ -1055,11 +1055,14 @@ html.scrolled .top #fresh{display:inline-flex;max-height:0;opacity:0}
 .forecast-local-amounts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:8px 0 0;font-size:14px}
 .forecast-local-amounts>div{min-width:0}.forecast-local-amounts dt{font-size:12px;color:var(--ink2);margin-bottom:3px}.forecast-local-amounts dd{margin:0;font-size:16px;font-weight:600}
 .forecast-summary .text-action{border:0;background:transparent;color:var(--accent);font:inherit;font-size:13px;min-height:36px;padding:6px 0;cursor:pointer}
-.forecast-tools{box-sizing:border-box;position:fixed;inset:0;margin:auto;width:min(740px,calc(100% - 32px));height:fit-content;max-height:85dvh;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;border:1px solid var(--line);border-radius:22px;background:var(--surface);color:var(--ink);padding:0 16px 18px;box-shadow:var(--glass-sh)}
+.forecast-tools{box-sizing:border-box;--tools-top:clamp(16px,10svh,72px);position:fixed;top:var(--tools-top);left:0;right:0;bottom:auto;margin:0 auto;width:min(740px,calc(100% - 32px));height:fit-content;max-height:calc(100dvh - var(--tools-top) - max(16px,env(safe-area-inset-bottom,0px)));overflow:hidden;border:1px solid var(--line);border-radius:22px;background:var(--surface);color:var(--ink);padding:0 16px 18px;box-shadow:var(--glass-sh)}
+.forecast-tools[open]{display:flex;flex-direction:column}
+.forecast-tools-head,.forecast-tools-tabs{flex-shrink:0}
+.forecast-tools>section[role="tabpanel"]{flex:0 1 auto;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;padding:0 3px 4px}
 .forecast-tools::backdrop{background:rgba(0,0,0,.45)}
 .forecast-tools-head{position:sticky;top:0;background:var(--surface);display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 0 8px;z-index:1}.forecast-tools-head h2{font-size:19px;margin:0;min-width:0;overflow-wrap:break-word}.forecast-tools-head button{font-size:25px;width:40px;height:40px;flex:none}
 .forecast-tools-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;border-bottom:1px solid var(--grid);padding-bottom:8px;scrollbar-width:thin}
-.forecast-tools-tabs button{box-sizing:border-box;width:100%;max-width:100%;min-width:0;border:0;border-radius:10px;background:transparent;color:var(--ink2);font:inherit;font-size:13px;white-space:normal;overflow-wrap:break-word;padding:8px 6px;min-height:36px;cursor:pointer}.forecast-tools-tabs button[aria-selected="true"]{background:var(--sunk);color:var(--accent);font-weight:700}
+.forecast-tools-tabs button{box-sizing:border-box;width:100%;max-width:100%;min-width:0;border:0;border-radius:10px;background:transparent;color:var(--ink2);font:inherit;font-size:13px;white-space:normal;overflow-wrap:break-word;padding:6px;line-height:16px;height:44px;min-height:44px;cursor:pointer}.forecast-tools-tabs button[aria-selected="true"]{background:var(--sunk);color:var(--accent);font-weight:700}
 .forecast-tools section>h3{font-size:16px;margin:16px 0 8px}.forecast-tools p,.forecast-tools .oqnote{font-size:12px;line-height:1.5;color:var(--ink2)}
 .forecast-tools section[hidden]{display:none}.forecast-tools .model-data{padding:0}.forecast-tools .sec-h{margin-top:20px}
 .forecast-tools button:focus-visible,.forecast-summary button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -1219,15 +1222,15 @@ html.scrolled .top #fresh{display:inline-flex;max-height:0;opacity:0}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=142"></script>
+<script src="wx-normalize.js?v=143"></script>
 <script src="wx-live.js?v=136"></script>
 <script src="wx-scenarios.js?v=136"></script>
 <script src="wx-vmap.js?v=136"></script>
 <script src="wx-radar.js?v=136"></script>
-<script src="wx-models.js?v=142"></script>
-<script src="wx-official.js?v=142"></script>
-<script src="wx-archive.js?v=142"></script>
-<script src="wx-outlook.js?v=142"></script>
-<script src="app.js?v=142"></script>
+<script src="wx-models.js?v=143"></script>
+<script src="wx-official.js?v=143"></script>
+<script src="wx-archive.js?v=143"></script>
+<script src="wx-outlook.js?v=143"></script>
+<script src="app.js?v=143"></script>
 </body>
 </html>
