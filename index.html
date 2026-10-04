@@ -509,6 +509,11 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
 /* landscape maps (about 4:3) so the Forecast tab scrolls past them easily */
 .mm{height:min(calc(100svh - var(--toph,96px) - 250px),78vw,520px);min-height:260px}
 .oqwrap .mm{height:min(72vw,400px);min-height:240px}
+/* the card's filters on one compact row of small segmented groups */
+.offq .oqrow{display:flex;flex-wrap:wrap;gap:5px;padding:0 10px 8px;align-items:center}
+.oqseg{display:inline-flex;gap:0;padding:2px;border-radius:999px;background:var(--sunk)}
+.oqseg .chip{padding:4px 8px;font-size:12.5px;background:transparent;border:0}
+.oqseg .chip.on{background:var(--accent);color:#fff}
 .oqwrap .mfr{z-index:2;left:auto;right:8px;top:8px}
 .oqwrap .mm{background:#fff}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .oqwrap .mm{background:#000}}
@@ -897,13 +902,13 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=111"></script>
-<script src="wx-live.js?v=111"></script>
-<script src="wx-scenarios.js?v=111"></script>
-<script src="wx-vmap.js?v=111"></script>
-<script src="wx-radar.js?v=111"></script>
-<script src="wx-models.js?v=111"></script>
-<script src="wx-official.js?v=111"></script>
-<script src="app.js?v=111"></script>
+<script src="wx-normalize.js?v=112"></script>
+<script src="wx-live.js?v=112"></script>
+<script src="wx-scenarios.js?v=112"></script>
+<script src="wx-vmap.js?v=112"></script>
+<script src="wx-radar.js?v=112"></script>
+<script src="wx-models.js?v=112"></script>
+<script src="wx-official.js?v=112"></script>
+<script src="app.js?v=112"></script>
 </body>
 </html>

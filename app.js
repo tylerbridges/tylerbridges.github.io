@@ -1246,9 +1246,10 @@
     }
     var chip = function (attr, v, label, on) { return '<button type="button" class="chip' + (on ? " on" : "") + '" ' + attr + '="' + v + '">' + label + "</button>"; };
     var bust = "?t=" + Math.floor(Date.now() / 9e5);
-    el.innerHTML = '<div class="oqh">' + chip("data-oqk", "qpf", "Precip", OQ.k === "qpf") + chip("data-oqk", "snow", "Snow", OQ.k === "snow") + chip("data-oqk", "ice", "Ice", OQ.k === "ice") + "</div>" +
-      '<div class="oqh">' + chip("data-oqp", 24, "Next 24 hr", OQ.p === 24) + chip("data-oqp", 48, OQ.k === "qpf" ? "Next 48 hr" : "24–48 hr", OQ.p === 48) +
-      "</div>" + (OQ.k === "snow" ? '<div class="oqh"><span class="oqlab">Chance of</span>' + ["04", "08", "12"].map(function (t) { return chip("data-oqt", t, +t + '"+', OQ.th === t); }).join("") + "</div>" : "") +
+    // one compact row: kind and period as two small segmented groups (snow adds its threshold group on the same row when it fits)
+    el.innerHTML = '<div class="oqh oqrow"><span class="oqseg">' + chip("data-oqk", "qpf", "Precip", OQ.k === "qpf") + chip("data-oqk", "snow", "Snow", OQ.k === "snow") + chip("data-oqk", "ice", "Ice", OQ.k === "ice") + "</span>" +
+      '<span class="oqseg">' + chip("data-oqp", 24, OQ.k === "qpf" ? "24 hr" : "Day 1", OQ.p === 24) + chip("data-oqp", 48, OQ.k === "qpf" ? "48 hr" : "Day 2", OQ.p === 48) + "</span>" +
+      (OQ.k === "snow" ? '<span class="oqseg">' + ["04", "08", "12"].map(function (t) { return chip("data-oqt", t, +t + '"+', OQ.th === t); }).join("") + "</span>" : "") + "</div>" +
       (window.WXOfficial ? '<div class="oqwrap" id="oqwrap"><span class="mfr num" id="oqper">' + esc(per) + '</span></div><div class="oqcap" id="oqleg">' + esc(WXOfficial.caption(OQ)) + "</div>"
         : '<div class="oqimg" id="oqimg"><img src="' + img + bust + '" alt="' + esc(cap) + '"><span class="mfr num">' + esc(per) + "</span></div>") +
       '<div class="oqnote"><b>' + esc(cap) + "</b> · NWS Weather Prediction Center · " + '<a href="' + WPC + (OQ.k === "qpf" ? "qpf/qpf2.shtml" : "wwd/winter_wx.shtml") + '" target="_blank" rel="noopener">Source</a></div>' + amt;
