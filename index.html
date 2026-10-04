@@ -909,6 +909,22 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
 .forecast-workspace #mquick{display:flex;gap:2px;padding:2px;margin:0 10px 6px;border-radius:999px;background:var(--sunk);overflow:visible}
 .forecast-workspace #mquick .chip{flex:1;min-height:32px;padding:4px 10px;font-size:14px;font-weight:700;background:transparent;border:0;color:var(--ink2)}
 .forecast-workspace #mquick .chip.on{background:var(--accent);color:#fff}
+/* compact model controls (Oct 4): no hour-step row, no source line, no sub-label under the time; smaller buttons.
+   #mprev/#mnext stay in the page (hidden) so the arrow keys still step hours */
+.forecast-workspace .model-caption{display:none}
+.forecast-workspace #msrc{display:none}
+.forecast-workspace .model-bar .rtime span{display:none}
+.forecast-workspace .model-bar{margin-top:6px;padding:3px 12px 3px 3px;gap:8px}
+.forecast-workspace .model-bar .rplay{width:30px;height:30px}
+.forecast-workspace .model-bar .rtime b{font-size:13px}
+.forecast-workspace .model-map .model-location .rloc{width:30px;height:30px}
+.forecast-workspace .model-map .model-location{gap:6px;right:8px;top:8px}
+.forecast-workspace .model-map .model-location .rloc svg{width:16px;height:16px}
+.forecast-workspace #mquick{margin:6px 10px 6px}
+.forecast-workspace #mquick .chip{min-height:28px;padding:3px 8px;font-size:13px}
+.forecast-workspace .model-tools .mhead .msel{min-height:30px;padding-block:2px;font-size:16px}
+.model-nav .map-regions .mmreg button,.map-regions .mmreg button{min-height:26px;padding:3px 9px;font-size:12px}
+.model-nav{padding-bottom:10px}
 .mhdr{max-width:calc(100% - 66px)}
 /* map header, like Pivotal's title bar: product, period and run on the map itself */
 .mhdr{position:absolute;left:8px;top:8px;z-index:2;max-width:calc(100% - 16px);pointer-events:none;padding:5px 9px;border-radius:10px;background:color-mix(in srgb,var(--surface) 84%,transparent);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border:1px solid color-mix(in srgb,var(--line) 70%,transparent);line-height:1.25}
@@ -1053,13 +1069,13 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=121"></script>
-<script src="wx-live.js?v=121"></script>
-<script src="wx-scenarios.js?v=121"></script>
-<script src="wx-vmap.js?v=121"></script>
-<script src="wx-radar.js?v=121"></script>
-<script src="wx-models.js?v=121"></script>
-<script src="wx-official.js?v=121"></script>
-<script src="app.js?v=121"></script>
+<script src="wx-normalize.js?v=122"></script>
+<script src="wx-live.js?v=122"></script>
+<script src="wx-scenarios.js?v=122"></script>
+<script src="wx-vmap.js?v=122"></script>
+<script src="wx-radar.js?v=122"></script>
+<script src="wx-models.js?v=122"></script>
+<script src="wx-official.js?v=122"></script>
+<script src="app.js?v=122"></script>
 </body>
 </html>
