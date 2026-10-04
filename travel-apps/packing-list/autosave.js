@@ -4,8 +4,21 @@ function packingDraftPath(key){return (window.PACK_TEST_PREFIX || "")+"ta:meta/p
 function packingDraftRead(key,context){try{var saved=JSON.parse(localStorage.getItem(packingDraftPath(key)) || "null");return saved && saved.version===1 && saved.context===context ? saved.data:null;}catch(e){return null;}}
 function packingDraftWrite(key,context,data){try{localStorage.setItem(packingDraftPath(key),JSON.stringify({version:1,context:context,data:data,at:Date.now()}));return true;}catch(e){return false;}}
 function packingDraftForget(key){try{localStorage.removeItem(packingDraftPath(key));return true;}catch(e){return false;}}
+function packingFieldHints(form){
+  form.querySelectorAll("input,textarea,select").forEach(function(input){
+    if(input.tagName==="SELECT"){Array.from(input.options).forEach(function(option){if(option.value==="" && /^Choose /.test(option.textContent))option.textContent=option.textContent.replace(/^Choose /,"Select ");});return;}
+    if(["hidden","checkbox","radio","button","submit","date","file"].indexOf(input.type)>=0)return;
+    var label=input.labels && input.labels[0],name=label ? label.textContent.replace(/\*/g,"").trim().toLowerCase():"item name";
+    if(input.type==="number")input.placeholder=input.min==="0" ? "Enter days (0 for none)":/quantity/.test(name) ? "Enter quantity":"Enter days";
+    else if(!input.placeholder)input.placeholder="Enter "+name;
+    else if(/^Add item/.test(input.placeholder))input.placeholder="Enter item name";
+    else if(/^New section header/.test(input.placeholder))input.placeholder="Enter section name";
+    else if(/^One (extra|additional) item/.test(input.placeholder))input.placeholder="Enter additional items (one per line)";
+    else if(!/^Enter /i.test(input.placeholder))input.placeholder="Enter "+input.placeholder.charAt(0).toLowerCase()+input.placeholder.slice(1);
+  });
+}
 function packingDraftAttach(form,key,context,options){
-  options=options || {};var restoring=false,active=true;
+  packingFieldHints(form);options=options || {};var restoring=false,active=true;
   function controls(){return Array.prototype.slice.call(form.querySelectorAll("input,select,textarea")).filter(function(x){return x.type!=="submit" && x.type!=="button" && x.type!=="file" && !x.readOnly;}).concat(options.extras || []);}
   function snapshot(){var fields={};controls().forEach(function(x,index){fields[x.id || "@"+index]={value:x.value,checked:!!x.checked};});return {fields:fields,custom:options.capture ? clone(options.capture()):null};}
   var initial=snapshot(),contextBase=String(context || ""),contextFields=clone(initial.fields);(options.contextOmit || []).forEach(function(id){delete contextFields[id];});var fingerprint="|"+JSON.stringify(contextFields);context=contextBase+fingerprint;

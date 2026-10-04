@@ -9,7 +9,9 @@ const srv = http.createServer(async (q, r) => { let p = decodeURIComponent(q.url
   try { const b = await readFile(join(root, p)); r.writeHead(200, {"content-type": types[extname(p)] || "application/octet-stream"}); r.end(b); } catch { r.writeHead(404); r.end(); } });
 await new Promise(res => srv.listen(0, res)); const B = `http://localhost:${srv.address().port}/`;
 const fail = (m) => { console.error("FAIL:", m); process.exitCode = 1; };
-const b = await pw.chromium.launch({executablePath:process.env.CHROMIUM_PATH || undefined}); const p = await b.newPage({viewport:{width:390, height:844}}); const errs = [];
+const b = await pw.chromium.launch({executablePath:process.env.CHROMIUM_PATH || undefined}); const p = await testPage({viewport:{width:390, height:844}}); const errs = [];
+// External font availability is outside this functional check; exercise the supported system-font fallback.
+async function testPage(options){const page=await b.newPage(options);await page.route('https://fonts.googleapis.com/**',route=>route.fulfill({status:200,contentType:'text/css',body:''}));return page;}
 let apiCalls=0;p.on('request',q=>{if(/api\.(anthropic|openai)\.com/.test(q.url()))apiCalls++;});
 p.on("pageerror", e => errs.push(e.message)); p.on("console", m => { if (m.type() === "error" && !/fonts\.g/.test(m.text())) errs.push(m.text()); });
 try {
@@ -95,7 +97,7 @@ try {
     await p.setViewportSize({width,height:844}); await p.emulateMedia({colorScheme});
     if (await p.evaluate(()=>document.documentElement.scrollWidth > innerWidth)) fail(`refinement review overflow at ${width} ${colorScheme}`);
   }}
-  const legacyPage=await b.newPage({viewport:{width:390,height:844}});await legacyPage.goto(B+'packing-list/');
+  const legacyPage=await testPage({viewport:{width:390,height:844}});await legacyPage.goto(B+'packing-list/');
   await legacyPage.evaluate(()=>{localStorage.setItem('ta:trips/OLD',JSON.stringify({name:'Old trip',where:'Phoenix',start:'2026-10-08',end:'2026-10-12'}));localStorage.setItem('ta:trip/OLD/pack_meta/draft',JSON.stringify({groups:[{title:'Clothing',items:['Socks ×3','Special shirt ×2']}]}));location.hash='OLD';});
   await legacyPage.reload();await legacyPage.waitForSelector('#rr-export');
   if(!/Socks ×3/.test(await legacyPage.textContent('#view')))fail('legacy draft not preserved');
@@ -104,7 +106,7 @@ try {
   await legacyPage.locator('[data-item-id="pack:socks"]').getByRole('button',{name:'Return to automatic',exact:true}).click();await legacyPage.waitForFunction(()=>document.querySelector('[data-item-id="pack:socks"] strong').textContent==='Socks ×9');
   if(!/Special shirt ×2/.test(await legacyPage.textContent('#view')))fail('legacy custom item lost');await legacyPage.close();
   // Export guides unresolved work/dinner/suit decisions instead of silently using preliminary quantities.
-  const q=await b.newPage({viewport:{width:390,height:844}});q.on('pageerror',e=>errs.push(e.message));await q.goto(B+'packing-list/');
+  const q=await testPage({viewport:{width:390,height:844}});q.on('pageerror',e=>errs.push(e.message));await q.goto(B+'packing-list/');
   await q.evaluate(()=>{var t={id:'WARDROBE',name:'Work and suit trip',where:'Phoenix',start:'2026-10-08',end:'2026-10-14'};localStorage.setItem('ta:trips/'+t.id,JSON.stringify(t));var s=refineNewState(t,{work:'laptop',formal:2,dinners:3});localStorage.setItem('ta:'+refinePath(t.id),JSON.stringify(s));location.hash=t.id;});await q.reload();await q.waitForSelector('#rr-export');
   await q.click('#rr-export');await q.waitForSelector('#rf-workDays');if(await q.locator('#pe-enex').count())fail('export bypassed required decisions');await q.fill('#rf-workDays','6');await q.click('button:has-text("Apply & next")');
   await q.waitForSelector('#rf-dinnerTop');if(await q.locator('button:has-text("Skip")').count())fail('required dinner decision can be skipped');await q.selectOption('#rf-dinnerTop','buttonup');await q.selectOption('#rf-dinnerBottoms','khakis');await q.click('button:has-text("Apply & next")');
@@ -119,7 +121,7 @@ try {
   await q.reload();await q.waitForSelector('#rr-export');await q.click('#rr-export');await q.waitForSelector('#pe-enex');await q.click('button:has-text("Close")');
   for(const width of [360,390,430]){for(const colorScheme of ['light','dark']){await q.setViewportSize({width,height:844});await q.emulateMedia({colorScheme});if(await q.evaluate(()=>document.documentElement.scrollWidth>innerWidth))fail('wardrobe mobile overflow');}}await q.close();
   // Embedded test mode reuses one scenario and isolates every write from live data.
-  const sandbox=await b.newPage({viewport:{width:390,height:844}});sandbox.on('pageerror',e=>errs.push(e.message));
+  const sandbox=await testPage({viewport:{width:390,height:844}});sandbox.on('pageerror',e=>errs.push(e.message));
   await sandbox.goto(B+'packing-list/');
   const realBefore=await sandbox.evaluate(()=>Object.fromEntries(Object.keys(localStorage).filter(k=>!k.startsWith('packing-test:')).map(k=>[k,localStorage.getItem(k)])));
   await sandbox.click('button:has-text("Test flow")');await sandbox.click('a:has-text("Open test flow")');await sandbox.waitForSelector('button:has-text("Choose a test scenario")');
