@@ -245,7 +245,11 @@
   // which products a model has (NBM only carries surface precip/snow/ice and temperature here)
   // the All maps menu lists only these (Tyler's pick, Oct 4); the rest stay defined for the data check (WXModels._probe).
   //   One "Total snowfall": NBM's own snow ratios on NBM, 10:1 elsewhere.
-  var MENU = ["ptype", "qpf", "p6", "p24", "sn10", "nsn", "s6", "s24", "frz", "i6", "t2", "w10", "gust", "tcc"]; // menu order
+  var MENU = ["ptype", "t2", "w10", "gust", "tcc", "qpf", "sn10", "nsn", "frz", "p6", "p24", "s6", "s24", "i6"]; // menu order
+  // two modes above the menu: Precip (what's falling and the weather around it) and Amounts (accumulations); the menu
+  //   lists only the selected mode's maps, amounts grouped as totals from now and per-period amounts
+  function isAmt(p) { return !!(p && (p.accum || p.win)); }
+  function grp(p) { return isAmt(p) ? (p.win ? "Per period" : "Totals from now") : p.g; }
   function inMenu(id) { return MENU.indexOf(id) >= 0; }
   function has(p, model) { return model === "nbm" ? !!p.nbm : !p.only || p.only.indexOf(model) >= 0; }
   var P = [
@@ -865,7 +869,8 @@
   }
   function uiParams() {
     var gs = [], html = "";
-    P.slice().sort(function (a, b) { return MENU.indexOf(a.id) - MENU.indexOf(b.id); }).forEach(function (p) { if (!has(p, cur.model) || !inMenu(p.id)) return; var gg = gs.filter(function (x) { return x.g === p.g; })[0]; if (!gg) gs.push(gg = { g: p.g, l: [] }); gg.l.push(p); });
+    var amt = isAmt(PBY[cur.param]);
+    P.slice().sort(function (a, b) { return MENU.indexOf(a.id) - MENU.indexOf(b.id); }).forEach(function (p) { if (!has(p, cur.model) || !inMenu(p.id) || isAmt(p) !== amt) return; var g = grp(p), gg = gs.filter(function (x) { return x.g === g; })[0]; if (!gg) gs.push(gg = { g: g, l: [] }); gg.l.push(p); });
     gs.forEach(function (g) { html += '<optgroup label="' + g.g + '">' + g.l.map(function (p) { return '<option value="' + p.id + '"' + (p.id === cur.param ? " selected" : "") + ">" + p.name + "</option>"; }).join("") + "</optgroup>"; });
     ui.param.innerHTML = html;
   }
@@ -958,19 +963,28 @@
   }
   function setParam(id) {
     var r = R(), hs0 = hours(), vt = r && hs0[cur.k] != null ? r.run + hs0[cur.k] * H : null;
-    cur.param = id; save(); resetFrames(); uiParams(); uiQuick(); legend();
+    cur.param = id; save(); LAST[isAmt(PBY[id]) ? "a" : "p"] = id; try { localStorage.setItem("wx-model-last", JSON.stringify(LAST)); } catch (e) {}
+    resetFrames(); uiParams(); uiQuick(); legend();
     var hs = hours(); if (!r || !hs.length) { uiTime(); status(); return; }
     var best = 0; if (vt != null) hs.forEach(function (h, i) { if (Math.abs(r.run + h * H - vt) < Math.abs(r.run + hs[best] * H - vt)) best = i; });
     cur.k = best; showHour();
   }
   // the four maps most people want, one tap away (everything else is in the menu)
-  var QUICK = [["ptype", "Precip type"], ["qpf", "Precip"], ["snow", "Snow"], ["frz", "Ice"]];
+  // the mode switch: each mode reopens the last map used in it (Precip type / Total precipitation by default)
+  var LAST = (function () { try { return JSON.parse(localStorage.getItem("wx-model-last")) || {}; } catch (e) { return {}; } })();
+  function modeTarget(amt) {
+    var want = LAST[amt ? "a" : "p"] || (amt ? "qpf" : "ptype");
+    if (want === "sn10" || want === "nsn") want = snowId();
+    if (PBY[want] && has(PBY[want], cur.model) && inMenu(want)) return want;
+    return MENU.filter(function (id) { return isAmt(PBY[id]) === amt && has(PBY[id], cur.model); })[0] || null;
+  }
   function snowId() { return cur.model === "nbm" ? "nsn" : "sn10"; }
   function uiQuick() {
     if (!ui.quick) return;
-    ui.quick.innerHTML = QUICK.map(function (q) {
-      var id = q[0] === "snow" ? snowId() : q[0], ok = has(PBY[id], cur.model), on = cur.param === id || q[0] === "snow" && /^(sn10|nsn|snv)$/.test(cur.param);
-      return '<button type="button" class="chip' + (on ? " on" : "") + '" data-q="' + id + '"' + (ok ? "" : " disabled") + ">" + q[1] + "</button>";
+    var amt = isAmt(PBY[cur.param]);
+    ui.quick.innerHTML = [[false, "Precip"], [true, "Amounts"]].map(function (q) {
+      var id = q[0] === amt ? cur.param : modeTarget(q[0]);
+      return '<button type="button" class="chip' + (q[0] === amt ? " on" : "") + '" aria-pressed="' + (q[0] === amt) + '" data-q="' + (id || "") + '"' + (id ? "" : " disabled") + ">" + q[1] + "</button>";
     }).join("");
   }
   // re-check for new hours and runs while open
