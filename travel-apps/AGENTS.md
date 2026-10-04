@@ -11,6 +11,9 @@ Two static web apps split out of Tyler's Travel Dashboard (a Claude artifact). T
 No build step, no dependencies, no framework. Plain ES5-style browser JS loaded with `<script>` tags in a fixed order (see each `index.html`). All paths are relative, so the folder works at the repo root or in a subfolder on GitHub Pages.
 
 ## Rules
+- Packing List is now a generator: setup → rule-based generation → review → native Notes export. Notes owns packing/check-off; do not reintroduce in-app packing meters or packed/unpacked filters into the main flow. `generator.js` and `generator.css` own this standalone flow; preserve the extracted `packing.js` functions for compatibility. The itinerary app retains its existing flow through optional `APP` hooks in the shared shell.
+- Preserve existing `meta/packing` preferences and trip records. Dates are required for new generation. A separate `trip/<ID>/pack_meta/draft` holds review edits; exported lists retain the established `pack_sections` / `pack_items` shapes. Keep user-selected weather distinct from live forecasts, and keep deterministic rules independent of API keys.
+- ENEX native Notes checklists were confirmed by Tyler's device screenshot. Keep the title in the ENEX title field only, section headings in the body, and one `en-todo` element per item.
 - The repo is the source of truth; read the current files before editing.
 - Make incremental edits. Don't restructure or regenerate whole files unless asked.
 - `packing.js` and `itinerary.js` are extracted from the dashboard. Keep their structure and function names so future dashboard changes can be ported; mark standalone-only changes with a `Standalone app:` comment.
@@ -23,5 +26,6 @@ No build step, no dependencies, no framework. Plain ES5-style browser JS loaded 
 
 ## Checks before pushing
 - `node tools/check.mjs` passes (syntax of every JS file, every script/stylesheet referenced by the HTML exists).
+- `node tests/generator.mjs` passes (quantity rules, preferences, conditional gear, departure dependencies and Notes export).
 - Optional, if Playwright is available: `node tests/e2e.mjs` (serves the folder and runs both apps end to end).
 - Commit task-scoped files only, push to the default branch, then confirm the GitHub Pages build and that the live pages load.

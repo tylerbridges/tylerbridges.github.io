@@ -418,13 +418,15 @@ function saveTemplateSheet(t){
    list. Wallet, ID and the bags always appear. */
 var LEAVING_RULES = [
   [/^(glasses)\b/i, "Glasses packed?"], [/sunglasses/i, "Sunglasses packed?"], [/water bottle/i, "Water bottle empty?"],
-  [/charger|usb-c|\bhub\b|\bcord\b|\bcable/i, "Chargers packed?"], [/^work computer/i, "Work computer packed?"], [/^personal laptop/i, "Personal laptop packed?"],
-  [/^monitors?\b/i, "Both work monitors packed?"], [/^monitor cables?/i, "Monitor cables / power packed?"]
+  [/charger|usb-c|\bhub\b|\bcord\b|\bcable/i, "Chargers packed?"], [/^work computer(?:\s*[×x]\s*\d+)?$/i, "Work computer packed?"], [/^personal laptop(?:\s*[×x]\s*\d+)?$/i, "Personal laptop packed?"],
+  [/^monitors?(?:\s*[×x]\s*\d+)?$/i, "Both work monitors packed?"], [/^monitor cables?/i, "Monitor cables / power packed?"]
 ];
 function leavingFor(groups, checked){
   var labels = []; groups.forEach(function(g){ if (g.depart || /^before leaving$/i.test(g.title || "")) return; (g.items || []).forEach(function(x){ labels.push({t:g.title || "", x:String(x)}); }); });
   var out = ["Grab wallet", "ID in wallet?"];
-  if (labels.some(function(l){ return /toiletr/i.test(l.t); })) out.push("Toiletries packed?", "Liquids bag packed? (travel-size, quart bag)");
+  // Standalone app: removing toiletries or the liquids bag also removes its departure check.
+  if (labels.some(function(l){ return /toiletr/i.test(l.t); })) out.push("Toiletries packed?");
+  if (labels.some(function(l){ return /liquids.*(?:quart|bag)/i.test(l.x); })) out.push("Liquids bag packed? (travel-size, quart bag)");
   LEAVING_RULES.forEach(function(r){ if (labels.some(function(l){ return r[0].test(l.x); }) && out.indexOf(r[1]) < 0) out.push(r[1]); });
   out.push("Grab personal bag", checked ? "Grab checked bag" : "Grab carry-on");
   return out;

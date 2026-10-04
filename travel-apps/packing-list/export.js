@@ -16,7 +16,7 @@ function packExportMarkdown(data){
     return "## " + md(g.title) + "\n\n" + (g.note ? md(g.note) + "\n\n" : "") + g.items.map(function(i){ return "- [" + (i.checked ? "x" : " ") + "] " + md(i.label); }).join("\n"); }).join("\n\n") + "\n";
 }
 function packExportHtml(data, enml){
-  return "<h1>" + escHtml(data.title) + "</h1>" + (data.detail ? "<p>" + escHtml(data.detail) + "</p>" : "") + data.groups.map(function(g){
+  return (enml ? "" : "<h1>" + escHtml(data.title) + "</h1>") + (data.detail ? "<p>" + escHtml(data.detail) + "</p>" : "") + data.groups.map(function(g){
     return "<h2>" + escHtml(g.title) + "</h2>" + (g.note ? "<p>" + escHtml(g.note) + "</p>" : "") + g.items.map(function(i){
       return "<div>" + (enml ? '<en-todo checked="' + (i.checked ? "true" : "false") + '"/>' : (i.checked ? "☑" : "☐")) + " " + escHtml(i.label) + "</div>"; }).join(""); }).join("");
 }
@@ -34,7 +34,7 @@ function packExportSheet(t){
   body.appendChild(el("p","muted","Includes all sections and items, even when your list is filtered or collapsed. Exports are separate copies; changes in Notes do not sync back."));
   var keep = el("input"); keep.type = "checkbox"; keep.id = "pe-checked";
   body.appendChild(fieldEl("Keep packed items checked (otherwise start unchecked)", keep));
-  var info = el("p","muted"); info.textContent = "Apple Notes on Mac: download the Apple Notes file, then choose File → Import to Notes. It contains checkbox items; conversion to native Notes checklists needs testing on your Mac. On iPhone, try formatted copy and paste into Notes; use Notes’ checklist button on the item lines if needed."; body.appendChild(info);
+  var info = el("p","muted"); info.textContent = "Download the Apple Notes file and import it into Notes for section headings and native checklist items. On Mac: File → Import to Notes. Formatted copy is an alternative for pasting; use Notes’ checklist button if the checkbox symbols remain plain text."; body.appendChild(info);
   var actions = el("div","actions"); actions.style.display = "flex"; actions.style.flexWrap = "wrap"; actions.style.gap = "8px";
   var status = el("p","muted"); status.setAttribute("role","status");
   var preview = el("textarea"); preview.id = "pe-preview"; preview.readOnly = true; preview.rows = 14; preview.style.width = "100%"; preview.style.fontSize = "16px";

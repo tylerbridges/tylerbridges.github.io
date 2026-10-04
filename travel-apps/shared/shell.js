@@ -18,7 +18,7 @@ function render(){
   var r = route(), y = window.scrollY;
   view.textContent = "";
   document.getElementById("h1").textContent = r.t ? r.t.name : APP.title;
-  view.appendChild(r.t ? (r.tab === "edit" ? tripForm(r.t) : tripPage(m(r.t), r.focus)) : r.page === "new" ? tripForm(null) : homeView());
+  view.appendChild(r.t ? (r.tab === "edit" ? (APP.tripForm || tripForm)(r.t) : (APP.tripPage || tripPage)(m(r.t), r.focus)) : r.page === "new" ? (APP.tripForm || tripForm)(null) : (APP.homeView || homeView)());
   window.scrollTo(0, y);
 }
 window.addEventListener("hashchange", function(){ wantFocus = true; render(); window.scrollTo(0,0); });
