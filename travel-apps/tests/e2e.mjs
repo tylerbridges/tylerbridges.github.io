@@ -118,6 +118,24 @@ try {
   await q.click('button:has-text("Events:")');await q.fill('#rf-dinners','4');await q.click('button:has-text("Apply & recalculate")');await q.waitForSelector('#rf-dinnerTop');await q.selectOption('#rf-dinnerTop','polo');await q.click('button:has-text("Apply & next")');await q.waitForSelector('.sheet-bg',{state:'detached'});if(await q.locator('[data-item-id="pack:polo-shirts"] strong').textContent()!=='Polo shirts ×4')fail('dinner style did not recalculate');
   await q.reload();await q.waitForSelector('#rr-export');await q.click('#rr-export');await q.waitForSelector('#pe-enex');await q.click('button:has-text("Close")');
   for(const width of [360,390,430]){for(const colorScheme of ['light','dark']){await q.setViewportSize({width,height:844});await q.emulateMedia({colorScheme});if(await q.evaluate(()=>document.documentElement.scrollWidth>innerWidth))fail('wardrobe mobile overflow');}}await q.close();
+  // Embedded test mode reuses one scenario and isolates every write from live data.
+  const sandbox=await b.newPage({viewport:{width:390,height:844}});sandbox.on('pageerror',e=>errs.push(e.message));
+  await sandbox.goto(B+'packing-list/');
+  const realBefore=await sandbox.evaluate(()=>Object.fromEntries(Object.keys(localStorage).filter(k=>!k.startsWith('packing-test:')).map(k=>[k,localStorage.getItem(k)])));
+  await sandbox.click('button:has-text("Test flow")');await sandbox.click('a:has-text("Open test flow")');await sandbox.waitForSelector('button:has-text("Choose a test scenario")');
+  await sandbox.click('button:has-text("Choose a test scenario")');await sandbox.click('button:has-text("Reset & generate list")');await sandbox.waitForSelector('#rr-export');
+  if(await sandbox.locator('[data-item-id="pack:tie"] strong').textContent()!=='Tie ×2')fail('test scenario did not use production suit rules');
+  await sandbox.evaluate(()=>document.querySelector('.refine-one').open=true);await sandbox.click('button:has-text("Packing:")');await sandbox.selectOption('#rf-packing','extra');await sandbox.click('button:has-text("Apply & recalculate")');await sandbox.waitForSelector('.sheet-bg',{state:'detached'});
+  await sandbox.reload();await sandbox.waitForSelector('#rr-export');if(await sandbox.evaluate(()=>refineLoad(TRIPS['PACKING-TEST']).refinements.packingMode)!=='extra')fail('test edits did not persist');
+  await sandbox.click('button:has-text("Defaults & exclusions")');await sandbox.click('button:has-text("My usual items")');await sandbox.getByLabel('Include Snacks',{exact:true}).uncheck();await sandbox.click('button:has-text("Save my preferences")');await sandbox.waitForSelector('.sheet-bg',{state:'detached'});
+  await sandbox.click('button:has-text("Test menu / reset")');await sandbox.selectOption('#pt-scenario','laundry');await sandbox.click('button:has-text("Reset & test setup")');await sandbox.waitForSelector('#rs-where');
+  if(await sandbox.evaluate(()=>Object.keys(Store.exportAll()).filter(k=>k.startsWith('trips/')).length)!==1)fail('test reset accumulated trips');
+  await sandbox.click('button:has-text("Update trip & list")');await sandbox.waitForSelector('#rr-export');
+  if(await sandbox.locator('[data-item-id="pack:socks"] strong').textContent()!=='Socks ×9')fail('laundry scenario quantities');
+  const realAfter=await sandbox.evaluate(()=>Object.fromEntries(Object.keys(localStorage).filter(k=>!k.startsWith('packing-test:')).map(k=>[k,localStorage.getItem(k)])));
+  if(JSON.stringify(realBefore)!==JSON.stringify(realAfter))fail('test flow changed live data');
+  for(const width of [360,390,430]){await sandbox.setViewportSize({width,height:844});if(await sandbox.evaluate(()=>document.documentElement.scrollWidth>innerWidth))fail('test controls mobile overflow');}
+  await sandbox.click('a:has-text("Exit test mode")');await sandbox.waitForSelector('button:has-text("Test flow")');if(await sandbox.locator('a.tripcard:has-text("Test ·")').count())fail('test trip leaked into live trips');await sandbox.close();
   await p.goto(B + "itinerary-generator/"); await p.click("a.tripcard");
   await p.click("text=+ Flight"); await p.fill("#fl-day", "2026-10-08"); await p.fill("#fl-no", "UA 1234"); await p.fill("#fl-to", "PHX"); await p.fill("#fl-dep", "15:05"); await p.fill("#fl-arr", "17:40");
   await p.click('button:has-text("Add flight")'); await p.waitForTimeout(1000);

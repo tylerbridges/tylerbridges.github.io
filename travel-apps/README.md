@@ -63,3 +63,5 @@ Agent rules for this folder are in `AGENTS.md`.
 python3 -m http.server 8000
 # open http://localhost:8000/
 ```
+
+Packing List → Test flow opens a reusable sandbox (`?test=1`). Choose Professional, Laundry + workouts, or Warm weather + activities; reset into setup or generated review, resume the saved test, and exercise normal refinements/manual overrides/Notes export. The separate `packing-test:` namespace isolates test trips, preferences, exclusions and export documents. Reset copies current real preferences and clears only sandbox data.

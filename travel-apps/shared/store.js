@@ -5,7 +5,7 @@
    Data lives in this browser's localStorage under "ta:<path>". Both apps share one origin on GitHub Pages, so a trip
    made in one app shows up in the other. Swap this file for a real backend later without touching the modules. */
 var Store = (function(){
-  var P = "ta:", docSubs = {}, colSubs = {};
+  var P = (window.PACK_TEST_PREFIX || "") + "ta:", docSubs = {}, colSubs = {};
   function key(path){ return P + path; }
   function read(path){ try { var v = localStorage.getItem(key(path)); return v ? JSON.parse(v) : null; } catch(e){ return null; } }
   function write(path, data){ try { localStorage.setItem(key(path), JSON.stringify(data)); return true; } catch(e){ return false; } }

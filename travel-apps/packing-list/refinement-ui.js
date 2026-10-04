@@ -46,6 +46,7 @@ function rangePicker(startIn,endIn){
 }
 function refineSetup(t){
   var existing = !!t, old = t, saved = existing ? refineLoad(t) : null, inputs = saved ? saved.inputs : {}, f = el("form","panel form gen-form rs-form"), attemptedId=null;
+  if(PACK_TEST_MODE)f.appendChild(packingTestBanner());
   f.appendChild(el("h2","k",existing ? "Trip basics" : "New trip"));
   var where = el("textarea","grow"); where.id = "rs-where"; where.rows = 1; where.placeholder = "City, state or country"; where.value = t ? (t.where || "") : ""; where.setAttribute("autocomplete","off"); where.addEventListener("keydown",function(e){ if (e.key === "Enter"){ e.preventDefault(); } }); function growWhere(){ where.value = where.value.replace(/\n/g," "); where.style.height = "auto"; where.style.height = where.scrollHeight + 2 + "px"; } where.addEventListener("input",growWhere); requestAnimationFrame(growWhere); var start = inp("rs-start","hidden",t ? t.start : ""), end = inp("rs-end","hidden",t ? t.end : ""); where.required = true;
   function reqMark(l){ var a = el("span","req","*"); a.setAttribute("aria-hidden","true"); l.appendChild(a); l.appendChild(el("span","sr-only"," (required)")); return l; } var whereField = fieldEl("Destination",where); reqMark(whereField.querySelector("label")); f.appendChild(whereField); var datesField = el("div","field"); datesField.appendChild(reqMark(el("label",null,"Dates"))); var picker = rangePicker(start,end); datesField.appendChild(picker); f.appendChild(datesField);
@@ -83,7 +84,7 @@ function refineSetup(t){
     db.doc("trips/"+record.id).set(patch).then(function(){ return refinePersist(record,state,result); }).then(function(){ RAW[record.id] = patch; rebuild(); location.hash = record.id; }).catch(function(){ go.disabled = false; msg.textContent = "Could not save the trip. Check browser storage and try again."; });
   }); return f;
 }
-function refinePage(t){ var w = el("div","stack"), back = el("a","back","← Packing generator"); back.href = "#"; w.appendChild(back); w.appendChild(el("p","muted",[t.where,fmt(t.start)+" – "+fmt(t.end || t.start)].join(" · "))); var pk = packData(t.id);
+function refinePage(t){ var w = el("div","stack"), back = el("a","back","← Packing generator"); back.href = "#"; w.appendChild(back); if(PACK_TEST_MODE)w.appendChild(packingTestBanner()); w.appendChild(el("p","muted",[t.where,fmt(t.start)+" – "+fmt(t.end || t.start)].join(" · "))); var pk = packData(t.id);
   if (!pk.ready){ w.appendChild(el("p",null,"Loading your saved list…")); setTimeout(function(){ if (route().t && route().t.id === t.id) render(); },100); return w; }
   w.appendChild(refineReview(t)); return w;
 }
