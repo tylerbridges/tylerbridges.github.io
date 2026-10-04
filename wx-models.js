@@ -638,13 +638,17 @@
   }
   // field samples: one per CSS pixel (the fields are smooth; the canvas upscales)
   var FV = { key: "" }, img = null;
+  // the field is drawn at up to 2 device pixels per CSS pixel (crisp band edges like Pivotal's maps), capped at ~1 M pixels
+  var FD = { f: 1, w: 0, h: 0 };
+  function fdims() { var f = Math.min(2, dpr || 1); while (f > 1 && SW * SH * f * f > 1.1e6) f -= 0.25; FD = { f: f, w: Math.round(SW * f), h: Math.round(SH * f) }; }
   function sampleGrid(P) {
-    var vk = drawn.x + "," + drawn.y + "," + drawn.z + "," + SW + "," + SH;
+    fdims(); var FW = FD.w, FH = FD.h, f = FD.f;
+    var vk = drawn.x + "," + drawn.y + "," + drawn.z + "," + FW + "," + FH;
     if (FV.key !== vk) { FV = { key: vk, pk: {} }; }
     if (FV.pk[P.k]) return FV.pk[P.k];
-    var n = SW * SH, gi = new Float32Array(n), gj = new Float32Array(n), s = scaleZ(drawn.z), o = [0, 0], lat = new Float32Array(SH);
-    for (var y = 0; y < SH; y++) lat[y] = latOf(drawn.y + (y + 0.5 - SH / 2) / s);
-    for (y = 0; y < SH; y++) for (var x = 0; x < SW; x++) { P.p.fwd(lat[y], lonOf(drawn.x + (x + 0.5 - SW / 2) / s), o); gi[y * SW + x] = o[0]; gj[y * SW + x] = o[1]; }
+    var n = FW * FH, gi = new Float32Array(n), gj = new Float32Array(n), s = scaleZ(drawn.z), o = [0, 0], lat = new Float32Array(FH);
+    for (var y = 0; y < FH; y++) lat[y] = latOf(drawn.y + ((y + 0.5) / f - SH / 2) / s);
+    for (y = 0; y < FH; y++) for (var x = 0; x < FW; x++) { P.p.fwd(lat[y], lonOf(drawn.x + ((x + 0.5) / f - SW / 2) / s), o); gi[y * FW + x] = o[0]; gj[y * FW + x] = o[1]; }
     return (FV.pk[P.k] = { gi: gi, gj: gj });
   }
   var LUTS = {};
@@ -662,12 +666,13 @@
   function cur3() { var hs = hours(), f = frames[fkey(hs[cur.k])]; return f && f.r && !f.r.empty ? f.r : null; }
   function drawField() {
     var r = cur3(), p = PBY[cur.param];
-    if (cvF.width !== SW || cvF.height !== SH) { cvF.width = SW; cvF.height = SH; img = null; }
-    if (!r) { cxF.clearRect(0, 0, SW, SH); return; }
-    if (!img) img = cxF.createImageData(SW, SH);
+    fdims(); var FW = FD.w, FH = FD.h;
+    if (cvF.width !== FW || cvF.height !== FH) { cvF.width = FW; cvF.height = FH; img = null; }
+    if (!r) { cxF.clearRect(0, 0, FW, FH); return; }
+    if (!img) img = cxF.createImageData(FW, FH);
     var d32 = new Uint32Array(img.data.buffer), G = sampleGrid(r.P), V = r.v, nx = V.nx, ny = V.ny, s = V.s, a = V.a, T = r.t, i0 = r.i0, j0 = r.j0;
     var Ls = p.types ? PT.map(function (sc) { return sc && lut(sc); }) : null, L1 = p.types ? null : lut(SC[p.sc]);
-    for (var k = 0, n = SW * SH; k < n; k++) {
+    for (var k = 0, n = FW * FH; k < n; k++) {
       var fi = (G.gi[k] - i0) / s, fj = (G.gj[k] - j0) / s;
       if (!(fi >= 0 && fj >= 0 && fi <= nx - 1 && fj <= ny - 1)) { d32[k] = 0; continue; }
       var x0 = fi | 0, y0 = fj | 0, x1 = x0 < nx - 1 ? x0 + 1 : x0, y1 = y0 < ny - 1 ? y0 + 1 : y0, fx = fi - x0, fy = fj - y0;
@@ -811,7 +816,7 @@
     cxB = cvB.getContext("2d"); cxF = cvF.getContext("2d"); cxT = cvT.getContext("2d"); cxO = cvO.getContext("2d");
     var box = el.closest(".mview") || el.parentNode;
     ui = {
-      st: mk("div", "mmstat", el), ro: mk("div", "mmro", el), reg: mk("div", "mmreg", el),
+      st: mk("div", "mmstat", el), ro: mk("div", "mmro", el), reg: mk("div", "mmreg", el), hdr: mk("div", "mhdr num", el),
       model: box.querySelector("#mmodel"), param: box.querySelector("#mparam"), run: box.querySelector("#mrun"),
       locate: box.querySelector("#mlocate"), home: box.querySelector("#mhome"), locationStatus: box.querySelector("#mlocation-status"),
       play: box.querySelector("#mplay"), prev: box.querySelector("#mprev"), next: box.querySelector("#mnext"), range: box.querySelector("#mrange"), time: box.querySelector("#mtime"),
@@ -908,13 +913,18 @@
     ui.range.max = Math.max(0, hs.length - 1); ui.range.value = cur.k; ui.range.disabled = hs.length < 2;
     var p = PBY[cur.param];
     ui.title.textContent = MODELS[cur.model].name + " · " + p.name;
-    if (!r || h == null) { ui.time.innerHTML = ""; return; }
+    if (!r || h == null) { ui.time.innerHTML = ""; if (ui.hdr) ui.hdr.innerHTML = ""; return; }
     var v = r.run + h * H;
     var f0 = fromH();
     var lab = p.accum ? "Total from " + fmtT(r.run + f0 * H, { hour: "numeric" }) : p.win ? p.win + " hours ending" : "Hour " + h;
     var big = p.day ? fmtT(v - 6 * H, { weekday: "short" }) + (p.day === "max" ? " day" : " night") : fmtT(v, { weekday: "short", hour: "numeric" });
     if (p.day) lab = (p.day === "max" ? "High, " : "Low, ") + fmtT(v - 12 * H, { hour: "numeric" }) + "–" + fmtT(v, { hour: "numeric" });
     ui.time.innerHTML = "<b>" + big + "</b><span>" + lab + "</span>";
+    // Pivotal-style header on the map: model and product, then the period the map covers (or its valid time) and the run
+    var hm = { weekday: "short", hour: "numeric" }, per = p.day ? lab : p.accum ? fmtT(r.run + f0 * H, hm) + " – " + fmtT(v, hm) : p.win ? fmtT(v - p.win * H, hm) + " – " + fmtT(v, hm) : "Valid " + fmtT(v, hm);
+    // the row with the step arrows names the hour (model and product are in the map header)
+    ui.title.textContent = "Forecast hour " + h + (hs.length > 1 ? " of " + hs[hs.length - 1] : "");
+    if (ui.hdr) ui.hdr.innerHTML = "<b>" + MODELS[cur.model].name + " · " + p.name + "</b><span>" + per.replace(/(\w{3}), /g, "$1 ") + " · " + hh(r.run) + "Z run</span>";
     ui.range.setAttribute("aria-valuetext", MODELS[cur.model].name + " · " + big + " · " + lab);
     ui.time.setAttribute("title", "Return to the first forecast hour");
     ui.src.innerHTML = MODELS[cur.model].full + " " + hh(r.run) + "Z run · " + fmtT(r.run, { weekday: "short", hour: "numeric", minute: "2-digit" }) + " · NOAA";
