@@ -1014,6 +1014,7 @@
     show: function (host, l, o) {
       opts = o || {}; if (!workers()) { host.textContent = "Model maps need a newer browser."; return; }
       if (el !== host) setup(host);
+      (opts.regions || el).appendChild(ui.reg);
       var moved2 = !loc || Math.abs(loc.lat - l.lat) > 1e-4 || Math.abs(loc.lon - l.lon) > 1e-4;
       loc = { lat: l.lat, lon: l.lon };
       if (moved2) { view = { x: wx(loc.lon), y: wy(loc.lat), z: view.z && drawn ? view.z : 5.7 }; drawn = null; BOX = null; resetFrames(); }

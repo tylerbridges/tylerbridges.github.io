@@ -385,9 +385,10 @@
 
   // show(host, place, { k, p, th }) → Promise of { start, end, issue } once drawn; rejects if the data can't load
   //   (the caller then shows WPC's image instead)
-  function show(host, l, s) {
+  function show(host, l, s, controlsHost) {
     if (!el) setup();
     if (el.parentNode !== host) host.appendChild(el);
+    (controlsHost || el).appendChild(reg);
     var moved2 = !loc || Math.abs(loc.lat - l.lat) > 1e-4 || Math.abs(loc.lon - l.lon) > 1e-4;
     loc = { lat: l.lat, lon: l.lon };
     if (moved2) view = { x: wx(loc.lon), y: wy(loc.lat), z: view.z || 6.6 };

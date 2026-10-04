@@ -1228,7 +1228,7 @@
     $("forecast-context").textContent = forecastMode === "nws" ? "NWS regional amounts · Tap a county" : "Model forecasts · Play or scrub ahead";
     if (forecastMode === "models") {
       if (window.WXOfficial) WXOfficial.hide(); iStop();
-      if (window.WXModels) WXModels.show($("mmap"), curLoc(), { fmt: fmt });
+      if (window.WXModels) WXModels.show($("mmap"), curLoc(), { fmt: fmt, regions: $("model-regions") });
     } else {
       if (window.WXModels) WXModels.hide();
       renderOfficial(); if ($("forecast-extra").open) renderImgMaps();
@@ -1283,14 +1283,19 @@
         : '<div class="oqimg" id="oqimg"><img src="' + img + bust + '" alt="' + esc(cap) + '"><span class="mfr num">' + esc(per) + "</span></div>") +
       '<div class="oqnote"><b>' + esc(cap) + "</b> · NWS Weather Prediction Center · " + '<a href="' + WPC + (OQ.k === "qpf" ? "qpf/qpf2.shtml" : "wwd/winter_wx.shtml") + '" target="_blank" rel="noopener">Source</a></div>' +
       (amt ? '<details class="oq-local"><summary>Local forecast amounts</summary>' + amt + '</details>' : '');
+    var mapBox = el.querySelector("#oqwrap,#oqimg"), controls = el.querySelector(".oqrow");
+    var regions = document.createElement("div"); regions.id = "official-regions"; regions.className = "map-regions";
+    regions.setAttribute("role", "group"); regions.setAttribute("aria-label", "NWS map extent");
+    mapBox.after(regions); regions.after(controls);
     var imgOk = function (box) {
+      regions.hidden = true;
       box.className = "oqimg"; box.id = "oqimg"; box.innerHTML = '<img src="' + img + bust + '" alt="' + esc(cap) + '"><span class="mfr num">' + esc(per) + "</span>";
       var im = box.querySelector("img"); im.onerror = function () { box.innerHTML = '<div class="mmsg">This map isn\'t available right now.</div>'; };
     };
     var wrap = $("oqwrap");
     if (!wrap) return imgOk(el.querySelector("#oqimg"));
     var k0 = OQ.k + OQ.p + OQ.th;
-    WXOfficial.show(wrap, curLoc(), OQ).then(function (r) {
+    WXOfficial.show(wrap, curLoc(), OQ, regions).then(function (r) {
       if (!r || k0 !== OQ.k + OQ.p + OQ.th || !$("oqper")) return;
       if (r.start && r.end) $("oqper").textContent = span(r.start, r.end); // the product's own period
     }).catch(function () {

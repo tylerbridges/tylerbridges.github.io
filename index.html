@@ -801,64 +801,55 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
 /* the current-conditions card uses the day cards' insets (12 px sides/top, tight foot) and the same 22 px gap below */
 .card.now{padding:12px 12px 4px!important}
 #nowday .nowfc{padding:4px 12px 0;margin:0 -12px}
-/* Forecast is a single map workspace; wider screens give controls their own column. */
+/* Forecast keeps the map first, with compact controls beneath it. */
 .wrap.forecast-wide{max-width:1280px}
 .forecast-wide > .top{width:100%;max-width:none;margin-inline:0;align-self:stretch}
 .forecast-workspace{overflow:hidden}
-.forecast-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:14px 14px 10px}
+.forecast-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:12px 14px 8px}
 .forecast-modes{display:flex;gap:3px;padding:3px;border-radius:999px;background:var(--sunk)}
-.forecast-modes button{min-height:44px;padding:0 18px;border:0;background:transparent;border-radius:999px;font-weight:700;color:var(--muted);cursor:pointer}
+.forecast-modes button{min-height:30px;padding:0 12px;border:0;background:transparent;border-radius:999px;font-size:13px;font-weight:700;color:var(--muted);cursor:pointer}
 .forecast-modes button[aria-selected="true"]{background:var(--accent);color:#fff}
 .forecast-modes button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.forecast-context{margin:0;font-size:13px;color:var(--muted);padding:0 14px 12px}
+.forecast-context{margin:0;font-size:13px;color:var(--muted);padding:0 14px 8px}
 .forecast-workspace .card{border:0;border-radius:0;box-shadow:none!important}
-.forecast-workspace .mm{height:clamp(320px,100vw,520px);min-height:320px}
-.forecast-workspace .mfr{max-width:calc(100% - 180px);white-space:normal;text-align:right}
+.forecast-workspace .mm{height:clamp(300px,90vw,480px);min-height:300px}
+.forecast-workspace .mfr{max-width:calc(100% - 16px);white-space:normal;text-align:right}
 .forecast-workspace .oqwrap .mfr{color:var(--ink)}
-.forecast-workspace .msel{font-size:16px;min-height:44px}
+.forecast-workspace .msel{font-size:16px;min-height:36px;padding-block:5px}
 .forecast-workspace .msrc{white-space:normal;overflow:visible}
-.forecast-workspace .mctl{flex-wrap:wrap;gap:6px;padding:10px 12px 4px}
-.forecast-workspace .mctl .rbtn{width:44px;height:44px;flex:none}
-.forecast-workspace .mtime{flex-basis:100%;align-items:flex-start;padding:2px 0 0;gap:3px}
-.forecast-workspace .mtime b{font-size:15px}
-.forecast-workspace .mtime span{font-size:12px}
-.model-tools{min-width:0}
+.forecast-workspace .mctl{flex-wrap:nowrap;gap:4px;padding:6px 10px}
+.forecast-workspace .mctl .rbtn{width:32px;height:32px;flex:none}
+.forecast-workspace .mtime{flex-basis:auto;min-width:88px;align-items:flex-end;gap:2px;margin-left:auto}
+.forecast-workspace .mtime b{font-size:13px}
+.forecast-workspace .mtime span{font-size:11px}
+.model-tools{min-width:0;padding-top:4px}
 .model-tools .mrun{width:36%;max-width:42%}
-.model-view{display:flex;flex-direction:column}
-.model-view > .mctl{order:1}
-.model-view > .mmapw{order:2}
-.model-view > .mtitle{order:3}
-.model-view > .mleg{order:4}
-.model-view > .msrc{order:5}
-.forecast-workspace #mmodel{flex-wrap:nowrap;overflow-x:auto}
-.forecast-workspace .mmodel .chip{flex:none;min-height:40px}
-.forecast-workspace .oqseg .chip{min-height:40px}
-.forecast-extra{padding:12px 14px;border-top:1px solid var(--grid)}
-.forecast-extra > summary,.forecast-totals > summary{cursor:pointer;font-size:14px;font-weight:600;min-height:44px;align-content:center}
+.forecast-workspace #mmodel{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;overflow:visible;padding-bottom:6px}
+.forecast-workspace .mquick{gap:4px;padding-bottom:6px}
+.forecast-workspace .mmodel .chip{min-height:30px;padding:4px 7px;font-size:12.5px;font-weight:600;flex:none}
+.forecast-workspace .oqseg .chip{min-height:30px;padding:4px 9px;font-size:12.5px}
+.forecast-workspace .oqrow{padding:6px 10px;gap:6px}
+.map-regions{padding:6px 10px 0}
+.map-regions .mmreg{position:static;display:inline-flex;gap:3px;padding:2px;border:0;background:var(--sunk);box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none}
+.map-regions .mmreg button{min-height:28px;padding:4px 10px;font-size:12.5px;color:var(--ink2)}
+.forecast-extra{padding:8px 14px;border-top:1px solid var(--grid)}
+.forecast-extra > summary,.forecast-totals > summary{cursor:pointer;font-size:14px;font-weight:600;min-height:36px;align-content:center}
 .forecast-extra .mcats{margin:8px 0;padding:0}
 .forecast-extra .mimgcard{border-radius:var(--r-card)}
 .forecast-totals{padding:8px 14px}
 .forecast-totals .sec-h{margin:8px 0}
 .oq-local{padding:8px 12px 0;font-size:13px;color:var(--muted)}
-.oq-local > summary{cursor:pointer;min-height:44px;align-content:center}
+.oq-local > summary{cursor:pointer;min-height:36px;align-content:center}
 .oq-local .oqamt{padding-inline:0}
 .oq-local .oqnote{padding-inline:0}
 @media(min-width:900px){
-  .forecast-toolbar{padding:16px 18px 10px}
-  .forecast-workspace .mm{height:clamp(480px,65vh,760px)}
-  .forecast-workspace .offq{display:grid;grid-template-columns:240px minmax(0,1fr);column-gap:12px;padding:0 14px 14px}
-  .forecast-workspace .oqrow{grid-column:1;grid-row:1 / span 3;flex-direction:column;align-items:flex-start;align-content:flex-start;justify-content:flex-start;gap:14px;padding:14px 8px}
-  .forecast-workspace .oqwrap,.forecast-workspace .oqimg{grid-column:2;grid-row:1}
-  .forecast-workspace .oqcap,.forecast-workspace .oqnote{grid-column:2}
-  .forecast-workspace .oq-local{grid-column:2}
-  .forecast-workspace .model-view{display:grid;grid-template-columns:240px minmax(0,1fr);column-gap:12px;padding:0 14px 14px}
-  .model-tools{grid-column:1;grid-row:1 / span 5;padding-top:14px}
-  .model-tools .mhead{flex-direction:column;align-items:stretch}
-  .model-tools .mrun{width:100%;max-width:none}
-  .model-view > *{order:0}
-  .forecast-workspace #mmodel,.forecast-workspace .mquick{flex-wrap:wrap;overflow:visible}
-  .model-view > .mmapw,.model-view > .mtitle,.model-view > .mctl,.model-view > .mleg,.model-view > .msrc{grid-column:2}
-  .forecast-workspace .mtime{flex-basis:auto;align-items:flex-end;margin-left:auto}
+  .forecast-toolbar{padding-inline:18px}
+  .forecast-workspace .mm{height:clamp(420px,55vh,650px)}
+  .forecast-workspace .offq,.forecast-workspace .model-view{padding-inline:14px}
+  .model-tools{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(280px,1fr);gap:8px;align-items:start}
+  .forecast-workspace #mmodel{display:flex;flex-wrap:wrap}
+  .model-tools .mhead{padding-left:0}
+  .forecast-workspace .oqrow{padding-top:8px}
 }
 #now{margin-bottom:4px}
 </style>
@@ -917,11 +908,6 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
       </div>
       <div id="forecast-models" role="tabpanel" aria-labelledby="forecast-models-tab" hidden>
     <div class="card mview model-view">
-      <div class="model-tools">
-      <div class="mmodel" id="mmodel" role="group" aria-label="Model"></div>
-      <div class="mmodel mquick" id="mquick" role="group" aria-label="Map"></div>
-      <div class="mhead"><select id="mparam" class="msel" aria-label="All maps"></select><select id="mrun" class="msel mrun" aria-label="Model run"></select></div>
-      </div>
       <div class="mmapw"><div id="mmap"></div></div>
       <div class="mtitle" id="mtitle"></div>
       <div class="mctl">
@@ -930,6 +916,12 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
         <input type="range" id="mrange" min="0" max="0" value="0" aria-label="Forecast hour">
         <button type="button" class="rbtn" id="mnext" aria-label="Next hour"><svg viewBox="0 0 24 24" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button>
         <div class="mtime num" id="mtime"></div>
+      </div>
+      <div class="map-regions" id="model-regions" role="group" aria-label="Model map extent"></div>
+      <div class="model-tools">
+      <div class="mmodel" id="mmodel" role="group" aria-label="Model"></div>
+      <div class="mmodel mquick" id="mquick" role="group" aria-label="Map"></div>
+      <div class="mhead"><select id="mparam" class="msel" aria-label="All maps"></select><select id="mrun" class="msel mrun" aria-label="Model run"></select></div>
       </div>
       <div class="mleg" id="mleg"></div>
       <div class="msrc" id="msrc"></div>
@@ -990,8 +982,8 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
 <script src="wx-scenarios.js?v=116"></script>
 <script src="wx-vmap.js?v=116"></script>
 <script src="wx-radar.js?v=116"></script>
-<script src="wx-models.js?v=116"></script>
-<script src="wx-official.js?v=116"></script>
-<script src="app.js?v=119"></script>
+<script src="wx-models.js?v=120"></script>
+<script src="wx-official.js?v=120"></script>
+<script src="app.js?v=120"></script>
 </body>
 </html>
