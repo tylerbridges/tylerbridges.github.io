@@ -780,6 +780,10 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
 #nowtitle{font:800 clamp(17px,4.9vw,21px)/1.2 var(--sans);letter-spacing:-.02em;text-transform:none;color:var(--ink);display:flex;flex-direction:column;gap:2px;padding:0 4px}
 #nowtitle .dhl3{font:600 13.5px var(--sans);letter-spacing:0}
 #now .sec-h{margin-bottom:-2px}
+/* the current-conditions card uses the day cards' insets (12 px sides/top, tight foot) and the same 22 px gap below */
+.card.now{padding:12px 12px 4px!important}
+#nowday .nowfc{padding:4px 12px 0;margin:0 -12px}
+#now{margin-bottom:4px}
 </style>
 </head>
 <body>
@@ -890,13 +894,13 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=109"></script>
-<script src="wx-live.js?v=109"></script>
-<script src="wx-scenarios.js?v=109"></script>
-<script src="wx-vmap.js?v=109"></script>
-<script src="wx-radar.js?v=109"></script>
-<script src="wx-models.js?v=109"></script>
-<script src="wx-official.js?v=109"></script>
-<script src="app.js?v=109"></script>
+<script src="wx-normalize.js?v=110"></script>
+<script src="wx-live.js?v=110"></script>
+<script src="wx-scenarios.js?v=110"></script>
+<script src="wx-vmap.js?v=110"></script>
+<script src="wx-radar.js?v=110"></script>
+<script src="wx-models.js?v=110"></script>
+<script src="wx-official.js?v=110"></script>
+<script src="app.js?v=110"></script>
 </body>
 </html>
