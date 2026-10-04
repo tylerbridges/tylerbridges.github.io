@@ -82,7 +82,7 @@ var PACK_PREFS = {
  "hot": "above ~85F: more shorts, fewer pants, nothing else changes",
  "jacket": "no general jacket; sweatshirt always; light packable puffer only on cool or rainy trips",
  "laundry": "depends on the trip, ask",
- "liquids": "travel-size in a quart bag on every trip",
+ "liquids": "already in appropriate travel containers; separate dry and liquid toiletries bags, with no liquids-bag checklist item",
  "luggage": {
   "checked": "rare: mainly around the holidays or when expecting to bring stuff back",
   "default": "carry-on plus a personal bag"

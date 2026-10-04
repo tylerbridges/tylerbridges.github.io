@@ -9,8 +9,7 @@ function ruleDraft(t, tags, luggage, nights, existing){
   (existing || []).forEach(function(x){ seen[normItem(x)] = true; });
   var groups = [
     {title:"Wear to travel", items:["Shirt", "Pants", "Underwear", "Socks"]},
-    {title:"Clothing", items:["T-shirts", "Underwear", "Socks"].concat(["Lulu shorts"])},
-    {title:"Toiletries", items:["Liquids quart bag (travel-size)"]}
+    {title:"Clothing", items:["T-shirts", "Underwear", "Socks"].concat(["Lulu shorts"])}
   ];
   // Work module (travel-dashboard skill): everything needed to work from the hotel.
   if (has("work")) groups.push({title:"Work", items:["Work computer charger", "Logitech mouse dongle", "USB-C hub / adapters / cables"]});

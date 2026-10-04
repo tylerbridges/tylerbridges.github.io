@@ -421,12 +421,21 @@ var LEAVING_RULES = [
   [/charger|usb-c|\bhub\b|\bcord\b|\bcable/i, "Chargers packed?"], [/^work computer(?:\s*[×x]\s*\d+)?$/i, "Work computer packed?"], [/^personal laptop(?:\s*[×x]\s*\d+)?$/i, "Personal laptop packed?"],
   [/^monitors?(?:\s*[×x]\s*\d+)?$/i, "Both work monitors packed?"], [/^monitor cables?/i, "Monitor cables / power packed?"]
 ];
+// Standalone app: separate products by the two bags Tyler packs; containers are not checklist items.
+function toiletryBagSection(label){
+  return /^(toothpaste|shampoo|conditioner|body wash|hair product|face wash|shaving cream|aftershave|prep h|wrinkle release|eye drops|sunscreen)$/.test(normItem(label)) || /\b(gel|cream|lotion|spray|liquid)\b/.test(normItem(label)) ? "Liquid toiletries":"Dry toiletries";
+}
+function splitToiletryGroups(groups){
+  var out=[],index=Object.create(null);
+  groups.forEach(function(group){if(!(group.items || []).length && group.title!=="Toiletries" && !index[group.title]){index[group.title]=Object.assign({},group,{items:[]});out.push(index[group.title]);}(group.items || []).forEach(function(item){var title=group.title==="Toiletries" ? toiletryBagSection(typeof item==="string" ? item:item.label):group.title;
+    if(!index[title]){index[title]=Object.assign({},group,{title:title,items:[]});out.push(index[title]);}index[title].items.push(item);
+  });});return out;
+}
 function leavingFor(groups, checked){
   var labels = []; groups.forEach(function(g){ if (g.depart || /^before leaving$/i.test(g.title || "")) return; (g.items || []).forEach(function(x){ labels.push({t:g.title || "", x:String(x)}); }); });
   var out = ["Grab wallet", "ID in wallet?"];
-  // Standalone app: removing toiletries or the liquids bag also removes its departure check.
+  // Standalone app: one general toiletries check covers both bags, without a liquids-container reminder.
   if (labels.some(function(l){ return /toiletr/i.test(l.t); })) out.push("Toiletries packed?");
-  if (labels.some(function(l){ return /liquids.*(?:quart|bag)/i.test(l.x); })) out.push("Liquids bag packed? (travel-size, quart bag)");
   LEAVING_RULES.forEach(function(r){ if (labels.some(function(l){ return r[0].test(l.x); }) && out.indexOf(r[1]) < 0) out.push(r[1]); });
   out.push("Grab personal bag", checked ? "Grab checked bag" : "Grab carry-on");
   return out;
@@ -492,7 +501,7 @@ function packBuilder(t, updating){
     var prompt = "Draft a packing list for this trip.\nTrip: " + tripBrief(t) + "\nNights: " + n.value + "\nTrip includes: " + (picked.join(", ") || "nothing special") + "\nLuggage: " + bag.options[bag.selectedIndex].text + "\nNotes: " + (extra.value.trim() || "none") +
       (existing.length ? "\nAlready on the list (do not repeat these): " + existing.join("; ") : "") +
       "\n\nRules: one distinct item per line, never bundle two items; give one definite quantity where it matters, choosing the higher number, written as \"Item ×N\" (\"Shirts ×5\", not \"4-5 shirts\"); socks and underwear are 2 per travel day (\"Socks ×\" + 2 x travel days) and contacts are 5 x ceil((travel days + 2) / 5) (\"Contacts ×10\"), where this trip has " + days + " travel days; keep it realistic for the nights and activities." +
-      "\nHe travels with a carry-on plus a personal bag; assume carry-on plus personal bag; if Luggage says checked, he takes one larger checked bag instead of the carry-on. In hot weather (above about 85F) lean toward shorts and fewer pants. Liquids are travel-size in one quart bag. He always wears Brooks running shoes and brings no other shoes unless they are listed in the separate items; no sleepwear. Already covered separately (do not list these): " + (EXTRAS || USUAL_EXTRAS).map(function(g){ return (g.items || []).join(", "); }).join(", ") + (function(){ var ms = (MAYBE || USUAL_MAYBE).filter(function(g){ return tags.indexOf(g.tag) > -1; }); return ms.length ? ", " + ms.map(function(g){ return g.items.join(", "); }).join(", ") : ""; })() + "." +
+      "\nHe travels with a carry-on plus a personal bag; assume carry-on plus personal bag; if Luggage says checked, he takes one larger checked bag instead of the carry-on. In hot weather (above about 85F) lean toward shorts and fewer pants. Liquids are already in appropriate travel containers; do not add a liquids bag item or check. Separate dry toiletries from liquid/gel/cream toiletries. He always wears Brooks running shoes and brings no other shoes unless they are listed in the separate items; no sleepwear. Already covered separately (do not list these): " + (EXTRAS || USUAL_EXTRAS).map(function(g){ return (g.items || []).join(", "); }).join(", ") + (function(){ var ms = (MAYBE || USUAL_MAYBE).filter(function(g){ return tags.indexOf(g.tag) > -1; }); return ms.length ? ", " + ms.map(function(g){ return g.items.join(", "); }).join(", ") : ""; })() + "." +
       "\nUse these sections when they apply: Wear to travel, Clothing, Personal bag & day gear, Toiletries, Work, Gear. Do not include a Before leaving section." +
       (function(){ var L = packLearning(); return (L.rules.length ? "\nStanding rules learned from past trips (follow them): " + L.rules.join(" | ") : "") + (L.lessons.length ? "\nLessons from past trips (apply only where the scope matches this trip): " + L.lessons.map(function(x){ return x.lesson + " [" + x.scope + "]"; }).join(" | ") : ""); })() +
       '\nReply with only JSON: [{"title":"section name","items":["item", "..."]}]';

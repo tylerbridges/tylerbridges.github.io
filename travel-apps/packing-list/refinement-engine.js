@@ -1,6 +1,6 @@
 "use strict";
 // Standalone app: pure rule groups return item contributions; display text is never the source of quantities.
-var REFINE_ORDER = ["Wear to travel","Clothing","Personal bag & day gear","Toiletries","Formal wear","Work","Gear","Before leaving"];
+var REFINE_ORDER = ["Wear to travel","Clothing","Personal bag & day gear","Dry toiletries","Liquid toiletries","Formal wear","Work","Gear","Before leaving"];
 // Standalone app: trip extras are opt-in; Garmin and its charger are one choice.
 var REFINE_EXTRAS=[
   {key:"kindle",label:"Kindle",items:["Kindle"]},
@@ -23,6 +23,7 @@ function refineId(label){
   return aliases[key] || key.replace(/ /g,"-");
 }
 function refineItem(label,section,reason,options){
+  if(section==="Toiletries")section=toiletryBagSection(label);
   options = options || {}; var match = String(label).match(/\s*[×x]\s*(\d+)\s*$/i), base = match ? label.slice(0,match.index).trim() : label;
   var critical = /^(contacts|glasses|passport|.*medication|medicine pouch|.*prescription|zyrtec|ibuprofen|prep h|whoop charger|work computer)$/.test(normItem(base));
   return {id:(section === "Wear to travel" ? "wear:" : "pack:") + refineId(base),label:base,quantity:options.quantity != null ? options.quantity : match ? +match[1] : 1,
@@ -93,7 +94,7 @@ function refineActivities(state,profile,c){
 // Standalone app: nicer shirts stay fresh per applicable day; laundry only reduces casual clothing.
 function refineWardrobe(state){
   var r=state.refinements,days=refineDays(state.inputs.start,state.inputs.end),work=r.workDays==null ? (r.work!=="none" ? days:0):Math.min(days,r.workDays);
-  var dinnerButtons=r.dinnerTop==="polo" ? 0:r.dinners,overlapMax=Math.min(work,dinnerButtons),overlap=r.shirtOverlap==null ? overlapMax:Math.min(overlapMax,Math.max(0,r.shirtOverlap));
+  var dinnerButtons=!r.dinnerTop || r.dinnerTop==="buttonup" ? r.dinners:0,overlapMax=Math.min(work,dinnerButtons),overlap=r.shirtOverlap==null ? overlapMax:Math.min(overlapMax,Math.max(0,r.shirtOverlap));
   var workDinner=work+dinnerButtons-overlap,share=r.shareSuitShirts && r.formalDays>0,suitMax=share ? Math.min(r.formalDays,workDinner):0,suitOverlap=r.suitOverlap==null ? suitMax:Math.min(suitMax,Math.max(0,r.suitOverlap));
   return {workDays:work,dinnerButtons:dinnerButtons,overlapMax:overlapMax,overlap:overlap,workDinner:workDinner,suitMax:suitMax,suitOverlap:suitOverlap,
     buttonUps:share ? 0:workDinner,dressShirts:share ? workDinner+r.formalDays-suitOverlap:r.formalDays,canShare:overlapMax>0 || suitMax>0};
@@ -101,6 +102,7 @@ function refineWardrobe(state){
 function refineEvents(state,profile,c){
   var out=[],r=c.r,w=refineWardrobe(state);
   function add(label,section,reason,quantity){if(quantity===0)return;out.push(refineItem(label,section,reason,{quantity:quantity,required:true,category:/shirt|polo|socks|pants|shorts|khakis|jeans/.test(label.toLowerCase()) ? "clothing":"gear"}));}
+  function custom(label,id,reason,quantity){var item=refineItem(label,"Clothing",reason,{quantity:quantity,required:true,category:"clothing"});item.id=id;out.push(item);}
   if(r.formalDays){
     ["Suit jacket","Dress pants (suit trousers)","Dress shoes","Belt"].forEach(function(label){add(label,"Formal wear","One reusable suit outfit; no undershirt",1);});
     add("Lint roller","Formal wear","Suit care",1);
@@ -112,8 +114,12 @@ function refineEvents(state,profile,c){
   add("Button-up long sleeve shirt","Clothing","Fresh work/dinner button-ups: "+w.workDays+" workday(s), "+w.dinnerButtons+" button-up dinner(s), "+w.overlap+" sharing a work shirt; no laundry reduction",w.buttonUps);
   if(r.dinners){
     if(r.dinnerTop==="polo")add("Polo shirts","Clothing","One fresh polo for each nice dinner; no laundry reduction",r.dinners);
+    if(r.dinnerTop==="longsleeve")add("Long-sleeve nice shirts","Clothing","One fresh long-sleeve nice shirt per dinner; separate from work/suit button-ups, no laundry reduction",r.dinners);
+    if(r.dinnerTop==="shortsleeve")add("Short-sleeve nice shirts","Clothing","One fresh short-sleeve nice shirt per dinner; separate from work/suit tops, no laundry reduction",r.dinners);
+    if(r.dinnerTop==="other")custom(String(r.dinnerOtherTop || "").trim() || "Other nice dinner top","pack:dinner-other-top","Your chosen dinner top: one fresh top per dinner; separate from work/suit shirts, no laundry reduction",r.dinners);
     var bottom=r.dinnerBottoms || (c.cool || c.cold || c.unknown ? "jeans":"shorts");
     if(bottom==="shorts")add("Lulu shorts","Clothing","Reuse a suitable regular pair for nice dinners; add only if missing",1);
+    else if(bottom==="other"){custom(String(r.dinnerOtherBottoms || "").trim() || "Other dinner bottoms","pack:dinner-other-bottoms","One reusable pair of your chosen dinner bottoms",1);if(r.dinnerOtherBelt!==false)add("Belt",r.formalDays ? "Formal wear":"Clothing","Belt needed for your dinner outfit; shared with suit attire",1);}
     else {add(bottom==="khakis" ? "Khakis":"Jeans","Clothing","Reuse one suitable pair for nice dinners",1);add("Belt",r.formalDays ? "Formal wear":"Clothing","One belt shared by dinner and suit attire",1);}
   }
   return out;
@@ -127,14 +133,14 @@ function refineWork(state,profile,c){
   }
   return out;
 }
-function refineConsumables(state,profile,c){ return [refineItem("Contacts","Toiletries","Full trip plus two days, rounded to a multiple of five",{quantity:5*Math.ceil((c.days+2)/5),critical:true}),refineItem("Liquids quart bag (travel-size)","Toiletries","Your travel-size liquids rule applies on every trip",{required:true})]; }
+function refineConsumables(state,profile,c){ return [refineItem("Contacts","Toiletries","Full trip plus two days, rounded to a multiple of five",{quantity:5*Math.ceil((c.days+2)/5),critical:true})]; }
 var REFINE_RULES = {
   clothing:{deps:["dates","laundry","packingMode","climate","thermal","activities","warmWeather"],run:refineClothing},
   extras:{deps:["extraItems"],run:refineExtras},
   defaults:{deps:["profile"],run:refineDefaults},
   layers:{deps:["climate","thermal","rain"],run:refineLayers},
   activities:{deps:["activities","climate","thermal","rain","dates","laundry","packingMode","intl","mode","longFlight","ruggedHike","daypack","profile"],run:refineActivities},
-  events:{deps:["formalDays","dinners","workDays","work","dinnerTop","dinnerBottoms","tie","alternateKhakis","shareSuitShirts","shirtOverlap","suitOverlap","dates","climate","thermal"],run:refineEvents},
+  events:{deps:["formalDays","dinners","workDays","work","dinnerTop","dinnerOtherTop","dinnerBottoms","dinnerOtherBottoms","dinnerOtherBelt","tie","alternateKhakis","shareSuitShirts","shirtOverlap","suitOverlap","dates","climate","thermal"],run:refineEvents},
   work:{deps:["work","profile"],run:refineWork},
   consumables:{deps:["dates"],run:refineConsumables}
 };
@@ -144,7 +150,7 @@ function refineEvaluate(state,profile,changed){
   var c = refineContext(state), signature = JSON.stringify(profile), cache = {}, keys = {}, ran = [];
   // Standalone app: cache validity comes from actual dependency values, never caller hints alone.
   Object.keys(REFINE_RULES).forEach(function(id){var rule=REFINE_RULES[id];
-    keys[id]="wardrobe-2026-10-v2:"+JSON.stringify(rule.deps.map(function(key){if(key==="profile")return profile;if(key==="dates")return [state.inputs.start,state.inputs.end];return Object.prototype.hasOwnProperty.call(state.inputs,key) ? state.inputs[key] : state.refinements[key];}));
+    keys[id]="wardrobe-2026-10-v3:"+JSON.stringify(rule.deps.map(function(key){if(key==="profile")return profile;if(key==="dates")return [state.inputs.start,state.inputs.end];return Object.prototype.hasOwnProperty.call(state.inputs,key) ? state.inputs[key] : state.refinements[key];}));
     if(!state.ruleResults || !state.ruleResults[id] || !state.ruleKeys || state.ruleKeys[id]!==keys[id]){cache[id]=rule.run(state,profile,c);ran.push(id);}else cache[id]=state.ruleResults[id];
   });
   var merged = {}, order = [], excluded = profile.refinementProfile && profile.refinementProfile.excluded || {};
@@ -174,6 +180,7 @@ function refineEvaluate(state,profile,changed){
   if(c.inputs.activities.hike && c.r.ruggedHike && !items.some(function(x){return x.id === "pack:hiking-footwear";}))warnings.push({id:"hiking-footwear",text:"Rugged or wet trails are selected, but hiking footwear is missing."});
   if (c.r.work !== "none" && !items.some(function(x){ return x.id === "pack:work-computer-charger"; })) warnings.push({id:"work-power",text:"Work is selected, but laptop power is missing."});
   if (c.inputs.activities.hike && !items.some(function(x){ return /rain-jacket|rain-protection/.test(x.id); }) && (c.r.rain || c.unknown)) warnings.push({id:"hiking-rain",text:"Hiking weather protection is missing for wet or unconfirmed conditions."});
+  items.forEach(function(item){if(item.section==="Toiletries")item.section=toiletryBagSection(item.label);});
   var groups = REFINE_ORDER.filter(function(title){ return title !== "Before leaving"; }).map(function(title){ return {title:title,items:items.filter(function(x){ return x.section === title; })}; }).filter(function(g){ return g.items.length; });
   // Preserve custom section titles from old lists and manual overrides.
   items.forEach(function(item){ if (!groups.some(function(g){ return g.title === item.section; })){ groups.push({title:item.section,items:items.filter(function(x){ return x.section === item.section; })}); } });

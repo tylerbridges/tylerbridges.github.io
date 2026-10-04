@@ -21,7 +21,7 @@ function generatorRulesPage(){
   var rules = el("section","panel stack"); rules.appendChild(el("h2","k","Current rules and quantities"));
   rules.appendChild(el("p",null,"Socks and underwear: 2 per travel day. T-shirts: 1 per day. Bottoms: days ÷ 2, rounded up. Contacts: full trip + 2 days, rounded up to a multiple of 5. Clothes worn on departure are included in clothing totals."));
   // Standalone app: describe the active refinement rules without rewriting saved profile data.
-  var currentRules={planeComfort:"Kindle is opt-in in Trip extras; neck pillow, earplugs and eye mask only on long international flights",formalDays:"Suit attire only for selected full suit days; video workdays and nice dinners have separate outfit decisions",hot:"Warm weather uses shorts; weather changes item choices, not daily shirt or underwear needs",shoes:"Brooks for ordinary hikes and workouts; hiking footwear for rugged/wet trails; dress shoes for formal events",jacket:"Hoodie and puffer for cool/cold weather, even when you run hot; rain adds separate weather protection",cooler:"Joggers replace half the shorts in cool/cold weather; workouts keep enough shorts for two days per pair",workouts:"Workouts most days use regular T-shirts and Lulu shorts; no separate workout outfit"};
+  var currentRules={liquids:"Liquids are already in travel containers; no liquids-bag item or departure check. Dry and liquid toiletries pack in separate bags (deodorant/lip balm assumed solid; change an item’s section if needed).",planeComfort:"Kindle is opt-in in Trip extras; neck pillow, earplugs and eye mask only on long international flights",formalDays:"Suit attire only for selected full suit days; video workdays and nice dinners have separate outfit decisions",hot:"Warm weather uses shorts; weather changes item choices, not daily shirt or underwear needs",shoes:"Brooks for ordinary hikes and workouts; hiking footwear for rugged/wet trails; dress shoes for formal events",jacket:"Hoodie and puffer for cool/cold weather, even when you run hot; rain adds separate weather protection",cooler:"Joggers replace half the shorts in cool/cold weather; workouts keep enough shorts for two days per pair",workouts:"Workouts most days use regular T-shirts and Lulu shorts; no separate workout outfit"};
   rules.appendChild(el("p",null,"Laundry: first wash day + wash interval, with one spare clothing day. Pack extra uses the same buffer when laundry is planned; otherwise it adds one T-shirt, two underwear, two pairs of socks and one pair of bottoms. Carry-on flags capacity conflicts without moving or reducing items. The collapsible daypack is added only via I need a daypack in trip setup or Activities. Kindle, Hotspot, Belkin charging pad, Garmin + charger and extra phone case are optional selections in Trip extras during setup or Extras after generation."));
   rules.appendChild(el("p",null,"Use the coldest expected outdoor weather; warmer-weather needs can be added separately. Suit days: one reusable suit, fresh white dress shirts and socks, no undershirts; ties and alternating khakis default to one each for one suit day or two each for multiple days, confirmed in the suit step. Video workdays: fresh long-sleeve tops only. Dinner tops and suitable bottoms are confirmed separately; shared work/dinner shirts and compatible suit shirts count once on shared days. Laundry never reduces work, dinner or suit shirts. Relevant outfit choices must be confirmed before export."));
   Object.keys(PREF_LABELS).forEach(function(k){ var row = el("div","gen-rule"); row.appendChild(el("b",null,PREF_LABELS[k])); row.appendChild(el("span",null,currentRules[k] || p[k] || PACK_PREFS[k])); rules.appendChild(row); }); w.appendChild(rules);
@@ -35,10 +35,12 @@ function generatorPreferences(){
   var savedGroups = Array.isArray(p.extras) ? p.extras : PACK_PREFS.extras, removed = Array.isArray(p.prefRemoved) ? p.prefRemoved.slice() : [], groups = [], idx = {};
   function gOf(title){ if (idx[title] == null){ idx[title] = groups.length; groups.push({title:title,items:[]}); } return groups[idx[title]]; }
   function hidden(item){ return refineId(item) === "daypack" || !!refineOptionalKey(item); }
+  function defaultKey(title,label){var g=PACK_PREFS.extras.find(function(d){return (d.title===title || d.title==="Toiletries" && toiletryBagSection(label)===title) && d.items.indexOf(label)>=0;});return g ? g.title+"|"+label:null;}
   function putItem(title,label,on){ var g = gOf(title); if (g.items.some(function(x){ return x.label === label; })) return; g.items.push({label:label,on:on}); }
   if (Array.isArray(p.prefItems)){ p.prefItems.forEach(function(g){ gOf(g.title); (g.items || []).forEach(function(x){ putItem(g.title,x.label,!!x.on); }); }); }
   else { savedGroups.forEach(function(g){ gOf(g.title); (g.items || []).forEach(function(item){ putItem(g.title,item,true); }); }); }
-  PACK_PREFS.extras.forEach(function(g){ gOf(g.title); (g.items || []).forEach(function(item){ if (removed.indexOf(g.title + "|" + item) < 0) putItem(g.title,item,false); }); });
+  PACK_PREFS.extras.forEach(function(g){ gOf(g.title); (g.items || []).forEach(function(item){ if (g.title==="Toiletries" && groups.some(function(existing){return existing.items.some(function(x){return x.label===item;});}))return;if (removed.indexOf(g.title + "|" + item) < 0) putItem(g.title,item,false); }); });
+  groups=splitToiletryGroups(groups);idx={};groups.forEach(function(g,index){idx[g.title]=index;});
   var list = el("div");
   function textIn(value,label,cls){ var i = el("input",cls); i.type = "text"; i.value = value; i.setAttribute("aria-label",label); i.style.fontSize = "16px"; return i; }
   function iconBtn(text,label,fn){ var b = el("button","btn",text); b.type = "button"; b.setAttribute("aria-label",label); b.addEventListener("click",fn); return b; }
@@ -48,7 +50,7 @@ function generatorPreferences(){
       var head = el("div","gen-item"), ht = textIn(g.title,"Section header"); ht.style.fontWeight = "600";
       ht.addEventListener("change",function(){ var v = ht.value.trim(); if (!v){ ht.value = g.title; return; } if (groups.some(function(x,i){ return i !== gi && x.title === v; })){ status.textContent = "A section named “" + v + "” already exists."; ht.value = g.title; return; } status.textContent = ""; g.title = v; });
       head.appendChild(ht);
-      head.appendChild(iconBtn("Delete section","Delete section " + g.title,function(){ g.items.forEach(function(x){ if (PACK_PREFS.extras.some(function(d){ return d.title === g.title && d.items.indexOf(x.label) >= 0; })) removed.push(g.title + "|" + x.label); }); groups.splice(gi,1); draw(); }));
+      head.appendChild(iconBtn("Delete section","Delete section " + g.title,function(){ g.items.forEach(function(x){ var key=defaultKey(g.title,x.label);if(key)removed.push(key); }); groups.splice(gi,1); draw(); }));
       list.appendChild(head);
       g.items.forEach(function(x,xi){
         if (hidden(x.label)) return;
@@ -56,11 +58,11 @@ function generatorPreferences(){
         c.addEventListener("change",function(){ x.on = c.checked; });
         var t = textIn(x.label,"Item name"); t.addEventListener("change",function(){ var v = t.value.trim(); if (!v){ t.value = x.label; return; } if (g.items.some(function(y,i){ return i !== xi && y.label === v; })){ status.textContent = "“" + v + "” is already in " + g.title + "."; t.value = x.label; return; } status.textContent = ""; x.label = v; });
         row.appendChild(c); row.appendChild(t);
-        row.appendChild(iconBtn("Delete","Delete " + x.label,function(){ if (PACK_PREFS.extras.some(function(d){ return d.title === g.title && d.items.indexOf(x.label) >= 0; })) removed.push(g.title + "|" + x.label); g.items.splice(xi,1); draw(); }));
+        row.appendChild(iconBtn("Delete","Delete " + x.label,function(){ var key=defaultKey(g.title,x.label);if(key)removed.push(key); g.items.splice(xi,1); draw(); }));
         list.appendChild(row);
       });
       var add = el("div","gen-item gen-add"), ai = textIn("","Add item to " + g.title); ai.placeholder = "Add item to this section"; 
-      function doAdd(){ var v = ai.value.trim(); if (!v) return; if (g.items.some(function(y){ return y.label === v; })){ status.textContent = "“" + v + "” is already in " + g.title + "."; return; } status.textContent = ""; var k = removed.indexOf(g.title + "|" + v); if (k >= 0) removed.splice(k,1); g.items.push({label:v,on:true}); draw(); }
+      function doAdd(){ var v = ai.value.trim(); if (!v) return; if (g.items.some(function(y){ return y.label === v; })){ status.textContent = "“" + v + "” is already in " + g.title + "."; return; } status.textContent = ""; var k = removed.indexOf(defaultKey(g.title,v) || g.title + "|" + v); if (k >= 0) removed.splice(k,1); g.items.push({label:v,on:true}); draw(); }
       ai.addEventListener("keydown",function(e){ if (e.key === "Enter"){ e.preventDefault(); doAdd(); } });
       add.appendChild(el("span","gen-spacer")); add.appendChild(ai); add.appendChild(iconBtn("Add","Add item to " + g.title,doAdd)); list.appendChild(add);
     });
@@ -158,7 +160,6 @@ function generatorBuild(t, s, prefs){
     if (!counts[k]) return ""; return qtyName(k,label) + " ×" + counts[k]; }
   ["T-shirts","Underwear","Socks","Lulu shorts"].forEach(function(x){ add("Clothing",quantity(x,"Clothing")); });
   if (joggers) add("Clothing","Lulu joggers ×" + joggers);
-  add("Toiletries","Liquids quart bag (travel-size)");
   (Array.isArray(prefs.extras) ? prefs.extras : PACK_PREFS.extras).forEach(function(g){ (g.items || []).forEach(function(x){ add(g.title,quantity(x,g.title)); }); });
   var tags = [s.climate]; ["rain","water","hike","fish","intl","longintl"].forEach(function(k){ if (s[k] && (k !== "longintl" || s.intl && s.mode === "fly")) tags.push(k); });
   if (s.rain && tags.indexOf("cool") < 0 && tags.indexOf("cold") < 0) tags.push("cool");
@@ -169,7 +170,7 @@ function generatorBuild(t, s, prefs){
   if (s.formal){ add("Formal wear","Dress pants ×1"); add("Formal wear","Belt"); }
   if (s.work === "work"){ add("Work","Work computer charger"); add("Work","Logitech mouse dongle"); }
   (prefs.generatorExtras || []).concat(String(s.extra || "").split(/\r?\n/)).forEach(function(x){ add("Personal bag & day gear",quantity(x,"Personal bag & day gear")); });
-  var departure = leavingFor(groups,s.bag === "checked");
+  groups=splitToiletryGroups(groups);var departure = leavingFor(groups,s.bag === "checked");
   groups.push({title:"Before leaving",depart:true,items:departure});
   return {groups:groups,setup:clone(s),explanation:[days + " travel days; " + clothingDays + " days of clothing" + (s.laundry === "cycle" ? " (wash interval + one spare day)" : ""),"Departure outfit counts toward socks, underwear and T-shirts", "Contacts cover all " + days + " days plus the saved two-day buffer", cool ? "Joggers replace half the shorts, rounded up" : "Shorts are the packed bottoms; travel pants are worn", "Before leaving checks follow the items you keep"]};
 }
