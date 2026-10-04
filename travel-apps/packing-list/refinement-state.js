@@ -5,7 +5,7 @@ function refineNewState(t,setup){
   setup = setup || {}; var activities = {}; ["hike","workout","water","fish"].forEach(function(k){ activities[k] = !!setup[k] || (k === "workout" && !!setup.run); });
   return {version:2,inputs:{where:t.where,start:t.start,end:t.end,mode:setup.mode || "fly",tripType:setup.tripType || "leisure",bag:setup.bag || "carryon",intl:!!setup.intl,activities:activities},
     refinements:{climate:setup.climate || "unknown",rain:!!setup.rain,thermal:"neutral",packingMode:"standard",laundry:{available:setup.laundry === "cycle",firstWash:setup.interval || 4,interval:setup.interval || 4},formalDays:setup.formal || 0,dinners:setup.dinners || 0,work:setup.work || "none",extraItems:clone(setup.extraItems || {}),daypack:!!setup.daypack,ruggedHike:!!setup.ruggedHike,longFlight:!!setup.longintl},
-    overrides:{removed:{},edited:{},added:{}},ruleResults:{},history:[],baseline:null};
+    overrides:{removed:{},edited:{},added:{}},reviewed:{},ruleResults:{},history:[],baseline:null};
 }
 // Standalone app: normalize old assumptions without changing preferences or explicit item overrides.
 function refineNormalizeState(state){
@@ -13,6 +13,7 @@ function refineNormalizeState(state){
   if(!Object.prototype.hasOwnProperty.call(a,"workout"))a.workout=!!a.run;
   delete a.run;
   if(state.refinements.packingMode==="light")state.refinements.packingMode="standard";
+  if(!state.reviewed)state.reviewed={};
   if(!state.refinements.extraItems)state.refinements.extraItems={};
   if(state.refinements.daypack == null)state.refinements.daypack=false;
   if(state.refinements.ruggedHike == null)state.refinements.ruggedHike=false;

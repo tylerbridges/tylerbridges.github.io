@@ -18,6 +18,10 @@
 .gen-pref-item{display:flex;align-items:center;gap:10px;padding:6px 0;}
 .gen-error{color:var(--stop);}
 .refine-toggles{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0;}
+.refine-group h3{margin:12px 0 0;}
+.refine-group .refine-toggles{margin:6px 0 0;}
+.refine-new{border-color:var(--accent);background:var(--accent-soft);color:var(--accent);font-weight:600;}
+.refine-done{background:var(--surface-2);color:var(--ink-2);}
 .refine-toggles button{white-space:normal;text-align:left;max-width:100%;}
 .refine-item{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:10px;padding:12px 0;border-top:1px solid var(--line-2);}
 .refine-item-copy{flex:1 1 180px;min-width:0;overflow-wrap:anywhere;}
