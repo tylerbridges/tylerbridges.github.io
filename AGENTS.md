@@ -35,7 +35,7 @@ Optimize for a simple loop: request, implement, review, publish, verify.
 ## Data trust
 
 - Header "Checked" is fetch freshness, not observation or forecast age. Its Data & sources dialog shows observation time/station, forecast/grid update times, and alert check status. `wx-normalize.js` keeps unavailable alerts as null with `sources.alerts.state`; an empty array means a successful check found no alerts. Persistent notices cover failed refreshes, unavailable alerts, and stale/missing observations. Older caches without source status are unknown until refreshed.
-- Current wind and gusts are observations only. Forecast model details disclose run age and snowfall method: 10:1 for deterministic snow products, modeled snow ratios for NBM. NBM FICEAC is flat ice accretion; other models' freezing-rain products are liquid-equivalent estimates, not ice thickness. NWS snow/ice products are probability maps, labeled "chance".
+- Current wind and gusts are observations only. Forecast model details disclose run age and snowfall method: 10:1 or native snowfall for supported deterministic products, modeled snow ratios for NBM. NBM FICEAC is flat ice accretion; other models' freezing-rain products are liquid-equivalent estimates, not ice thickness. NWS snow/ice products are probability maps, labeled "chance".
 - Width changes on Hourly must replace `G` with `renderGraph($("gin"))`, preserve the shared scroller offset, and keep hold-to-read working; Daily redraws its separate precipitation graph.
 
 ## Checks before publishing
@@ -43,3 +43,10 @@ Optimize for a simple loop: request, implement, review, publish, verify.
 - No runtime JavaScript errors; layouts work at 360–430px wide in light and dark mode.
 - Load Minneapolis, run a location search, and open each tab against live data.
 - Keep it dependency-free and static-host compatible.
+
+## Forecast outlook and verification
+
+- Outlook tools remain below the map. `wx-outlook.js` adds NWS rain/thunderstorm/winter timing, gusts, 32°F crossings, active hazards, and WPC regional winter probabilities with exact valid periods. Rain easing requires three known hours below 20%; unknown hours never establish dry or safe weather. The wettest published block is a block average, not an instantaneous rain peak.
+- Snowfall methods stay explicit: 10:1, native HRRR/RAP and NBM. Comparisons/run trends use identical periods, inches and compatible measurement categories. A result opens a map with that window locked; queued comparison probes survive map changes. Missing coverage/cells never become zero. Model spread is not a calibrated probability.
+- `wx-archive.js` stores issued point forecasts, compared model values and compatible NWS reports on-device for up to 14 days. Test scenarios are excluded. Verification requires a measured report within 1 mile, explicit duration, and a forecast issued and saved before the event. NWS totals require full, gap-free blocks; never prorate. Ice thickness is not scored against modeled accretion. QPF includes snow/ice water; rainfall alone qualifies only when frozen precipitation is ruled out for the entire period, or the report explicitly measures liquid equivalent.
+- Run `node --test tools/weather_check.cjs` when changing outlook timing or verification. `tools/weather_browser.cjs` exercises controls with controlled GRIB2 fields; the GitHub weather verification workflow also runs the live data/layout check and deep radar audit before publishing.

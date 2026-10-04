@@ -787,6 +787,8 @@
     var u = "https://mesonet.agron.iastate.edu/geojson/lsr.geojson?hours=72&north=" + (l.lat + 0.6).toFixed(2) + "&south=" + (l.lat - 0.6).toFixed(2) + "&west=" + (l.lon - 0.8).toFixed(2) + "&east=" + (l.lon + 0.8).toFixed(2);
     fetch(u).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (j) {
       if (LSR.key !== key) return;
+      if (!j || !Array.isArray(j.features)) throw new Error("Invalid storm reports response");
+      if (window.WXOutlook) WXOutlook.setReports(j.features, "available", l);
       LSR.list = ((j && j.features) || []).map(function (f) {
         var p = f.properties || {}, g = f.geometry && f.geometry.coordinates, la = +(p.lat != null ? p.lat : g && g[1]), lo = +(p.lon != null ? p.lon : g && g[0]);
         var k = lsrKind(p), m = parseFloat(p.magnitude != null ? p.magnitude : p.mag), ms = Date.parse(p.valid || p.utc_valid || "");
@@ -795,7 +797,7 @@
         return { k: k, m: m, ms: ms, mi: mi, dir: bearing(l.lat, l.lon, la, lo), city: p.city || "", st: p.state || p.st || "", q: p.qualifier || "" };
       }).filter(Boolean).sort(function (a, b) { return a.mi - b.mi; });
       LSR.t = Date.now(); LSR.busy = false; renderPast();
-    }).catch(function () { if (LSR.key === key) { LSR.busy = false; LSR.t = Date.now(); LSR.list = LSR.list || []; } });
+    }).catch(function () { if (LSR.key === key) { LSR.busy = false; LSR.t = Date.now(); LSR.list = LSR.list || []; if (window.WXOutlook) WXOutlook.setReports([], "unavailable", l); } });
   }
   function renderPast() {
     var el = $("past"); if (!el) return;
@@ -992,7 +994,7 @@
   // ---------- data ----------
   function accept(d) {
     if (!d || !d.v || !d.grid) return false;
-    doc = d; renderAll(); return true;
+    doc = d; if (!TEST && window.WXOutlook) WXOutlook.capture(d); renderAll(); return true;
   }
   function toast(msg) {
     var t = $("toast"); t.textContent = msg; t.hidden = false;
@@ -1281,6 +1283,18 @@
   //   current location, times in its time zone. Only the selected map source runs.
   var forecastMode = "nws";
   function renderMaps() {
+    if (window.WXOutlook && doc) WXOutlook.show(doc, {
+      fmt: fmt,
+      onOdds: function (r) { OQ = { k: r.k, p: r.day === 2 ? 48 : 24, th: String(r.threshold).padStart(2, "0") }; forecastMode = "nws"; renderMaps(); },
+      onTime: function (r) {
+        forecastMode = "models"; renderMaps();
+        WXModels.openTime(r.param, r.start).then(function (t) {
+          if (t != null) { toast("Model forecast · " + fmt(t, { weekday: "short", hour: "numeric", timeZoneName: "short" })); $("mmap").scrollIntoView({ block: "start", behavior: "auto" }); }
+          else toast("No model hour is available right now");
+        }).catch(function () { toast("Model data couldn't load"); });
+      },
+      onDaily: function () { showTab("daily"); window.scrollTo({ top: 0, behavior: "auto" }); }
+    });
     $("mtotloc").textContent = (doc && doc.loc && doc.loc.label) || "";
     document.querySelectorAll("[data-forecast-mode]").forEach(function (b) {
       var selected = b.dataset.forecastMode === forecastMode;

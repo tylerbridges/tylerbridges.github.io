@@ -459,8 +459,24 @@
       return { start: data.start, end: data.end, issue: data.issue };
     }, function (e) { if (g === gen) { data = null; status(""); } throw e; });
   }
+  function probabilities(l) {
+    if (!(l.lat >= 25 && l.lat <= 50 && l.lon >= -125 && l.lon <= -66)) return Promise.resolve({ covered: false, rows: [] });
+    var choices = [];
+    [24, 48].forEach(function (p) {
+      ["04", "08", "12"].forEach(function (th) { choices.push({ k: "snow", p: p, th: th }); });
+      choices.push({ k: "ice", p: p, th: "25" });
+    });
+    return Promise.all(choices.map(function (s) {
+      return loadProduct(layerOf(s)).then(function (d) {
+        var i = Math.floor((l.lon - GX0) / GR), j = Math.floor((GY1 - l.lat) / GR), b = d.grid[j * GW + i];
+        return { k: s.k, threshold: s.k === "snow" ? +s.th : 0.25, day: s.p === 48 ? 2 : 1,
+          start: d.start, end: d.end, issue: d.issue, state: !d.start || !d.end ? "unavailable" : d.end <= Date.now() ? "expired" : "available",
+          chance: b ? [null, "10–39%", "40–69%", "70–100%"][Math.min(3, b)] : "Under 10%" };
+      }, function () { return { k: s.k, threshold: s.k === "snow" ? +s.th : 0.25, day: s.p === 48 ? 2 : 1, state: "unavailable" }; });
+    })).then(function (rows) { return { covered: true, rows: rows }; });
+  }
   root.WXOfficial = {
-    show: show, caption: caption, legend: legend,
+    show: show, caption: caption, legend: legend, probabilities: probabilities,
     hide: function () { on = false; },
     // for check.html: fetch and parse one product without drawing it
     _probe: function (s) { return loadProduct(layerOf(s)).then(function (d) { return { start: d.start, end: d.end, issue: d.issue }; }); },

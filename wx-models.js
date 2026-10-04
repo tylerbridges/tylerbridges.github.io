@@ -245,7 +245,7 @@
   // which products a model has (NBM only carries surface precip/snow/ice and temperature here)
   // the All maps menu lists only these (Tyler's pick, Oct 4); the rest stay defined for the data check (WXModels._probe).
   //   One "Total snowfall": NBM's own snow ratios on NBM, 10:1 elsewhere.
-  var MENU = ["ptype", "t2", "w10", "gust", "tcc", "qpf", "sn10", "nsn", "frz", "p6", "p24", "s6", "s24", "i6"]; // menu order
+  var MENU = ["ptype", "t2", "w10", "gust", "tcc", "qpf", "sn10", "snv", "nsn", "frz", "p6", "p24", "s6", "s24", "i6"]; // menu order
   // two modes above the menu: Precip (what's falling and the weather around it) and Amounts (accumulations); the menu
   //   lists only the selected mode's maps, amounts grouped as totals from now and per-period amounts
   function isAmt(p) { return !!(p && (p.accum || p.win)); }
@@ -325,7 +325,7 @@
   var PBY = {}; P.forEach(function (p) { PBY[p.id] = p; });
   function map(a, f) { var o = new Float32Array(a.length); for (var i = 0; i < a.length; i++) o[i] = f(a[i]); return o; }
   function scale(a, k) { var o = new Float32Array(a.length); for (var i = 0; i < a.length; i++) o[i] = a[i] * k; return o; }
-  function mul(a, b, k) { var o = new Float32Array(a.length); for (var i = 0; i < a.length; i++) o[i] = a[i] * (b[i] > 0 ? b[i] : 0) * k; return o; }
+  function mul(a, b, k) { var o = new Float32Array(a.length); for (var i = 0; i < a.length; i++) o[i] = Number.isFinite(a[i]) && Number.isFinite(b[i]) ? a[i] * Math.max(0, b[i]) * k : NaN; return o; }
   function speed(u, v, k) { var o = new Float32Array(u.length); for (var i = 0; i < u.length; i++) o[i] = Math.sqrt(u[i] * u[i] + v[i] * v[i]) * k; return o; }
   // type code: freezing rain beats sleet beats snow (snow with rain = mix); rain when nothing else is flagged
   function ptypeOut(r) {
@@ -410,7 +410,7 @@
             var p = h === 0 ? F.zeros() : (function () {
               var a = bucket(m.model, h, id, new Date(m.run).getUTCHours());
               return Promise.all([a > 0 ? tot(a) : null, withHour(h, function () { return inc(a, h); })]).then(function (r) {
-                if (!r[0]) return r[1]; var o = new Float32Array(r[1].length); for (var i = 0; i < o.length; i++) o[i] = r[0][i] + (r[1][i] > 0 ? r[1][i] : 0); return o;
+                if (!r[0]) return r[1]; var o = new Float32Array(r[1].length); for (var i = 0; i < o.length; i++) o[i] = Number.isFinite(r[0][i]) && Number.isFinite(r[1][i]) ? r[0][i] + Math.max(0, r[1][i]) : NaN; return o;
               });
             })();
             ACC.set(key, p); p.catch(function () { ACC.delete(key); });
@@ -419,7 +419,7 @@
           }
           // upcoming totals: from the hour now (m.from) to this hour
           if (!m.from) return tot(m.h);
-          return Promise.all([tot(m.h), tot(m.from)]).then(function (r) { var o = new Float32Array(r[0].length); for (var i = 0; i < o.length; i++) { var d = r[0][i] - r[1][i]; o[i] = d > 0 ? d : 0; } return o; });
+          return Promise.all([tot(m.h), tot(m.from)]).then(function (r) { var o = new Float32Array(r[0].length); for (var i = 0; i < o.length; i++) { var d = r[0][i] - r[1][i]; o[i] = Number.isFinite(d) ? Math.max(0, d) : NaN; } return o; });
         }
       };
       // run inc() with F.get reading hour h
@@ -478,8 +478,8 @@
   var st = (function () { try { return JSON.parse(localStorage.getItem("wx-model") || "null"); } catch (e) { return null; } })() || {};
   var winter = [10, 11, 0, 1, 2, 3].indexOf(new Date().getMonth()) >= 0;
   var cur = { model: st.model || "hrrr", param: st.param || (winter ? "sn10" : "qpf"), run: null, k: 0 }, userRun = false;
-  if (cur.param === "snv") cur.param = cur.model === "nbm" ? "nsn" : "sn10";
   if (!PBY[cur.param] || !has(PBY[cur.param], cur.model) || !inMenu(cur.param)) cur.param = "qpf";
+  var lockedWindow = null, timeRequest = 0;
   var runs = {}, frames = {}, gen = 0, playing = false, playT = 0, readout = null;
   function save() { try { localStorage.setItem("wx-model", JSON.stringify({ model: cur.model, param: cur.param })); } catch (e) {} }
   function dark() { var t = document.documentElement.dataset.theme; return t ? t === "dark" : !!(root.matchMedia && root.matchMedia("(prefers-color-scheme: dark)").matches); }
@@ -533,12 +533,14 @@
   function R() { var L = runs[cur.model] && runs[cur.model].list || []; return L.filter(function (x) { return x.run === cur.run; })[0] || null; }
   // accumulations count from the hour now (upcoming totals), so their slider starts after it
   function fromH() {
+    if (lockedWindow) return (lockedWindow.start - cur.run) / H;
     var r = R(); if (!r || !PBY[cur.param].accum) return 0;
     var f = 0; r.hours.forEach(function (h) { if (r.run + h * H <= Date.now() + 10 * 60000) f = h; });
     return f;
   }
   function hours() {
     var r = R(); if (!r) return [];
+    if (lockedWindow) return [(lockedWindow.end - cur.run) / H];
     var p = PBY[cur.param], f = fromH(), now = Date.now() - 30 * 60000;
     return r.hours.filter(function (h) {
       if (!okHour(p, cur.model, r.run, h)) return false;
@@ -918,6 +920,9 @@
   function uiTime() {
     var hs = hours(), h = hs[cur.k], r = R();
     ui.range.max = Math.max(0, hs.length - 1); ui.range.value = cur.k; ui.range.disabled = hs.length < 2;
+    ui.play.disabled = hs.length < 2; ui.prev.disabled = hs.length < 2; ui.next.disabled = hs.length < 2; ui.time.disabled = !!lockedWindow;
+    var lock = document.getElementById("model-window-lock");
+    if (lock) { lock.hidden = !lockedWindow; if (lockedWindow) lock.querySelector("span").textContent = "Comparison window locked · " + fmtT(lockedWindow.start, { weekday: "short", hour: "numeric", timeZoneName: "short" }) + " – " + fmtT(lockedWindow.end, { weekday: "short", hour: "numeric", timeZoneName: "short" }); }
     var p = PBY[cur.param];
     ui.title.textContent = MODELS[cur.model].name + " · " + productName(p);
     if (!r || h == null) { ui.time.innerHTML = ""; ui.src.textContent = "Run unavailable"; if (ui.note) ui.note.textContent = ""; if (ui.hdr) ui.hdr.innerHTML = ""; return; }
@@ -940,6 +945,9 @@
     if (ui.hdr) ui.hdr.title = productName(p) + " · " + per + " · " + ui.src.textContent;
   }
   function productName(p) {
+    if (p.id === "sn10") return "Snowfall (10:1)";
+    if (p.id === "snv") return "Snowfall (native)";
+    if (p.id === "nsn") return "Snowfall (NBM)";
     if (p.id === "frz") return cur.model === "nbm" ? "Ice accretion" : "Freezing-rain liquid";
     if (p.id === "i6") return cur.model === "nbm" ? "6-hr ice accretion" : "6-hr freezing-rain liquid";
     return p.name;
@@ -948,9 +956,10 @@
     var note = "Model guidance, not an observed amount or the official NWS forecast.";
     if (p.id === "sn10" || p.id === "s6" || p.id === "s24") note += cur.model === "nbm" ? " Snowfall uses NBM's modeled snow ratios." : " Snowfall is estimated with a 10:1 snow-to-liquid ratio; actual snow density can vary.";
     else if (p.id === "nsn") note += " Snowfall uses NBM's modeled snow ratios.";
+    else if (p.id === "snv") note += " Native variable-density snowfall from HRRR/RAP (ASNOW), not snow depth; actual accumulation can differ.";
     if (p.id === "frz" || p.id === "i6") note += cur.model === "nbm" ? " Estimated ice accretion uses NBM's flat-surface model (FRAM); actual buildup depends on surface and exposure." : " This is liquid-equivalent freezing rain, not ice thickness on trees, wires, or roads.";
     if ((p.id === "frz" || p.id === "i6") && cur.model !== "nbm" && cur.model !== "hrrr" && cur.model !== "rap") note += " Derived from precipitation and modeled precipitation type; changing types between forecast hours add uncertainty.";
-    if (p.accum) note += " Total covers the period shown on the map, starting at the model hour nearest now.";
+    if (p.accum) note += lockedWindow ? " Total covers exactly the locked comparison window." : " Total covers the period shown on the map, starting at the model hour nearest now.";
     else if (p.win) note += " Amount covers the " + p.win + " hours ending at the selected time.";
     return note;
   }
@@ -970,24 +979,28 @@
     status();
     playT = setTimeout(tick, cur.k === n - 1 ? 1300 : 420);
   }
-  function resetFrames() { gen++; Q = []; frames = {}; }
+  function resetFrames() { gen++; Q = Q.filter(function (j) { return j.keep; }); frames = {}; }
   function switchModel(m) {
     if (!modelOk(m)) return;
-    var vt = R() ? R().run + (hours()[cur.k] || 0) * H : Date.now();
+    var vt = lockedWindow ? lockedWindow.end : R() ? R().run + (hours()[cur.k] || 0) * H : Date.now();
+    lockedWindow = null;
     cur.model = m; cur.run = null; userRun = false; save(); resetFrames(); play(false);
     if (!has(PBY[cur.param], m)) cur.param = /^(sn10|nsn|snv)$/.test(cur.param) ? (m === "nbm" ? "nsn" : "sn10") : "qpf";
     uiModels(); uiParams(); uiQuick(); legend(); uiTime(); status();
     findRuns(m).then(function (L) { if (cur.model !== m) return; var x = pickRun(L); if (x) setRun(x.run, vt); else { uiRuns(); status(); } });
   }
   function setRun(run, vt) {
-    var old = R(), was = vt != null ? vt : old ? old.run + (hours()[cur.k] || 0) * H : Date.now();
+    var old = R(), was = vt != null ? vt : lockedWindow ? lockedWindow.end : old ? old.run + (hours()[cur.k] || 0) * H : Date.now();
+    lockedWindow = null;
     cur.run = run; resetFrames(); uiRuns();
     // keep the same valid time when changing run or model (or the hour nearest now)
     var hs = hours(), best = 0; hs.forEach(function (h, i) { if (Math.abs(run + h * H - was) < Math.abs(run + hs[best] * H - was)) best = i; });
     cur.k = best; showHour();
   }
   function setParam(id) {
+    if (!PBY[id] || !has(PBY[id], cur.model) || !inMenu(id)) return;
     var r = R(), hs0 = hours(), vt = r && hs0[cur.k] != null ? r.run + hs0[cur.k] * H : null;
+    lockedWindow = null;
     cur.param = id; save(); LAST[isAmt(PBY[id]) ? "a" : "p"] = id; try { localStorage.setItem("wx-model-last", JSON.stringify(LAST)); } catch (e) {}
     resetFrames(); uiParams(); uiQuick(); legend();
     var hs = hours(); if (!r || !hs.length) { uiTime(); status(); return; }
@@ -1134,6 +1147,47 @@
     ui.ro.style.left = Math.max(6, Math.min(W - ui.ro.offsetWidth - 6, sx - ui.ro.offsetWidth / 2)) + "px"; ui.ro.style.top = Math.max(6, sy - 38) + "px";
   }
 
+  function exactWindow(r, p, model, start, end) {
+    var a = (start - r.run) / H, b = (end - r.run) / H;
+    return a >= 0 && b > a && Number.isInteger(a) && Number.isInteger(b) &&
+      r.hours.indexOf(b) >= 0 && (a === 0 || r.hours.indexOf(a) >= 0) && okHour(p, model, r.run, b);
+  }
+  function compareWindow(o) {
+    if (!workers() || !loc) return Promise.reject(new Error("Open Models first"));
+    var p = PBY[o.param], point = { lat: loc.lat, lon: loc.lon };
+    if (!p || !p.accum || !(o.end > o.start) || o.end - o.start > 72 * H) return Promise.reject(new Error("Choose a valid accumulation window"));
+    var ms = o.models || Object.keys(MODELS).filter(function (m) { return has(p, m); });
+    return Promise.all(ms.map(function (m) {
+      if (!MODELS[m] || !has(p, m) || !modelOk(m)) return [{ model: m, state: "unsupported", reason: "Product unavailable for this model or location" }];
+      return findRuns(m).then(function (L) {
+        var eligible = L.filter(function (r) { return exactWindow(r, p, m, o.start, o.end); });
+        if (!eligible.length) return [{ model: m, state: "unavailable", reason: "No published run covers this exact window" }];
+        return Promise.all((o.trend ? eligible.slice(0, 4) : eligible.slice(0, 1)).map(function (r) {
+          return api._probe(m, o.param, (o.end - r.run) / H, { run: r.run, from: (o.start - r.run) / H, lat: point.lat, lon: point.lon, want: 1200 }).then(function (v) {
+            return { model: m, param: o.param, run: r.run, start: o.start, end: o.end, value: v.at, state: Number.isFinite(v.at) && v.at >= 0 ? "available" : "unavailable" };
+          }, function () { return { model: m, run: r.run, state: "unavailable", reason: "Exact-window data could not load" }; });
+        }));
+      });
+    })).then(function (all) { return [].concat.apply([], all); });
+  }
+  function useWindow(r) {
+    var known = runs[r.model] && runs[r.model].list.filter(function (x) { return x.run === r.run; })[0];
+    if (r.state !== "available" || !known || !exactWindow(known, PBY[r.param], r.model, r.start, r.end)) return false;
+    play(false); cur.model = r.model; cur.param = r.param; cur.run = r.run; userRun = true;
+    lockedWindow = { start: r.start, end: r.end }; cur.k = 0; resetFrames(); save();
+    uiModels(); uiParams(); uiQuick(); uiRuns(); legend(); showHour(); return true;
+  }
+  function clearWindow() { if (!lockedWindow) return; var end = lockedWindow.end; lockedWindow = null; setRun(cur.run, end); }
+  function openTime(param, t) {
+    if (!PBY[param]) return Promise.resolve(null);
+    var token = ++timeRequest, m = has(PBY[param], cur.model) && modelOk(cur.model) ? cur.model : modelOk("hrrr") ? "hrrr" : "gfs";
+    if (cur.model !== m || !cur.run) switchModel(m);
+    return findRuns(m).then(function (L) {
+      if (token !== timeRequest || cur.model !== m || !on) return null;
+      var r = R() || pickRun(L, m); if (!r) return null;
+      setParam(param); setRun(r.run, t); return cur.run + hours()[cur.k] * H;
+    });
+  }
   var api = {
     show: function (host, l, o) {
       opts = o || {}; if (!workers()) { host.textContent = "Model maps need a newer browser."; return; }
@@ -1150,7 +1204,7 @@
       paint(31);
     },
     hide: function () { on = false; if (el) play(false); clearInterval(refreshT); if (gpsMode !== "off") { stopWatch(); if (gpsMode === "wait") gpsMode = "off"; locUi(); } },
-    _state: function () { var hs = hours(), f = frames[fkey(hs[cur.k])]; var c3 = f && f.r && f.r.c; return { model: cur.model, param: cur.param, run: cur.run, hours: hs, k: cur.k, ready: !!(f && f.r), err: f && f.err, view: view, queue: Q.length + busy, c: c3 ? { nx: c3.nx, ny: c3.ny, s: c3.s, a0: c3.a[0], mid: c3.a[c3.a.length >> 1] } : null, v: f && f.r && f.r.v ? { nx: f.r.v.nx, ny: f.r.v.ny, s: f.r.v.s } : null }; },
+    _state: function () { var hs = hours(), f = frames[fkey(hs[cur.k])]; var c3 = f && f.r && f.r.c; return { model: cur.model, param: cur.param, run: cur.run, hours: hs, k: cur.k, ready: !!(f && f.r), err: f && f.err, view: view, queue: Q.length + busy, window: lockedWindow, c: c3 ? { nx: c3.nx, ny: c3.ny, s: c3.s, a0: c3.a[0], mid: c3.a[c3.a.length >> 1] } : null, v: f && f.r && f.r.v ? { nx: f.r.v.nx, ny: f.r.v.ny, s: f.r.v.s } : null }; },
     _set: function (o) { if (o.model && o.model !== cur.model) switchModel(o.model); if (o.param) setParam(o.param); if (o.k != null) { cur.k = o.k; showHour(); } },
     // one product at one hour, decoded off-screen (for check.html): value range and share of missing values
     _probe: function (model, param, h, o) {
@@ -1175,6 +1229,7 @@
         if (run) go(run); else findRuns(model).then(function (L) { var x = pickRun(L, model); if (x) go(x); else no(new Error("no runs found")); });
       });
     },
+    compareWindow: compareWindow, useWindow: useWindow, clearWindow: clearWindow, openTime: openTime,
     MODELS: MODELS, PARAMS: P, has: has
   };
   root.WXModels = api;
