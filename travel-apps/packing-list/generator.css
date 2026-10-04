@@ -181,3 +181,9 @@ h2.k,.gen-opt h3,.psec-head h3,details.panel>summary{font-size:var(--t-foot);let
 .rs-form>h2.k{font-size:var(--t-t3);text-transform:none;letter-spacing:-.01em;color:var(--ink);font-weight:700;}
 .rs-form .gen-actions .btn.primary{flex:1 1 auto;}
 @media (prefers-reduced-transparency:reduce){.panel,.card,.tile,.psec,.itin,.status,.act,.rp,.sheet,.tabs,.btn{background:var(--surface);-webkit-backdrop-filter:none;backdrop-filter:none;}}
+
+/* Standalone app: guided decisions stay distinct from optional refinements. */
+.refine-required{padding:14px;border-radius:16px;background:var(--surface);border:1px solid var(--accent);}
+.refine-required p{margin:8px 0;overflow-wrap:anywhere;}
+.refine-required .btn{width:100%;}
+.sheet .gen-form input,.sheet .gen-form select{min-width:0;font-size:16px;}

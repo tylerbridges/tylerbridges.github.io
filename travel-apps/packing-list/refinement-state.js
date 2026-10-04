@@ -4,8 +4,8 @@ function refinePath(id){ return "trip/" + id + "/pack_meta/refinement"; }
 function refineNewState(t,setup){
   setup = setup || {}; var activities = {}; ["hike","workout","water","fish"].forEach(function(k){ activities[k] = !!setup[k] || (k === "workout" && !!setup.run); });
   return {version:2,inputs:{where:t.where,start:t.start,end:t.end,mode:setup.mode || "fly",tripType:setup.tripType || "leisure",bag:setup.bag || "carryon",intl:!!setup.intl,activities:activities},
-    refinements:{climate:setup.climate || "unknown",rain:!!setup.rain,thermal:"neutral",packingMode:"standard",laundry:{available:setup.laundry === "cycle",firstWash:setup.interval || 4,interval:setup.interval || 4},formalDays:setup.formal || 0,dinners:setup.dinners || 0,work:setup.work || "none",extraItems:clone(setup.extraItems || {}),daypack:!!setup.daypack,ruggedHike:!!setup.ruggedHike,longFlight:!!setup.longintl},
-    overrides:{removed:{},edited:{},added:{}},reviewed:{},ruleResults:{},history:[],baseline:null};
+    refinements:{climate:setup.climate || "unknown",rain:!!setup.rain,thermal:"neutral",packingMode:"standard",laundry:{available:setup.laundry === "cycle",firstWash:setup.interval || 4,interval:setup.interval || 4},formalDays:setup.formal || 0,dinners:setup.dinners || 0,work:setup.work || "none",workDays:setup.workDays == null ? (setup.work && setup.work!=="none" ? null : 0) : setup.workDays,dinnerTop:null,dinnerBottoms:null,tie:false,alternateKhakis:false,shareSuitShirts:false,shirtOverlap:null,suitOverlap:null,warmWeather:false,extraItems:clone(setup.extraItems || {}),daypack:!!setup.daypack,ruggedHike:!!setup.ruggedHike,longFlight:!!setup.longintl},
+    overrides:{removed:{},edited:{},added:{}},reviewed:{},decisionReviews:{},ruleResults:{},history:[],baseline:null};
 }
 // Standalone app: normalize old assumptions without changing preferences or explicit item overrides.
 function refineNormalizeState(state){
@@ -14,10 +14,28 @@ function refineNormalizeState(state){
   delete a.run;
   if(state.refinements.packingMode==="light")state.refinements.packingMode="standard";
   if(!state.reviewed)state.reviewed={};
+  if(!state.decisionReviews)state.decisionReviews={};
+  var r=state.refinements,defaults={workDays:r.work!=="none" ? null:0,dinnerTop:null,dinnerBottoms:null,tie:false,alternateKhakis:false,shareSuitShirts:false,shirtOverlap:null,suitOverlap:null,warmWeather:false};
+  Object.keys(defaults).forEach(function(key){if(!Object.prototype.hasOwnProperty.call(r,key))r[key]=defaults[key];});
   if(!state.refinements.extraItems)state.refinements.extraItems={};
   if(state.refinements.daypack == null)state.refinements.daypack=false;
   if(state.refinements.ruggedHike == null)state.refinements.ruggedHike=false;
   return state;
+}
+// Standalone app: decisions depend on their context, so changing counts/weather reopens relevant questions.
+function refineDecisionKey(state,focus){var r=state.refinements;
+  var values={Work:[state.inputs.start,state.inputs.end,state.inputs.tripType,r.work,r.workDays],Events:[state.inputs.start,state.inputs.end,state.inputs.tripType,r.formalDays,r.dinners],"Dinner outfit":[r.dinners,r.climate,r.thermal,r.dinnerTop,r.dinnerBottoms],"Suit outfit":[r.formalDays,r.tie,r.alternateKhakis,r.shareSuitShirts],"Shirt sharing":[r.work,r.workDays,r.dinners,r.dinnerTop,r.formalDays,r.shareSuitShirts,r.shirtOverlap,r.suitOverlap]};
+  return values[focus] ? JSON.stringify(values[focus]):null;
+}
+function refinePendingDecisions(state){
+  if(state.legacy)return [];var r=state.refinements,w=refineWardrobe(state),pending=[];
+  function needs(focus){return (state.decisionReviews || {})[focus]!==refineDecisionKey(state,focus);}
+  if((state.inputs.tripType==="work" || r.work!=="none" || w.workDays>0) && (r.workDays==null || needs("Work")))pending.push("Work");
+  if(state.inputs.tripType==="event" && needs("Events"))pending.push("Events");
+  if(r.dinners>0 && (!r.dinnerTop || !r.dinnerBottoms || needs("Dinner outfit")))pending.push("Dinner outfit");
+  if(r.formalDays>0 && needs("Suit outfit"))pending.push("Suit outfit");
+  if(w.canShare && needs("Shirt sharing"))pending.push("Shirt sharing");
+  return pending;
 }
 function refineLoad(t){
   var saved = lsGet("ta:" + refinePath(t.id),null); if (saved && saved.version === 2) return refineNormalizeState(saved);
@@ -42,7 +60,7 @@ function refineLegacyResult(state){
   return {groups:groups,items:items,warnings:[{id:"legacy",text:"Your existing list is preserved. Start automatic refinement when you are ready; old items will remain pinned."}],ruleResults:{},profileSignature:"",ran:[]};
 }
 function refineChanges(before,after){ var previous = {}, next = {}, changes = []; before.items.forEach(function(x){ previous[x.id] = x; }); after.items.forEach(function(x){ next[x.id] = x; });
-  Object.keys(previous).forEach(function(id){ if (!next[id]) changes.push("Removed " + previous[id].label); else if (previous[id].quantity !== next[id].quantity) changes.push(previous[id].label + ": " + previous[id].quantity + " → " + next[id].quantity); else if (previous[id].section !== next[id].section) changes.push(previous[id].label + ": moved to " + next[id].section); });
+  Object.keys(previous).forEach(function(id){ if (!next[id]) changes.push("Removed " + previous[id].label); else if (previous[id].quantity !== next[id].quantity) changes.push(previous[id].label + ": " + previous[id].quantity + " → " + next[id].quantity); else if (previous[id].section !== next[id].section) changes.push(previous[id].label + ": moved to " + next[id].section); else if(previous[id].label!==next[id].label)changes.push(previous[id].label+" → "+next[id].label); });
   Object.keys(next).forEach(function(id){ if (!previous[id]) changes.push("Added " + refineLabel(next[id])); }); return changes;
 }
 function refineExclude(profile,item){ var p = clone(profile); p.refinementProfile = p.refinementProfile || {excluded:{}}; p.refinementProfile.excluded = p.refinementProfile.excluded || {}; p.refinementProfile.excluded[item.id] = item.label; return p; }

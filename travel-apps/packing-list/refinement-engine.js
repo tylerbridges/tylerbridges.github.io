@@ -19,7 +19,7 @@ function refineDays(start,end){
 }
 function refineId(label){
   var key = normItem(label);
-  var aliases = {"shirt":"tshirts","t shirts":"tshirts","t shirt":"tshirts","socks":"socks","underwear":"underwear","contacts":"contacts","small collapsible backpack":"daypack","rain jacket umbrella":"rain-protection","hiking boots trail shoes":"hiking-footwear"};
+  var aliases = {"shirt":"tshirts","t shirts":"tshirts","t shirt":"tshirts","socks":"socks","underwear":"underwear","contacts":"contacts","small collapsible backpack":"daypack","solid color dress shirts":"white-shirt","dress pants suit trousers":"dress-pants","rain jacket umbrella":"rain-protection","hiking boots trail shoes":"hiking-footwear"};
   return aliases[key] || key.replace(/ /g,"-");
 }
 function refineItem(label,section,reason,options){
@@ -35,14 +35,14 @@ function refineContext(state){
   var climate = r.climate, cool = climate === "cool" || climate === "cold";
   if (r.thermal === "cold" && climate === "mild") cool = true;
   // Standalone app: running hot never removes cool/cold-weather clothing protection.
-  return {days:days,clothingDays:clothingDays,cool:cool,cold:climate === "cold",unknown:climate === "unknown",inputs:i,r:r};
+  return {days:days,clothingDays:clothingDays,hasLaundryBuffer:laundry.available && clothingDays>Math.max(firstGap,laterGap),cool:cool,cold:climate === "cold",unknown:climate === "unknown",inputs:i,r:r};
 }
 function refineClothing(state,profile,c){
-  var r = c.r, d = c.clothingDays, extra = r.packingMode === "extra" ? 1 : 0;
+  var r = c.r, d = c.clothingDays, extra = r.packingMode === "extra" && !c.hasLaundryBuffer ? 1 : 0;
   var shirts = d + extra, bottoms = Math.ceil(d / 2) + extra;
   var jog = c.cool || c.cold ? Math.ceil((c.inputs.activities.workout ? Math.ceil(d / 2) : bottoms) / 2) : 0, out = [];
   ["Shirt","Pants","Underwear","Socks"].forEach(function(x){ out.push(refineItem(x,"Wear to travel","Departure outfit counts toward clothing totals",{category:"clothing"})); });
-  [["T-shirts",shirts - 1],["Underwear",2*d - 1 + 2*extra],["Socks",2*d - 1 + 2*extra],["Lulu shorts",bottoms-jog],["Lulu joggers",jog]].forEach(function(x){ if (x[1]) out.push(refineItem(x[0],"Clothing",(r.laundry.available ? "Laundry coverage: " + d + " days" : "Full-trip clothing: " + d + " days") + (extra ? "; one extra clothing day" : ""),{quantity:x[1],category:"clothing"})); });
+  [["T-shirts",shirts - 1],["Underwear",2*d - 1 + 2*extra],["Socks",2*d - 1 + 2*extra],["Lulu shorts",Math.max(bottoms-jog,r.warmWeather ? 1:0)],["Lulu joggers",jog]].forEach(function(x){ if (x[1]) out.push(refineItem(x[0],"Clothing",(r.laundry.available ? "Laundry coverage: " + d + " days" : "Full-trip clothing: " + d + " days") + (extra ? "; one extra clothing day" : ""),{quantity:x[1],category:"clothing"})); });
   return out;
 }
 function refineDefaults(state,profile,c){
@@ -82,7 +82,7 @@ function refineActivities(state,profile,c){
     out.push(refineItem("Brooks running shoes","Wear to travel","Workouts use your usual shoes",{required:true}));
     out.push(refineItem("Water bottle","Personal bag & day gear","Workout hydration",{required:true}));
     out.push(refineItem("Shirt","Wear to travel","Workouts use regular T-shirts; the travel shirt counts",{required:true,category:"clothing"}));
-    var extra=c.r.packingMode === "extra" ? 1 : 0, shirts=c.clothingDays-1+extra;
+    var extra=c.r.packingMode === "extra" && !c.hasLaundryBuffer ? 1 : 0, shirts=c.clothingDays-1+extra;
     if(shirts>0)out.push(refineItem("T-shirts","Clothing","Workouts most days: a fresh regular T-shirt daily; laundry and travel shirt count",{quantity:shirts,required:true,category:"clothing"}));
     out.push(refineItem("Lulu shorts","Clothing","Workouts most days: regular shorts cover two days per pair, including in cool weather; laundry counts",{quantity:Math.ceil(c.clothingDays/2)+extra,required:true,category:"clothing"}));
   }
@@ -90,10 +90,32 @@ function refineActivities(state,profile,c){
   if (c.inputs.intl && c.inputs.mode === "fly" && c.r.longFlight) maybe.filter(function(g){ return g.tag === "longintl"; }).forEach(function(g){ g.items.forEach(function(x){ out.push(refineItem(x,g.title,"Long international flight")); }); });
   return out;
 }
+// Standalone app: nicer shirts stay fresh per applicable day; laundry only reduces casual clothing.
+function refineWardrobe(state){
+  var r=state.refinements,days=refineDays(state.inputs.start,state.inputs.end),work=r.workDays==null ? (r.work!=="none" ? days:0):Math.min(days,r.workDays);
+  var dinnerButtons=r.dinnerTop==="polo" ? 0:r.dinners,overlapMax=Math.min(work,dinnerButtons),overlap=r.shirtOverlap==null ? overlapMax:Math.min(overlapMax,Math.max(0,r.shirtOverlap));
+  var workDinner=work+dinnerButtons-overlap,share=r.shareSuitShirts && r.formalDays>0,suitMax=share ? Math.min(r.formalDays,workDinner):0,suitOverlap=r.suitOverlap==null ? suitMax:Math.min(suitMax,Math.max(0,r.suitOverlap));
+  return {workDays:work,dinnerButtons:dinnerButtons,overlapMax:overlapMax,overlap:overlap,workDinner:workDinner,suitMax:suitMax,suitOverlap:suitOverlap,
+    buttonUps:share ? 0:workDinner,dressShirts:share ? workDinner+r.formalDays-suitOverlap:r.formalDays,canShare:overlapMax>0 || suitMax>0};
+}
 function refineEvents(state,profile,c){
-  var out = [], r = c.r, maybe = profile.maybe || PACK_PREFS.maybe;
-  if (r.formalDays){ maybe.filter(function(g){ return g.tag === "formal"; }).forEach(function(g){ g.items.forEach(function(x){ var n = /dress socks|white shirt|undershirt/i.test(x) ? r.formalDays : undefined; out.push(refineItem(x,g.title,"Formal event: " + r.formalDays + " day(s)",{quantity:n,required:true})); }); }); out.push(refineItem("Dress pants","Formal wear","Reusable formal trousers",{required:true})); out.push(refineItem("Belt","Formal wear","Formal outfit dependency",{required:true})); }
-  if (r.dinners){ maybe.filter(function(g){ return g.tag === "dinner"; }).forEach(function(g){ g.items.forEach(function(x){ out.push(refineItem(x,g.title,"One button-up per nice dinner",{quantity:r.dinners,required:true})); }); }); }
+  var out=[],r=c.r,w=refineWardrobe(state);
+  function add(label,section,reason,quantity){if(quantity===0)return;out.push(refineItem(label,section,reason,{quantity:quantity,required:true,category:/shirt|polo|socks|pants|shorts|khakis|jeans/.test(label.toLowerCase()) ? "clothing":"gear"}));}
+  if(r.formalDays){
+    ["Suit jacket","Dress pants (suit trousers)","Dress shoes","Belt"].forEach(function(label){add(label,"Formal wear","One reusable suit outfit; no undershirt",1);});
+    add("Lint roller","Formal wear","Suit care",1);
+    add("Dress socks","Formal wear","Fresh dress socks for every full suit day",r.formalDays);
+    if(r.tie)add("Tie","Formal wear","Tie selected for suit attire",1);
+    if(r.alternateKhakis)add("Khakis","Formal wear","Alternate suit trousers with khakis; share with dinners",1);
+  }
+  add("Solid-color dress shirts","Formal wear",r.shareSuitShirts ? "Compatible shirts shared across suit/work/dinner needs; "+w.suitOverlap+" suit day(s) share a shirt; fresh shirts, no laundry reduction":"Separate solid-color suit shirts: fresh shirt for every suit day, no laundry reduction",w.dressShirts);
+  add("Button-up long sleeve shirt","Clothing","Fresh work/dinner button-ups: "+w.workDays+" workday(s), "+w.dinnerButtons+" button-up dinner(s), "+w.overlap+" sharing a work shirt; no laundry reduction",w.buttonUps);
+  if(r.dinners){
+    if(r.dinnerTop==="polo")add("Polo shirts","Clothing","One fresh polo for each nice dinner; no laundry reduction",r.dinners);
+    var bottom=r.dinnerBottoms || (c.cool || c.cold || c.unknown ? "jeans":"shorts");
+    if(bottom==="shorts")add("Lulu shorts","Clothing","Reuse a suitable regular pair for nice dinners; add only if missing",1);
+    else {add(bottom==="khakis" ? "Khakis":"Jeans","Clothing","Reuse one suitable pair for nice dinners",1);add("Belt",r.formalDays ? "Formal wear":"Clothing","One belt shared by dinner and suit attire",1);}
+  }
   return out;
 }
 function refineWork(state,profile,c){
@@ -107,12 +129,12 @@ function refineWork(state,profile,c){
 }
 function refineConsumables(state,profile,c){ return [refineItem("Contacts","Toiletries","Full trip plus two days, rounded to a multiple of five",{quantity:5*Math.ceil((c.days+2)/5),critical:true}),refineItem("Liquids quart bag (travel-size)","Toiletries","Your travel-size liquids rule applies on every trip",{required:true})]; }
 var REFINE_RULES = {
-  clothing:{deps:["dates","laundry","packingMode","climate","thermal","activities"],run:refineClothing},
+  clothing:{deps:["dates","laundry","packingMode","climate","thermal","activities","warmWeather"],run:refineClothing},
   extras:{deps:["extraItems"],run:refineExtras},
   defaults:{deps:["profile"],run:refineDefaults},
   layers:{deps:["climate","thermal","rain"],run:refineLayers},
   activities:{deps:["activities","climate","thermal","rain","dates","laundry","packingMode","intl","mode","longFlight","ruggedHike","daypack","profile"],run:refineActivities},
-  events:{deps:["formalDays","dinners","profile"],run:refineEvents},
+  events:{deps:["formalDays","dinners","workDays","work","dinnerTop","dinnerBottoms","tie","alternateKhakis","shareSuitShirts","shirtOverlap","suitOverlap","dates","climate","thermal"],run:refineEvents},
   work:{deps:["work","profile"],run:refineWork},
   consumables:{deps:["dates"],run:refineConsumables}
 };
@@ -122,24 +144,25 @@ function refineEvaluate(state,profile,changed){
   var c = refineContext(state), signature = JSON.stringify(profile), cache = {}, keys = {}, ran = [];
   // Standalone app: cache validity comes from actual dependency values, never caller hints alone.
   Object.keys(REFINE_RULES).forEach(function(id){var rule=REFINE_RULES[id];
-    keys[id]="preferences-2026-10-v3:"+JSON.stringify(rule.deps.map(function(key){if(key==="profile")return profile;if(key==="dates")return [state.inputs.start,state.inputs.end];return Object.prototype.hasOwnProperty.call(state.inputs,key) ? state.inputs[key] : state.refinements[key];}));
+    keys[id]="wardrobe-2026-10-v1:"+JSON.stringify(rule.deps.map(function(key){if(key==="profile")return profile;if(key==="dates")return [state.inputs.start,state.inputs.end];return Object.prototype.hasOwnProperty.call(state.inputs,key) ? state.inputs[key] : state.refinements[key];}));
     if(!state.ruleResults || !state.ruleResults[id] || !state.ruleKeys || state.ruleKeys[id]!==keys[id]){cache[id]=rule.run(state,profile,c);ran.push(id);}else cache[id]=state.ruleResults[id];
   });
   var merged = {}, order = [], excluded = profile.refinementProfile && profile.refinementProfile.excluded || {};
-  Object.keys(cache).forEach(function(rule){ cache[rule].forEach(function(source){ var item = clone(source); item.rule = rule;
+  Object.keys(cache).forEach(function(rule){ cache[rule].forEach(function(source){ var item = clone(source); item.rule = rule; item.requiredQuantity=(item.required || item.critical) ? item.quantity:0;
     if (excluded[item.id] && !item.critical && !item.required) return;
-    if (!merged[item.id]){ merged[item.id] = item; order.push(item.id); } else { var old = merged[item.id]; old.quantity = Math.max(old.quantity,item.quantity); old.critical = old.critical || item.critical; old.required = old.required || item.required; old.reasons = old.reasons.concat(item.reasons); }
+    if (!merged[item.id]){ merged[item.id] = item; order.push(item.id); } else { var old = merged[item.id]; old.quantity = Math.max(old.quantity,item.quantity); old.critical = old.critical || item.critical; old.required = old.required || item.required; old.requiredQuantity=Math.max(old.requiredQuantity,item.requiredQuantity); old.reasons = old.reasons.concat(item.reasons); }
   }); });
   var warnings = [], items = [], overrides = state.overrides;
+  refinePendingDecisions(state).forEach(function(focus){warnings.push({id:"decision:"+focus,decision:focus,text:focus+" needs confirmation. Clothing quantities are provisional until you complete this step."});});
   order.forEach(function(id){ var item = merged[id];
     if (excluded[id] && (item.critical || item.required)) warnings.push({id:"excluded:"+id,itemId:id,text:item.label + " is excluded in your profile but required here; it has been kept."});
     if (overrides.removed[id]){ if (item.critical || item.required) warnings.push({id:"removed:"+id,itemId:id,text:item.label + " was removed manually but is required by this trip. Restore it or account for a replacement."}); return; }
-    if (overrides.edited[id]){ var edit = overrides.edited[id]; if ((item.critical || item.required) && edit.quantity < item.quantity) warnings.push({id:"quantity:"+id,itemId:id,text:item.label + " is pinned below the calculated requirement (" + edit.quantity + " vs " + item.quantity + "). Check that the need is covered."}); item = Object.assign({},item,{label:edit.label,quantity:edit.quantity,section:edit.section || item.section,manual:true,reasons:item.reasons.concat(["Your pinned manual edit; automatic quantities do not replace it"])}); }
+    if (overrides.edited[id]){ var edit = overrides.edited[id]; if ((item.critical || item.required) && edit.quantity < item.requiredQuantity) warnings.push({id:"quantity:"+id,itemId:id,text:item.label + " is pinned below the calculated requirement (" + edit.quantity + " vs " + item.requiredQuantity + "). Check that the need is covered."}); item = Object.assign({},item,{label:edit.label,quantity:edit.quantity,section:edit.section || item.section,manual:true,reasons:item.reasons.concat(["Your pinned manual edit; automatic quantities do not replace it"])}); }
     if (item.quantity > 0) items.push(item);
   });
   // Pinned edits and manual additions stay visible even when their generating rule is no longer active.
   Object.keys(overrides.edited).forEach(function(id){ if (!merged[id] && !overrides.removed[id]) items.push(Object.assign({},overrides.edited[id],{id:id,manual:true,reasons:["Your pinned manual edit"]})); });
-  Object.keys(overrides.added).forEach(function(id){ if (!overrides.removed[id]){ var original=merged[id];if(original && (original.critical || original.required) && overrides.added[id].quantity<original.quantity)warnings.push({id:"quantity:"+id,itemId:id,text:original.label+" is pinned below the calculated requirement ("+overrides.added[id].quantity+" vs "+original.quantity+"). Check coverage."}); items = items.filter(function(x){return x.id!==id;}); items.push(Object.assign({},overrides.added[id],{id:id,manual:true,reasons:[overrides.added[id].legacy ? "Preserved legacy item" : "Your pinned item"]})); } });
+  Object.keys(overrides.added).forEach(function(id){ if (!overrides.removed[id]){ var original=merged[id];if(original && (original.critical || original.required) && overrides.added[id].quantity<original.requiredQuantity)warnings.push({id:"quantity:"+id,itemId:id,text:original.label+" is pinned below the calculated requirement ("+overrides.added[id].quantity+" vs "+original.requiredQuantity+"). Check coverage."}); items = items.filter(function(x){return x.id!==id;}); items.push(Object.assign({},overrides.added[id],{id:id,manual:true,reasons:[overrides.added[id].legacy ? "Preserved legacy item" : "Your pinned item"]})); } });
   if (c.inputs.bag === "carryon"){
     if (items.some(function(x){ return /monitors/.test(x.id); })) warnings.push({id:"work-baggage",text:"Full work setup includes monitors. Check carry-on capacity or switch to laptop only; nothing was silently removed."});
     var shoes = items.filter(function(x){ return /shoes|footwear/.test(x.id); }); if (shoes.length > 2) warnings.push({id:"shoes-baggage",text:"Hiking and formal events require extra footwear. Check bag space; your running shoes are worn in transit."});
