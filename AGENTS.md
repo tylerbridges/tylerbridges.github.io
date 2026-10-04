@@ -32,6 +32,12 @@ Optimize for a simple loop: request, implement, review, publish, verify.
 - Self-update: `checkVersion()` in `app.js` fetches index.html (no-store) when the page becomes visible and every 10 min (the header refresh button `#rbtn` now reloads the whole page like the browser's reload, returning to the same tab), and reloads if its `app.js?v=` number is higher than the running one — so always bump `?v=` in index.html when publishing.
 - `sw.js` only retires the old Sky Report service worker; don't add caching back without a cache-busting plan.
 
+## Data trust
+
+- Header "Checked" is fetch freshness, not observation or forecast age. Its Data & sources dialog shows observation time/station, forecast/grid update times, and alert check status. `wx-normalize.js` keeps unavailable alerts as null with `sources.alerts.state`; an empty array means a successful check found no alerts. Persistent notices cover failed refreshes, unavailable alerts, and stale/missing observations. Older caches without source status are unknown until refreshed.
+- Current wind and gusts are observations only. Forecast model details disclose run age and snowfall method: 10:1 for deterministic snow products, modeled snow ratios for NBM. NBM FICEAC is flat ice accretion; other models' freezing-rain products are liquid-equivalent estimates, not ice thickness. NWS snow/ice products are probability maps, labeled "chance".
+- Width changes on Hourly must replace `G` with `renderGraph($("gin"))`, preserve the shared scroller offset, and keep hold-to-read working; Daily redraws its separate precipitation graph.
+
 ## Checks before publishing
 
 - No runtime JavaScript errors; layouts work at 360–430px wide in light and dark mode.

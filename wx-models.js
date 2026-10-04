@@ -832,7 +832,7 @@
       model: box.querySelector("#mmodel"), param: box.querySelector("#mparam"), run: box.querySelector("#mrun"),
       locate: box.querySelector("#mlocate"), home: box.querySelector("#mhome"), locationStatus: box.querySelector("#mlocation-status"),
       play: box.querySelector("#mplay"), prev: box.querySelector("#mprev"), next: box.querySelector("#mnext"), range: box.querySelector("#mrange"), time: box.querySelector("#mtime"),
-      leg: box.querySelector("#mleg"), src: box.querySelector("#msrc"), title: box.querySelector("#mtitle"), quick: box.querySelector("#mquick")
+      leg: box.querySelector("#mleg"), src: box.querySelector("#msrc"), note: box.querySelector("#mnote"), title: box.querySelector("#mtitle"), quick: box.querySelector("#mquick")
     };
     if (ui.quick) ui.quick.addEventListener("click", function (e) { var b = e.target.closest("[data-q]"); if (!b || b.disabled) return; setParam(b.dataset.q); });
     ui.st.hidden = true; ui.ro.hidden = true;
@@ -877,7 +877,7 @@
     var gs = [], html = "";
     var amt = isAmt(PBY[cur.param]);
     P.slice().sort(function (a, b) { return MENU.indexOf(a.id) - MENU.indexOf(b.id); }).forEach(function (p) { if (!has(p, cur.model) || !inMenu(p.id) || isAmt(p) !== amt) return; var g = grp(p), gg = gs.filter(function (x) { return x.g === g; })[0]; if (!gg) gs.push(gg = { g: g, l: [] }); gg.l.push(p); });
-    gs.forEach(function (g) { html += '<optgroup label="' + g.g + '">' + g.l.map(function (p) { return '<option value="' + p.id + '"' + (p.id === cur.param ? " selected" : "") + ">" + p.name + "</option>"; }).join("") + "</optgroup>"; });
+    gs.forEach(function (g) { html += '<optgroup label="' + g.g + '">' + g.l.map(function (p) { return '<option value="' + p.id + '"' + (p.id === cur.param ? " selected" : "") + ">" + productName(p) + "</option>"; }).join("") + "</optgroup>"; });
     ui.param.innerHTML = html;
   }
   function fmtT(ms, o) { return opts.fmt ? opts.fmt(ms, o) : new Date(ms).toLocaleString([], o); }
@@ -919,8 +919,8 @@
     var hs = hours(), h = hs[cur.k], r = R();
     ui.range.max = Math.max(0, hs.length - 1); ui.range.value = cur.k; ui.range.disabled = hs.length < 2;
     var p = PBY[cur.param];
-    ui.title.textContent = MODELS[cur.model].name + " · " + p.name;
-    if (!r || h == null) { ui.time.innerHTML = ""; if (ui.hdr) ui.hdr.innerHTML = ""; return; }
+    ui.title.textContent = MODELS[cur.model].name + " · " + productName(p);
+    if (!r || h == null) { ui.time.innerHTML = ""; ui.src.textContent = "Run unavailable"; if (ui.note) ui.note.textContent = ""; if (ui.hdr) ui.hdr.innerHTML = ""; return; }
     var v = r.run + h * H;
     var f0 = fromH();
     var lab = p.accum ? "Total from " + fmtT(r.run + f0 * H, { hour: "numeric" }) : p.win ? p.win + " hours ending" : "Hour " + h;
@@ -931,10 +931,28 @@
     var hm = { weekday: "short", hour: "numeric" }, per = p.day ? lab : p.accum ? fmtT(r.run + f0 * H, hm) + " – " + fmtT(v, hm) : p.win ? fmtT(v - p.win * H, hm) + " – " + fmtT(v, hm) : "Valid " + fmtT(v, hm);
     // the row with the step arrows names the hour (model and product are in the map header)
     ui.title.textContent = "Forecast hour " + h + (hs.length > 1 ? " of " + hs[hs.length - 1] : "");
-    if (ui.hdr) ui.hdr.innerHTML = "<b>" + MODELS[cur.model].name + " · " + p.name + "</b><span>" + per.replace(/(\w{3}), /g, "$1 ") + " · " + hh(r.run) + "Z run</span>";
+    if (ui.hdr) ui.hdr.innerHTML = "<b>" + MODELS[cur.model].name + " · " + productName(p) + "</b><span>" + per.replace(/(\w{3}), /g, "$1 ") + " · " + hh(r.run) + "Z run</span>";
     ui.range.setAttribute("aria-valuetext", MODELS[cur.model].name + " · " + big + " · " + lab);
     ui.time.setAttribute("title", "Return to the first forecast hour");
-    ui.src.innerHTML = MODELS[cur.model].full + " " + hh(r.run) + "Z run · " + fmtT(r.run, { weekday: "short", hour: "numeric", minute: "2-digit" }) + " · NOAA";
+    var ageMin = Math.max(0, Math.floor((Date.now() - r.run) / 60000)), age = ageMin < 60 ? ageMin + " min" : Math.floor(ageMin / 60) + " hr" + (ageMin % 60 ? " " + ageMin % 60 + " min" : "");
+    ui.src.textContent = MODELS[cur.model].full + " · NOAA · " + fmtT(r.run, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) + " (" + age + " old)";
+    if (ui.note) ui.note.textContent = productNote(p);
+    if (ui.hdr) ui.hdr.title = productName(p) + " · " + per + " · " + ui.src.textContent;
+  }
+  function productName(p) {
+    if (p.id === "frz") return cur.model === "nbm" ? "Ice accretion" : "Freezing-rain liquid";
+    if (p.id === "i6") return cur.model === "nbm" ? "6-hr ice accretion" : "6-hr freezing-rain liquid";
+    return p.name;
+  }
+  function productNote(p) {
+    var note = "Model guidance, not an observed amount or the official NWS forecast.";
+    if (p.id === "sn10" || p.id === "s6" || p.id === "s24") note += cur.model === "nbm" ? " Snowfall uses NBM's modeled snow ratios." : " Snowfall is estimated with a 10:1 snow-to-liquid ratio; actual snow density can vary.";
+    else if (p.id === "nsn") note += " Snowfall uses NBM's modeled snow ratios.";
+    if (p.id === "frz" || p.id === "i6") note += cur.model === "nbm" ? " Estimated ice accretion uses NBM's flat-surface model (FRAM); actual buildup depends on surface and exposure." : " This is liquid-equivalent freezing rain, not ice thickness on trees, wires, or roads.";
+    if ((p.id === "frz" || p.id === "i6") && cur.model !== "nbm" && cur.model !== "hrrr" && cur.model !== "rap") note += " Derived from precipitation and modeled precipitation type; changing types between forecast hours add uncertainty.";
+    if (p.accum) note += " Total covers the period shown on the map, starting at the model hour nearest now.";
+    else if (p.win) note += " Amount covers the " + p.win + " hours ending at the selected time.";
+    return note;
   }
   function showHour() { readout = null; ui.ro.hidden = true; uiTime(); loadAround(); paint(6); status(); }
   function step(d) { var n = hours().length; if (!n) return; cur.k = (cur.k + d + n) % n; showHour(); }

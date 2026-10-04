@@ -1003,6 +1003,23 @@ html.scrolled .top #fresh{display:inline-flex;max-height:0;opacity:0}
 .mhdr span{display:block;font-size:11px;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .forecast-workspace .model-caption .mtitle{font-size:13px;font-weight:600;color:var(--ink2)}
 
+#fresh{border:0;background:none;font-family:inherit;padding:0;cursor:pointer;text-align:left}
+#fresh:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:4px}
+.data-notice{margin:0 0 14px;padding:10px 12px;border-radius:var(--r-card);background:var(--surface);color:var(--ink2);font-size:13px;line-height:1.45;border:1px solid var(--line)}
+.data-info{box-sizing:border-box;width:min(520px,calc(100% - 24px));max-height:85vh;overflow:auto;border:1px solid var(--line);border-radius:22px;background:var(--surface);color:var(--ink);padding:18px;box-shadow:var(--glass-sh)}
+.data-info::backdrop{background:rgba(0,0,0,.4)}
+.data-info-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.data-info-head h2{margin:0;font-size:20px}
+.data-info-head button{width:40px;height:40px;font-size:25px;flex:none}
+.data-info dl{margin:12px 0}
+.data-info dl > div{padding:10px 0;border-bottom:1px solid var(--grid)}
+.data-info dt{font-size:13px;color:var(--muted);margin-bottom:3px}
+.data-info dd{margin:0;font-size:14px;line-height:1.4}
+.data-info p{font-size:13px;line-height:1.45;color:var(--ink2)}
+.model-data{padding:4px 10px 8px;color:var(--ink2);font-size:12px}
+.model-data summary{cursor:pointer;min-height:30px;align-content:center;font-weight:600}
+.forecast-workspace .model-data #msrc{display:block;padding:4px 0;font-size:12px}
+.model-data p{margin:4px 0;line-height:1.45}
 #now{margin-bottom:4px}
 </style>
 </head>
@@ -1011,11 +1028,13 @@ html.scrolled .top #fresh{display:inline-flex;max-height:0;opacity:0}
   <header class="top">
     <div class="top-row">
       <button type="button" class="place" id="placebtn" aria-label="Change location"><b><svg id="pgps" class="pgps" viewBox="0 0 24 24" width="13" height="13" aria-label="Following your location" hidden><path d="M20.5 3.5 3.8 10.4c-.8.3-.7 1.4.1 1.6l6.6 1.5 1.5 6.6c.2.8 1.3.9 1.6.1Z" fill="currentColor"/></svg><span id="plabel">Minneapolis, MN</span><svg class="pchev" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></b><span id="psub" hidden></span></button>
-      <span class="fresh" id="fresh"><i class="dot" id="fdot"></i><span id="ftxt">Loading…</span></span>
+      <button type="button" class="fresh" id="fresh" aria-label="Data freshness and sources" aria-haspopup="dialog" aria-controls="data-info"><i class="dot" id="fdot"></i><span id="ftxt">Loading…</span></button>
       <button class="rbtn" id="rbtn" type="button" aria-label="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button>
     </div>
     <div class="testbar" id="testbar" hidden><span>Test: <b id="testname"></b> · sample data, not a real forecast</span><button type="button" class="chip" id="testx">Exit</button></div>
   </header>
+
+  <p class="data-notice" id="data-notice" role="status" hidden></p>
 
   <section id="now" class="sec" data-tab="daily">
     <div class="sec-h"><h2 id="nowtitle"></h2></div>
@@ -1083,7 +1102,7 @@ html.scrolled .top #fresh{display:inline-flex;max-height:0;opacity:0}
       <div class="model-nav">
       <div class="map-regions" id="model-regions" role="group" aria-label="Model map extent"></div>
       </div>
-      <div class="msrc" id="msrc"></div>
+      <details class="model-data"><summary>Forecast details</summary><div class="msrc" id="msrc"></div><p id="mnote"></p></details>
     </div>
       </div>
       <p class="forecast-context" id="forecast-context">Official regional precipitation amounts · Tap a county for details</p>
@@ -1122,6 +1141,7 @@ html.scrolled .top #fresh{display:inline-flex;max-height:0;opacity:0}
   <footer class="foot" id="foot"></footer>
 </div>
 <div class="tabdock" id="tabdock"><nav class="nav" id="nav" aria-label="Sections"><span class="navpill" aria-hidden="true"></span><button type="button" class="chip on" data-tab="daily"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="3.5"/><path d="M3.5 10h17M8.5 3v4M15.5 3v4"/></svg><span>Daily</span></button><button type="button" class="chip" data-tab="hourly"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.75"/><path d="M12 7.25V12l3.25 2"/></svg><span>Hourly</span></button><button type="button" class="chip" data-tab="radar"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.75"/><circle cx="12" cy="12" r="4.5"/><path d="M12 12l6.2-6.2"/></svg><span>Radar</span></button><button type="button" class="chip" data-tab="maps"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4.5 3.5 6.6v13l5.5-2.1 6 2.1 5.5-2.1v-13L15 6.6Z"/><path d="M9 4.5v13M15 6.6v13"/></svg><span>Forecast</span></button></nav></div>
+<dialog class="data-info" id="data-info" aria-labelledby="data-info-title"><div class="data-info-head"><h2 id="data-info-title">Data &amp; sources</h2><button type="button" class="rbtn" id="data-info-close" aria-label="Close data sources">×</button></div><div id="data-info-body"></div></dialog>
 <div id="toast" hidden></div>
 <div id="mfull" hidden><button type="button" class="mfx" id="mfx" aria-label="Close">&times;</button><div class="mfsc" id="mfsc"><img id="mfimg" alt=""></div><div class="mfhint">Tap map to zoom in/out</div></div>
 <div id="locsheet" hidden>
@@ -1138,13 +1158,13 @@ html.scrolled .top #fresh{display:inline-flex;max-height:0;opacity:0}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=136"></script>
+<script src="wx-normalize.js?v=137"></script>
 <script src="wx-live.js?v=136"></script>
 <script src="wx-scenarios.js?v=136"></script>
 <script src="wx-vmap.js?v=136"></script>
 <script src="wx-radar.js?v=136"></script>
-<script src="wx-models.js?v=136"></script>
+<script src="wx-models.js?v=137"></script>
 <script src="wx-official.js?v=136"></script>
-<script src="app.js?v=136"></script>
+<script src="app.js?v=137"></script>
 </body>
 </html>

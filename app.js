@@ -3,7 +3,7 @@
   // check.html loads the site in a hidden frame with ?nostore=1 so its test places never end up in your recents or favorites
   if (/[?&]nostore=1/.test(location.search)) { try { Storage.prototype.setItem = function () {}; } catch (e) {} }
   var H = 3600000, PX = 16, GL = 38; // GL: left gutter so the first hours (and the now line) sit clear of the axis labels
-  var tab = "daily", doc = null, db = null, lastCheck = 0, busy = false, selIdx = null;
+  var tab = "daily", doc = null, db = null, lastCheck = 0, busy = false, selIdx = null, refreshFailed = false;
   var $ = function (id) { return document.getElementById(id); };
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   var TZ = "America/Chicago";
@@ -57,13 +57,44 @@
   function isDay(ms) { var h = hourNum(ms); return h >= 7 && h < 19; }
 
   // ---------- freshness ----------
-  function renderFresh() {
-    if (!doc) { $("ftxt").textContent = "No data yet"; $("fdot").className = "dot crit"; return; }
-    var age = Date.now() - doc.fetchedAt;
-    $("fdot").className = "dot" + (age > 3 * H ? " crit" : age > 75 * 60000 ? " warn" : "");
-    $("ftxt").textContent = "Updated " + ago(doc.fetchedAt);
-    $("ftxt").title = "NWS data pulled " + dtm(doc.fetchedAt) + "";
+  function alertState() { return doc && doc.sources && doc.sources.alerts ? doc.sources.alerts.state : "unknown"; }
+  function stamp(t) { return isFinite(t) && t > 0 ? dtm(t) + " · " + ago(t) : "Time unavailable"; }
+  function renderDataInfo() {
+    var body = $("data-info-body"); if (!body) return;
+    if (!doc) { body.textContent = "Weather data hasn't loaded yet."; return; }
+    var a = alertState(), c = doc.cur, up = doc.updated || {}, sample = doc.via === "test" || !!TEST;
+    var rows = [
+      ["Last check", stamp(doc.fetchedAt) + (refreshFailed ? " · latest refresh failed" : "")],
+      ["Observed conditions", c && c.ms ? stamp(c.ms) + (doc.station && doc.station.id ? " · " + doc.station.id : "") : "Unavailable"],
+      ["NWS forecast updated", stamp(up.forecast)],
+      ["NWS hourly grid updated", stamp(up.grid)],
+      ["Alerts", a === "available" ? ((doc.alerts || []).length ? (doc.alerts || []).length + " active · checked " + stamp(doc.sources.alerts.checkedAt) : "No active alerts · checked " + stamp(doc.sources.alerts.checkedAt)) : a === "unavailable" ? "Unavailable · could not check for active alerts" : "Not checked in this saved forecast"]
+    ];
+    body.innerHTML = (sample ? '<p>Sample weather for testing. Forecast model maps remain live.</p>' : "") + '<dl>' + rows.map(function (r) { return "<div><dt>" + esc(r[0]) + "</dt><dd>" + esc(r[1]) + "</dd></div>"; }).join("") + '</dl><p>Check time is when this site fetched the data. Source update and observation times describe the data itself. Model run times appear on the Forecast map.</p>';
   }
+  function renderFresh() {
+    var notice = $("data-notice"), messages = [];
+    if (!doc) {
+      $("ftxt").textContent = refreshFailed ? "Data unavailable" : "No data yet"; $("fdot").className = "dot crit";
+      if (refreshFailed) messages.push("Weather data couldn't load. Tap refresh to try again.");
+    } else {
+      var age = Date.now() - doc.fetchedAt, a = alertState(), partial = a !== "available" || !doc.cur;
+      $("fdot").className = "dot" + (refreshFailed || age > 3 * H ? " crit" : partial || age > 75 * 60000 ? " warn" : "");
+      $("ftxt").textContent = (refreshFailed ? "Refresh failed" : partial ? "Partial data" : "Checked " + ago(doc.fetchedAt)) + " ⓘ";
+      $("fresh").title = "Data & sources · last checked " + dtm(doc.fetchedAt);
+      if (refreshFailed) messages.push("Couldn't refresh weather data. Showing the last loaded forecast.");
+      else if (age > 75 * 60000) messages.push("Weather was last checked " + ago(doc.fetchedAt) + ". Tap refresh for current data.");
+      if (a === "unavailable") messages.push("Alerts unavailable — active alerts could not be checked.");
+      else if (a === "unknown") messages.push("Alerts haven't been checked in this saved forecast. Tap refresh to check.");
+      if (!doc.cur) messages.push("Current observations are unavailable.");
+      if (doc.cur && Date.now() - doc.cur.ms > 90 * 60000) messages.push("Current conditions were observed " + ago(doc.cur.ms) + ".");
+    }
+    notice.hidden = !messages.length; notice.textContent = messages.join(" ");
+    renderDataInfo();
+  }
+  $("fresh").addEventListener("click", function () { renderDataInfo(); $("data-info").showModal(); });
+  $("data-info-close").addEventListener("click", function () { $("data-info").close(); });
+  $("data-info").addEventListener("click", function (e) { if (e.target === this) { var r = this.getBoundingClientRect(); if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) this.close(); } });
 
   // ---------- warnings / outlooks: subcards inside the Now card ----------
   function firstSent(t, max) {
@@ -144,9 +175,8 @@
     // today's high: the daytime forecast period if today's is still ahead, else the highest reading observed today; low: tonight's forecast low
     // same high/low as the first day card in the forecast
     var p = doc.periods || [], g0 = groupDays(p)[0], hl0 = g0 ? dayHL(p, g0) : [null, null], hiT = hl0[0], loT = hl0[1];
-    // gusts: the station's reported gust; the station only reports one when gusting, so otherwise use the NWS forecast gust for this hour
-    var gg = doc.grid, gi = gg ? Math.floor((Date.now() - gg.start) / H) : -1;
-    var gust = c.wg || (gg && gi >= 0 && gi < gg.n && gg.s.wg[gi] != null ? gg.s.wg[gi] : null);
+    // Current wind and gusts both come from the observation.
+    var gust = c.wg;
     var rows = [];
     if (hiT != null || loT != null) rows.push(["High / Low", '<span class="hiT">' + (hiT != null ? hiT + "°F" : "–") + '</span> / <span class="loT">' + (loT != null ? loT + "°F" : "–") + "</span>", 1]);
     var p0 = p[0]; if (p0) rows.push(["Precip chance", (p0.popTrend ? p0.popTrend[0] + "% → " + p0.popTrend[1] + "%" : (p0.pop || 0) + "%") + " " + p0.name.toLowerCase().replace(/^this /, "")]);
@@ -158,10 +188,9 @@
     if (nowUV == null && uv && uv.hourly && uv.hourly.length && !isDay(Date.now())) nowUV = 0;
     if (nowUV != null) rows.push(["UV index", nowUV + " · " + uvCat(nowUV) + (uv && uv.alert ? " · UV alert" : "")]);
     rows.push(["Humidity", c.rh != null ? c.rh + "%" : "–"],
-      ["Wind / Gusts", c.ws == null ? "–" : c.ws === 0 ? "Calm" + (gust ? " / " + gust + " mph" : "") : (c.wd ? c.wd + " " : "") + c.ws + " / " + (gust == null || gust <= c.ws ? "–" : gust) + " mph"],
+      ["Observed wind / gusts", c.ws == null ? "–" : c.ws === 0 ? "Calm" + (gust ? " / " + gust + " mph" : "") : (c.wd ? c.wd + " " : "") + c.ws + " / " + (gust == null || gust <= c.ws ? "–" : gust) + " mph"],
       ["Visibility", c.vis != null ? (c.vis >= 10 ? "10.00" : c.vis.toFixed(2)) + " mi" : "–"]);
-    // some stations report slowly; say when the reading on screen is more than 90 minutes old
-    if (c.ms && Date.now() - c.ms > 90 * 60000) { var oh = Math.round((Date.now() - c.ms) / 3600000 * 10) / 10; rows.push(["Observed", tm(c.ms) + " · " + (oh >= 24 ? Math.round(oh / 24) + " d" : oh + " h") + " ago"]); }
+    if (c.ms) rows.push(["Observed", tm(c.ms) + " · " + ago(c.ms)]);
         if (c.wc != null && c.t != null && c.wc < c.t) rows.push(["Wind chill", c.wc + "°F"]);
     if (c.hi != null && c.t != null && c.hi > c.t) rows.push(["Heat index", c.hi + "°F"]);
     var d0 = groupDays(p)[0];
@@ -975,11 +1004,11 @@
     var b = $("rbtn"); b.classList.add("spin"); $("ftxt").textContent = "Refreshing…";
     var t0 = Date.now();
     return (TEST ? WXScenario.load(TEST, curLoc(), doc || store("wx-cache")) : WXLive.load(curLoc())).then(function (d) {
-      accept(d); lastCheck = Date.now(); if (!TEST) saveCache(d);
+      refreshFailed = false; accept(d); lastCheck = Date.now(); if (!TEST) saveCache(d);
       if (manual) toast(TEST ? "Test scenario regenerated" : "Updated from weather.gov");
       return true;
     }).catch(function (e) {
-      console.error(e);
+      refreshFailed = true; console.error(e);
       toast(doc ? "Couldn't reach weather.gov · showing the last loaded data" : "Couldn't reach weather.gov · tap refresh to try again");
       return false;
     }).then(function (ok) {
@@ -1237,7 +1266,14 @@
   var rw, lastW = window.innerWidth;
   window.addEventListener("resize", function () {
     if (window.innerWidth === lastW) return; lastW = window.innerWidth;
-    clearTimeout(rw); rw = setTimeout(function () { if (doc && tab === "hourly") renderGraph(); }, 200);
+    clearTimeout(rw); rw = setTimeout(function () {
+      if (!doc) return;
+      if (tab === "hourly") {
+        var host = $("gin"), sc = host.querySelector(".gall"), x = sc ? sc.scrollLeft : 0;
+        G = renderGraph(host);
+        sc = host.querySelector(".gall"); if (sc) sc.scrollLeft = x;
+      } else if (tab === "daily") renderNowPrecip();
+    }, 200);
   });
 
   // ---------- model maps (wx-models.js) ----------
@@ -1304,12 +1340,12 @@
     var chip = function (attr, v, label, on) { return '<button type="button" class="chip' + (on ? " on" : "") + '" ' + attr + '="' + v + '">' + label + "</button>"; };
     var bust = "?t=" + Math.floor(Date.now() / 9e5);
     // one compact row: kind and period as two small segmented groups (snow adds its threshold group on the same row when it fits)
-    el.innerHTML = '<div class="oqh oqrow"><span class="oqseg">' + chip("data-oqk", "qpf", "Precip", OQ.k === "qpf") + chip("data-oqk", "snow", "Snow", OQ.k === "snow") + chip("data-oqk", "ice", "Ice", OQ.k === "ice") + "</span>" +
+    el.innerHTML = '<div class="oqh oqrow"><span class="oqseg">' + chip("data-oqk", "qpf", "Precip", OQ.k === "qpf") + chip("data-oqk", "snow", "Snow chance", OQ.k === "snow") + chip("data-oqk", "ice", "Ice chance", OQ.k === "ice") + "</span>" +
       '<span class="oqseg">' + chip("data-oqp", 24, OQ.k === "qpf" ? "24 hr" : "Day 1", OQ.p === 24) + chip("data-oqp", 48, OQ.k === "qpf" ? "48 hr" : "Day 2", OQ.p === 48) + "</span>" +
       (OQ.k === "snow" ? '<span class="oqseg">' + ["04", "08", "12"].map(function (t) { return chip("data-oqt", t, +t + '"+', OQ.th === t); }).join("") + "</span>" : "") + "</div>" +
       (window.WXOfficial ? '<div class="mleg oqkey" id="oqkey">' + WXOfficial.legend(OQ) + '</div><div class="oqwrap" id="oqwrap"><span class="mfr num" id="oqper">' + esc(per) + '</span></div><div class="oqcap" id="oqleg">' + esc(WXOfficial.caption(OQ)) + "</div>"
         : '<div class="oqimg" id="oqimg"><img src="' + img + bust + '" alt="' + esc(cap) + '"><span class="mfr num">' + esc(per) + "</span></div>") +
-      '<div class="oqnote"><b>' + esc(cap) + "</b> · NWS Weather Prediction Center · " + '<a href="' + WPC + (OQ.k === "qpf" ? "qpf/qpf2.shtml" : "wwd/winter_wx.shtml") + '" target="_blank" rel="noopener">Source</a></div>' +
+      '<div class="oqnote"><b>' + esc(cap) + "</b> · NWS Weather Prediction Center · <span id='oqissued'>Issue time unavailable</span> · " + '<a href="' + WPC + (OQ.k === "qpf" ? "qpf/qpf2.shtml" : "wwd/winter_wx.shtml") + '" target="_blank" rel="noopener">Source</a></div>' +
       (amt ? '<details class="oq-local"><summary>Local forecast amounts</summary>' + amt + '</details>' : '');
     var mapBox = el.querySelector("#oqwrap,#oqimg"), controls = el.querySelector(".oqrow");
     var regions = document.createElement("div"); regions.id = "official-regions"; regions.className = "map-regions";
@@ -1326,6 +1362,7 @@
     WXOfficial.show(wrap, curLoc(), OQ, regions).then(function (r) {
       if (!r || k0 !== OQ.k + OQ.p + OQ.th || !$("oqper")) return;
       if (r.start && r.end) $("oqper").textContent = span(r.start, r.end); // the product's own period
+      if ($("oqissued")) $("oqissued").textContent = r.issue ? "Issued " + stamp(r.issue) : "Issue time unavailable";
     }).catch(function () {
       if (k0 !== OQ.k + OQ.p + OQ.th || $("oqwrap") !== wrap || tab !== "maps" || forecastMode !== "nws") return;
       var leg = $("oqleg"); if (leg) leg.remove();
@@ -1339,7 +1376,7 @@
   });
   function mStop() { if (window.WXModels) WXModels.hide(); if (window.WXOfficial) WXOfficial.hide(); iStop(); }
   document.addEventListener("keydown", function (e) {
-    if (tab !== "maps" || forecastMode !== "models" || !$("locsheet").hidden || /INPUT|TEXTAREA|SELECT/.test((e.target.tagName || "")) && e.target.type !== "range") return;
+    if (tab !== "maps" || forecastMode !== "models" || !$("locsheet").hidden || $("data-info").open || /INPUT|TEXTAREA|SELECT/.test((e.target.tagName || "")) && e.target.type !== "range") return;
     if (e.key === "ArrowLeft") $("mprev").click(); else if (e.key === "ArrowRight") $("mnext").click();
   });
 

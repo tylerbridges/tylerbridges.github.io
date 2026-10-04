@@ -287,7 +287,10 @@
         zone: (pt.forecastZone || "").split("/").pop(), county: (pt.county || "").split("/").pop() },
       updated: { forecast: Date.parse(fc.updateTime), grid: Date.parse(gd.updateTime) },
       cur: latest, station: { id: st.id || null, name: st.name || null, elevFt: st.elevFt || null },
-      obs: hist, alerts: alerts, periods: periods, grid: grid, afd: afd, hwo: hwo, uv: uv
+      obs: hist, alerts: raw.alerts && Array.isArray(raw.alerts.features) ? alerts : null,
+      sources: { alerts: { state: raw.alerts && Array.isArray(raw.alerts.features) ? "available" : "unavailable", checkedAt: now },
+        observations: { state: raw.obs && Array.isArray(raw.obs.features) ? "available" : "unavailable", checkedAt: now } },
+      periods: periods, grid: grid, afd: afd, hwo: hwo, uv: uv
     };
   }
 
