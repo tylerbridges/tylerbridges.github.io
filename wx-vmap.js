@@ -266,5 +266,28 @@
   }
   // ask for tiles just off screen ahead of time ({ z, i, j, n } list, nearest first), so panning finds them loaded
   function prefetch(list) { if (state !== "ok") return; list.slice(0, 40).forEach(function (v) { if (v.z <= maxz) get(v.z, ((v.i % v.n) + v.n) % v.n, v.j, true); }); }
-  root.WXVMap = { prefetch: prefetch, init: init, ok: function () { return state === "ok"; }, failed: function () { return state === "fail"; }, tileZoom: tileZoom, drawBase: drawBase, drawTop: drawTop, _decode: decode };
+  // nearest named place (city/town/village/hamlet/suburb) to a point, from tiles already loaded around it:
+  //   { name, km, dir } or null — used by the official map's readouts so they name the town, not the county
+  var PCLS = { city: 1, town: 1, village: 1, hamlet: 1, suburb: 1, neighbourhood: 0 };
+  function placeNear(lat, lon, z, maxKm) {
+    if (state !== "ok") return null;
+    var X = (lon + 180) / 360, sn = Math.sin(Math.max(-85, Math.min(85, lat)) * Math.PI / 180), Y = 0.5 - Math.log((1 + sn) / (1 - sn)) / (4 * Math.PI);
+    var best = null, cosl = Math.cos(lat * Math.PI / 180);
+    for (var zt = Math.min(maxz, Math.max(8, tileZoom(z))); zt >= 6 && !best; zt--) {
+      var n = 1 << zt, ci = Math.floor(X * n), cj = Math.floor(Y * n);
+      for (var dj = -1; dj <= 1; dj++) for (var di = -1; di <= 1; di++) {
+        var e = tiles.get(zt + "/" + (((ci + di) % n) + n) % n + "/" + (cj + dj)); if (!e || !e.ok || !e.L.place) continue;
+        var ext = e.L.place.ext || 4096;
+        e.L.place.f.forEach(function (f) {
+          var c = f.p["class"], name = f.p["name:en"] || f.p.name_en || f.p.name; if (f.t !== 1 || !f.g[0] || !PCLS[c] || !name) return;
+          var px = (ci + di + f.g[0][0] / ext) / n, py = (cj + dj + f.g[0][1] / ext) / n;
+          var plon = px * 360 - 180, plat = Math.atan(Math.sinh(Math.PI * (1 - 2 * py))) * 180 / Math.PI;
+          var dx = (plon - lon) * cosl * 111.32, dy = (plat - lat) * 110.57, km = Math.sqrt(dx * dx + dy * dy);
+          if (km <= (maxKm || 25) && (!best || km < best.km)) best = { name: name, km: km, dir: ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round((Math.atan2(-dx, -dy) * 180 / Math.PI + 360) % 360 / 45) % 8] };
+        });
+      }
+    }
+    return best;
+  }
+  root.WXVMap = { placeNear: placeNear, prefetch: prefetch, init: init, ok: function () { return state === "ok"; }, failed: function () { return state === "fail"; }, tileZoom: tileZoom, drawBase: drawBase, drawTop: drawTop, _decode: decode };
 })(this);

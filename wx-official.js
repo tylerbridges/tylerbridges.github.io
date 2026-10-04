@@ -196,7 +196,7 @@
   }
 
   // ---------- map ----------
-  var el, stage, cv, cx, ro, stat, reg;
+  var el, stage, cv, cx, cvB, cxB, cvT, cxT, ro, stat, reg;
   var W = 0, HH = 0, M = 0, SW = 0, SH = 0, dpr = 1, view = { x: 0, y: 0, z: 6.6 }, drawn = null, raf = 0;
   var loc = null, cur = { k: "qpf", p: 24, th: "04" }, data = null, gen = 0, on = false;
   // map settings (gear menu, saved as wx-oqset): place names, county lines, number size, map colours, 0 for dry counties
@@ -212,8 +212,6 @@
   }
   function setUI() {
     setEl.innerHTML = '<div class="oqst">Map settings</div>' +
-      setRow("Cities &amp; towns", "cities", [[true, "Show"], [false, "Hide"]]) +
-      setRow("County lines", "lines", [[true, "Show"], [false, "Hide"]]) +
       setRow("County amounts", "nums", [[false, "Hide"], [true, "Show"]]) +
       (SET.nums ? setRow("Number size", "size", [["s", "S"], ["m", "M"], ["l", "L"]]) : "") +
       setRow("Map colors", "theme", [["auto", "Auto"], ["light", "Light"], ["dark", "Dark"]]) +
@@ -232,9 +230,15 @@
   }
   function inspUi() { if (!cross) return; cross.hidden = !insp; insBtn.classList.toggle("on", insp); insBtn.setAttribute("aria-pressed", String(insp)); if (insp) ro.hidden = true; inspect(); }
   // the WPC band at that exact point (not the county average), then the county name
+  // the nearest town (from the map's own place names), else the county
+  function where(lat, lon) {
+    var pl = VM && VM.placeNear ? VM.placeNear(lat, lon, view.z, 25) : null, c = countyAt(lat, lon), st = c ? ", " + c.st : "";
+    if (pl) return pl.km < 2.5 ? pl.name + st : Math.round(pl.km * 0.621371) + " mi " + pl.dir + " of " + pl.name + st;
+    return c ? c.name + " County, " + c.st : "";
+  }
   function pointVal(lat, lon) {
     if (!data) return null;
-    var b = cell(lon, lat), c = countyAt(lat, lon), nm = c ? " · " + c.name + ", " + c.st : "";
+    var b = cell(lon, lat), w0 = where(lat, lon), nm = w0 ? " · " + w0 : "";
     if (data.qpf) return (b ? num(QL[b - 1]) + (QL[b] != null ? "–" + num(QL[b]) : "+") + " in" : "Under 0.01 in") + nm;
     return (b ? CATLONG[Math.min(3, b)] : "Under 10%") + " chance" + nm;
   }
@@ -243,7 +247,10 @@
   function setup() {
     el = document.createElement("div"); el.className = "mm oqmap";
     stage = mk("div", "mmst", el);
+    // the same layers as the radar: base map (land/water), the forecast, then lines, roads and place names on top
+    cvB = mk("canvas", "mml", stage); cxB = cvB.getContext("2d");
     cv = mk("canvas", "mml", stage); cx = cv.getContext("2d");
+    cvT = mk("canvas", "mml", stage); cxT = cvT.getContext("2d");
     stat = mk("div", "mmstat", el); ro = mk("div", "mmro", el); reg = mk("div", "mmreg", el);
     stat.hidden = true; ro.hidden = true;
     // inspector (as in RadarScope): fixed crosshair in the middle; the forecast at that exact spot shows above it as you pan
@@ -270,9 +277,11 @@
     var r = el.getBoundingClientRect(); if (!r.width) return;
     W = Math.round(r.width); HH = Math.round(r.height); M = Math.round(Math.max(W, HH) * 0.2); SW = W + 2 * M; SH = HH + 2 * M; dpr = Math.min(2, root.devicePixelRatio || 1);
     stage.style.cssText = "left:" + -M + "px;top:" + -M + "px;width:" + SW + "px;height:" + SH + "px";
-    cv.width = Math.round(SW * dpr); cv.height = Math.round(SH * dpr);
+    cv.width = cvB.width = Math.round(SW * dpr); cv.height = cvB.height = Math.round(SH * dpr);
+    tdpr = Math.min(3, root.devicePixelRatio || 1); cvT.width = Math.round(SW * tdpr); cvT.height = Math.round(SH * tdpr); // sharp labels
     drawn = null; paint();
   }
+  var tdpr = 1;
   function paint() { if (on && !raf) raf = requestAnimationFrame(frame); }
   function frame() {
     raf = 0; if (!on || !W) return;
@@ -282,37 +291,33 @@
   function toScr(lat, lon) { var s = scaleZ(drawn.z); return { x: (wx(lon) - drawn.x) * s + SW / 2, y: (wy(lat) - drawn.y) * s + SH / 2 }; }
   function viewLL() { var s = scaleZ(drawn.z); return [lonOf(drawn.x - SW / 2 / s), latOf(drawn.y + SH / 2 / s), lonOf(drawn.x + SW / 2 / s), latOf(drawn.y - SH / 2 / s)]; }
   function draw() {
-    var dk = isDark(), ink = dk ? "#fff" : "#000", s = scaleZ(drawn.z), k = s * dpr / K, V = viewLL();
-    cx.setTransform(1, 0, 0, 1, 0, 0); cx.fillStyle = dk ? "#000" : "#fff"; cx.fillRect(0, 0, cv.width, cv.height);
+    var dk = isDark(), ink = dk ? "#fff" : "#000", s = scaleZ(drawn.z), k = s * dpr / K, V = viewLL(), vm = VM && VM.ok();
     var vis = function (bb) { return !(bb[2] < V[0] || bb[0] > V[2] || bb[3] < V[1] || bb[1] > V[3]); };
     var list = Object.keys(counties).map(function (f) { return counties[f]; }).filter(function (c) { return vis(c.bb); });
+    // base map, exactly as on the radar (OpenFreeMap land and water); plain ground if the tiles can't load
+    cxB.setTransform(1, 0, 0, 1, 0, 0);
+    if (vm) VM.drawBase(cxB, slots(VM.tileZoom(drawn.z), dpr), { dark: dk, dpr: dpr, z: drawn.z });
+    else { cxB.fillStyle = dk ? "#000" : "#f3f3f1"; cxB.fillRect(0, 0, cvB.width, cvB.height); }
+    // the forecast as colour bands (WPC's own polygons, exclusive bands with holes), see-through like the radar
+    cx.setTransform(1, 0, 0, 1, 0, 0); cx.clearRect(0, 0, cv.width, cv.height);
     cx.setTransform(k, 0, 0, k, (SW / 2 - drawn.x * s) * dpr, (SH / 2 - drawn.y * s) * dpr);
-    cx.lineJoin = "round";
-    // the forecast as colour bands (WPC's own polygons, exclusive bands with holes)
-    if (data && data.bands) data.bands.forEach(function (b) { if (!vis(b.bb)) return; cx.globalAlpha = 0.88; cx.fillStyle = bandCol(b.v, data.qpf, cur.k === "ice"); cx.fill(b.path, "evenodd"); });
-    cx.globalAlpha = 1;
-    // county lines, then state lines over them
-    if (drawn.z >= 4.6 && SET.lines) {
-      var cp = new Path2D(); list.forEach(function (c) { cp.addPath(c.path); });
-      cx.strokeStyle = dk ? "rgba(255,255,255,.34)" : "rgba(0,0,0,.30)"; cx.lineWidth = (drawn.z < 6 ? 0.5 : 0.75) * dpr / k; cx.stroke(cp);
+    if (data && data.bands) data.bands.forEach(function (b) { if (!vis(b.bb)) return; cx.globalAlpha = 0.72; cx.fillStyle = bandCol(b.v, data.qpf, cur.k === "ice"); cx.fill(b.path, "evenodd"); });
+    cx.globalAlpha = 1; cx.lineJoin = "round";
+    // without the vector tiles, NOAA's own county and state lines
+    if (!vm) {
+      if (drawn.z >= 4.6) { var cp = new Path2D(); list.forEach(function (c) { cp.addPath(c.path); }); cx.strokeStyle = dk ? "rgba(255,255,255,.34)" : "rgba(0,0,0,.30)"; cx.lineWidth = 0.6 * dpr / k; cx.stroke(cp); }
+      if (states) { var sp = new Path2D(); states.forEach(function (st) { if (vis(st.bb)) sp.addPath(st.path); }); cx.strokeStyle = ink; cx.lineWidth = 1.2 * dpr / k; cx.stroke(sp); }
     }
-    if (states) { var sp = new Path2D(); states.forEach(function (st) { if (vis(st.bb)) sp.addPath(st.path); }); cx.strokeStyle = ink; cx.lineWidth = (drawn.z < 5 ? 1 : 1.4) * dpr / k; cx.stroke(sp); }
     cx.setTransform(1, 0, 0, 1, 0, 0);
-    // place names from the OpenFreeMap tiles (the radar's base map), each a dot with its name beside it: cities first,
-    //   then the county numbers around them (nudged a line up or down if a city is in the way), then towns in the gaps
-    var vm = SET.cities && VM && VM.ok(), sl = vm && slots(VM.tileZoom(drawn.z));
-    var po = function (cls, avoid) {
-      var r = VM.drawTop(cx, sl, { dark: dk, dpr: dpr, z: drawn.z, w: SW, h: SH, placesOnly: true, classes: cls, avoid: avoid,
-        text: dk ? "rgba(255,255,255,.86)" : "rgba(0,0,0,.8)", halo: dk ? "rgba(0,0,0,.95)" : "rgba(255,255,255,.95)" });
-      cx.setTransform(1, 0, 0, 1, 0, 0); return r || avoid;
-    };
-    var boxes = vm ? po({ city: 1 }, []) : [];
-    if (data && SET.nums) boxes = labels(list, ink, dk, boxes); // county numbers only when turned on in Map settings
-    if (vm) po({ town: 1, village: 1 }, boxes);
+    // county lines, roads and every city/town/village name on top, the same as the radar (more appear as you zoom in)
+    cxT.setTransform(1, 0, 0, 1, 0, 0); cxT.clearRect(0, 0, cvT.width, cvT.height);
+    var boxes = vm ? VM.drawTop(cxT, slots(VM.tileZoom(drawn.z), tdpr), { dark: dk, dpr: tdpr, z: drawn.z, w: SW, h: SH }) || [] : [];
+    cxT.setTransform(1, 0, 0, 1, 0, 0);
+    if (data && SET.nums) { var c0 = cx; cx = cxT; var d0 = dpr; dpr = tdpr; try { labels(list, ink, dk, boxes); } finally { cx = c0; dpr = d0; } } // county numbers only when turned on
     if (loc) {
       var m = toScr(loc.lat, loc.lon);
-      cx.beginPath(); cx.arc(m.x * dpr, m.y * dpr, 4.5 * dpr, 0, 2 * Math.PI); cx.lineWidth = 2 * dpr; cx.strokeStyle = dk ? "#000" : "#fff"; cx.stroke();
-      cx.fillStyle = "#1a73e8"; cx.fill();
+      cxT.beginPath(); cxT.arc(m.x * tdpr, m.y * tdpr, 4.5 * tdpr, 0, 2 * Math.PI); cxT.lineWidth = 2 * tdpr; cxT.strokeStyle = dk ? "#000" : "#fff"; cxT.stroke();
+      cxT.fillStyle = "#1a73e8"; cxT.fill();
     }
   }
   // county numbers: biggest first, skipping overlaps; text size grows a little with zoom
@@ -337,10 +342,10 @@
     });
     return boxes;
   }
-  function slots(zt) {
-    var n = Math.pow(2, zt), s = scaleZ(drawn.z), out = [];
+  function slots(zt, dp) {
+    dp = dp || dpr; var n = Math.pow(2, zt), s = scaleZ(drawn.z), out = [];
     var l = drawn.x - SW / 2 / s, r = drawn.x + SW / 2 / s, t = drawn.y - SH / 2 / s, b = drawn.y + SH / 2 / s;
-    var px = function (x) { return Math.round(((x - drawn.x) * s + SW / 2) * dpr); }, py = function (y) { return Math.round(((y - drawn.y) * s + SH / 2) * dpr); };
+    var px = function (x) { return Math.round(((x - drawn.x) * s + SW / 2) * dp); }, py = function (y) { return Math.round(((y - drawn.y) * s + SH / 2) * dp); };
     for (var j = Math.max(0, Math.floor(t * n)); j <= Math.min(n - 1, Math.floor(b * n)); j++)
       for (var i = Math.floor(l * n); i <= Math.floor(r * n); i++) out.push({ i: i, j: j, n: n, z: zt, x0: px(i / n), y0: py(j / n), x1: px((i + 1) / n), y1: py((j + 1) / n) });
     return out;
@@ -369,7 +374,7 @@
   var pts = new Map(), g0 = null, moved = false, tween = 0, lastTap = 0, settleT = 0;
   function at(sx, sy) { var s = scaleZ(view.z); return { x: view.x + (sx - W / 2) / s, y: view.y + (sy - HH / 2) / s }; }
   function setView(x, y, z) {
-    view.z = Math.max(2.5, Math.min(10, z)); view.x = x; var s = scaleZ(view.z), hh2 = HH / 2 / s; view.y = Math.max(hh2 - 0.02, Math.min(1.02 - hh2, y));
+    view.z = Math.max(2.5, Math.min(11, z)); view.x = x; var s = scaleZ(view.z), hh2 = HH / 2 / s; view.y = Math.max(hh2 - 0.02, Math.min(1.02 - hh2, y));
     if (!drawn) return paint();
     var k = Math.pow(2, view.z - drawn.z), tx = (drawn.x - view.x) * s, ty = (drawn.y - view.y) * s;
     stage.style.transform = "translate(" + tx.toFixed(1) + "px," + ty.toFixed(1) + "px) scale(" + k.toFixed(4) + ")";
@@ -417,19 +422,19 @@
     el.addEventListener("pointerup", end); el.addEventListener("pointercancel", end);
     el.addEventListener("wheel", function (e) {
       e.preventDefault(); var r = el.getBoundingClientRect(), sx = e.clientX - r.left, sy = e.clientY - r.top, w = at(sx, sy), z = view.z - e.deltaY * (e.deltaMode ? 0.05 : 0.0022);
-      var s = scaleZ(Math.max(2.5, Math.min(10, z))); setView(w.x - (sx - W / 2) / s, w.y - (sy - HH / 2) / s, z); clearTimeout(settleT); settleT = setTimeout(settle, 160);
+      var s = scaleZ(Math.max(2.5, Math.min(11, z))); setView(w.x - (sx - W / 2) / s, w.y - (sy - HH / 2) / s, z); clearTimeout(settleT); settleT = setTimeout(settle, 160);
     }, { passive: false });
   }
   function showRO(lat, lon, sx, sy) {
-    var v = valueAt(lat, lon); if (v == null) { ro.hidden = true; return; }
+    var v = pointVal(lat, lon); if (v == null) { ro.hidden = true; return; }
     ro.textContent = v; ro.hidden = false;
     ro.style.left = Math.max(6, Math.min(W - ro.offsetWidth - 6, sx - ro.offsetWidth / 2)) + "px"; ro.style.top = Math.max(6, sy - 38) + "px";
   }
 
   // one line under the map saying what the numbers are (no colour key)
   function caption(s) {
-    if (s.k === "qpf") return "Colours: official forecast precipitation, inches of liquid (rain + melted snow). Tap a county for its range and average.";
-    return "Colours: official chance of " + (s.k === "ice" ? '0.25"+ ice' : +s.th + '"+ snow') + ". Tap a county for its chance.";
+    if (s.k === "qpf") return "Colours: official forecast precipitation, inches of liquid (rain + melted snow). Tap anywhere, or use the crosshair, for the amount at that spot.";
+    return "Colours: official chance of " + (s.k === "ice" ? '0.25"+ ice' : +s.th + '"+ snow') + ". Tap anywhere, or use the crosshair, for the chance at that spot.";
   }
 
   // show(host, place, { k, p, th }) → Promise of { start, end, issue } once drawn; rejects if the data can't load
