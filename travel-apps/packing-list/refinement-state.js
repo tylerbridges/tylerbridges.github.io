@@ -18,7 +18,7 @@ function refineLoad(t){
 }
 function refineSnapshot(state){ var copy = clone(state); delete copy.undo; delete copy.undoProfile; return copy; }
 function refinePersist(t,state,result){
-  state.ruleResults = result.ruleResults; state.profileSignature = result.profileSignature;
+  state.ruleResults = result.ruleResults; state.ruleKeys = result.ruleKeys || {}; state.profileSignature = result.profileSignature;
   if (!state.baseline) state.baseline = result.items.map(function(x){ return {id:x.id,label:x.label,quantity:x.quantity,reasons:x.reasons}; });
   state.updatedAt = Date.now(); return db.doc(refinePath(t.id)).set(state);
 }

@@ -30,7 +30,13 @@ try {
   const initial = await labels();
   if (!initial.includes("Socks ×9") || !initial.includes("Contacts ×10")) fail("initial quantities");
   if (initial.includes('Kindle') || !initial.includes('Medicine pouch')) fail('saved preferences not used');
-  await p.click('button:has-text("Activities:")'); await p.selectOption('#rf-work','work'); await p.click('button:has-text("Apply & recalculate")'); await p.waitForSelector('.sheet-bg',{state:'detached'});
+  for(const [name,ids] of [['Packing',['rf-packing']],['Bag',['rf-bag']],['Weather',['rf-climate','rf-thermal','rf-rain']],['Activities',['rf-hike','rf-run','rf-water','rf-fish']],['Events',['rf-formal','rf-dinners']],['Flight',['rf-longFlight']],['Laundry',['rf-laundry','rf-first','rf-interval']]]){
+    await p.click(`button:has-text("${name}:")`);
+    const actual=await p.locator('.sheet-body input, .sheet-body select').evaluateAll(nodes=>nodes.map(n=>n.id));
+    if(JSON.stringify(actual)!==JSON.stringify(ids))fail(`${name} editor contains unrelated fields`);
+    await mobileLayout();await p.click('button:has-text("Apply & recalculate")');await p.waitForSelector('.sheet-bg',{state:'detached'});
+  }
+  await p.click('button:has-text("Work:")'); if(await p.locator('.sheet-body input, .sheet-body select').count()!==1)fail('work editor contains unrelated fields'); await p.selectOption('#rf-work','work'); await p.click('button:has-text("Apply & recalculate")'); await p.waitForSelector('.sheet-bg',{state:'detached'});
   if (!(await labels()).includes('Work computer charger')) fail('work power dependency');
   await p.evaluate(()=>{window.testWorkSection=[...document.querySelectorAll('section.panel')].find(n=>n.querySelector('h3')?.textContent==='Work');});
   await p.locator('[data-item-id="pack:socks"]').getByRole('button',{name:'Edit',exact:true}).click(); await p.fill('#ri-quantity','7'); await p.click('button:has-text("Save override")'); await p.waitForSelector('.sheet-bg',{state:'detached'});

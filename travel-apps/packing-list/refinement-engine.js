@@ -20,7 +20,8 @@ function refineItem(label,section,reason,options){
 }
 function refineContext(state){
   var i = state.inputs, r = state.refinements, days = refineDays(i.start,i.end);
-  var laundry = r.laundry, clothingDays = laundry.available ? Math.min(days,Math.max(laundry.firstWash,laundry.interval) + 1) : days;
+  var laundry = r.laundry, firstGap = Math.min(days,laundry.firstWash), laterGap = Math.min(Math.max(0,days-firstGap),laundry.interval);
+  var clothingDays = laundry.available ? Math.min(days,Math.max(firstGap,laterGap) + 1) : days;
   var climate = r.climate, cool = climate === "cool" || climate === "cold";
   if (r.thermal === "cold" && climate === "mild") cool = true;
   // Feeling hot can drop optional cool-weather insulation, never actual cold-weather protection.
@@ -73,6 +74,10 @@ function refineEvents(state,profile,c){
   var out = [], r = c.r, maybe = profile.maybe || PACK_PREFS.maybe;
   if (r.formalDays){ maybe.filter(function(g){ return g.tag === "formal"; }).forEach(function(g){ g.items.forEach(function(x){ var n = /dress socks|white shirt|undershirt/i.test(x) ? r.formalDays : undefined; out.push(refineItem(x,g.title,"Formal event: " + r.formalDays + " day(s)",{quantity:n,required:true})); }); }); out.push(refineItem("Dress pants","Formal wear","Reusable formal trousers",{required:true})); out.push(refineItem("Belt","Formal wear","Formal outfit dependency",{required:true})); }
   if (r.dinners){ maybe.filter(function(g){ return g.tag === "dinner"; }).forEach(function(g){ g.items.forEach(function(x){ out.push(refineItem(x,g.title,"One button-up per nice dinner",{quantity:r.dinners,required:true})); }); }); }
+  return out;
+}
+function refineWork(state,profile,c){
+  var out=[],r=c.r,maybe=profile.maybe || PACK_PREFS.maybe;
   if (r.work !== "none"){
     maybe.filter(function(g){ return g.tag === r.work; }).forEach(function(g){ g.items.forEach(function(x){ out.push(refineItem(x,g.title,"Selected work setup",{required:true})); }); });
     out.push(refineItem("Work computer charger","Work","Laptop power dependency",{required:true}));
@@ -86,14 +91,18 @@ var REFINE_RULES = {
   defaults:{deps:["profile","packingMode"],run:refineDefaults},
   layers:{deps:["climate","thermal","rain"],run:refineLayers},
   activities:{deps:["activities","climate","thermal","rain","dates","laundry","packingMode","intl","mode","longFlight","profile"],run:refineActivities},
-  events:{deps:["formalDays","dinners","work","profile"],run:refineEvents},
+  events:{deps:["formalDays","dinners","profile"],run:refineEvents},
+  work:{deps:["work","profile"],run:refineWork},
   consumables:{deps:["dates"],run:refineConsumables}
 };
 function refineLabel(item){ return item.label + (item.quantity > 1 || item.category === "clothing" || item.id === "pack:contacts" ? " ×" + item.quantity : ""); }
 function refineEvaluate(state,profile,changed){
-  var c = refineContext(state), signature = JSON.stringify(profile), cache = Object.assign({},state.ruleResults || {}), ran = [];
-  if (signature !== state.profileSignature) changed = null;
-  Object.keys(REFINE_RULES).forEach(function(id){ var rule = REFINE_RULES[id]; if (!cache[id] || !changed || rule.deps.some(function(key){ return changed.indexOf(key) >= 0; })){ cache[id] = rule.run(state,profile,c); ran.push(id); } });
+  var c = refineContext(state), signature = JSON.stringify(profile), cache = {}, keys = {}, ran = [];
+  // Standalone app: cache validity comes from actual dependency values, never caller hints alone.
+  Object.keys(REFINE_RULES).forEach(function(id){var rule=REFINE_RULES[id];
+    keys[id]=JSON.stringify(rule.deps.map(function(key){if(key==="profile")return profile;if(key==="dates")return [state.inputs.start,state.inputs.end];return Object.prototype.hasOwnProperty.call(state.inputs,key) ? state.inputs[key] : state.refinements[key];}));
+    if(!state.ruleResults || !state.ruleResults[id] || !state.ruleKeys || state.ruleKeys[id]!==keys[id]){cache[id]=rule.run(state,profile,c);ran.push(id);}else cache[id]=state.ruleResults[id];
+  });
   var merged = {}, order = [], excluded = profile.refinementProfile && profile.refinementProfile.excluded || {};
   Object.keys(cache).forEach(function(rule){ cache[rule].forEach(function(source){ var item = clone(source); item.rule = rule;
     if (excluded[item.id] && !item.critical && !item.required) return;
@@ -103,7 +112,7 @@ function refineEvaluate(state,profile,changed){
   order.forEach(function(id){ var item = merged[id];
     if (excluded[id] && (item.critical || item.required)) warnings.push({id:"excluded:"+id,itemId:id,text:item.label + " is excluded in your profile but required here; it has been kept."});
     if (overrides.removed[id]){ if (item.critical || item.required) warnings.push({id:"removed:"+id,itemId:id,text:item.label + " was removed manually but is required by this trip. Restore it or account for a replacement."}); return; }
-    if (overrides.edited[id]){ var edit = overrides.edited[id]; if ((item.critical || item.required) && edit.quantity < item.quantity) warnings.push({id:"quantity:"+id,itemId:id,text:item.label + " is pinned below the calculated requirement (" + edit.quantity + " vs " + item.quantity + "). Check that the need is covered."}); item = Object.assign({},item,edit,{id:id,manual:true}); }
+    if (overrides.edited[id]){ var edit = overrides.edited[id]; if ((item.critical || item.required) && edit.quantity < item.quantity) warnings.push({id:"quantity:"+id,itemId:id,text:item.label + " is pinned below the calculated requirement (" + edit.quantity + " vs " + item.quantity + "). Check that the need is covered."}); item = Object.assign({},item,{label:edit.label,quantity:edit.quantity,section:edit.section || item.section,manual:true,reasons:item.reasons.concat(["Your pinned manual edit; automatic quantities do not replace it"])}); }
     if (item.quantity > 0) items.push(item);
   });
   // Pinned edits and manual additions stay visible even when their generating rule is no longer active.
@@ -112,7 +121,7 @@ function refineEvaluate(state,profile,changed){
   if (c.inputs.bag === "carryon"){
     if (items.some(function(x){ return /monitors/.test(x.id); })) warnings.push({id:"work-baggage",text:"Full work setup includes monitors. Check carry-on capacity or switch to laptop only; nothing was silently removed."});
     var insulation = items.find(function(x){ return /puffer/.test(x.id); });
-    if (insulation){ insulation.section = "Wear to travel"; insulation.reasons = insulation.reasons.concat(["Carry-on constraint: wear this bulky layer during transit"]); }
+    if (insulation && !insulation.manual){ insulation.section = "Wear to travel"; insulation.reasons = insulation.reasons.concat(["Carry-on constraint: wear this bulky layer during transit"]); }
     var shoes = items.filter(function(x){ return /shoes|footwear/.test(x.id); }); if (shoes.length > 2) warnings.push({id:"shoes-baggage",text:"Hiking and formal events require extra footwear. Check bag space; your running shoes are worn in transit."});
   }
   if (c.unknown) warnings.push({id:"weather",text:"Weather is unconfirmed. Choose expected conditions; no forecast has been inferred from the destination."});
@@ -126,5 +135,5 @@ function refineEvaluate(state,profile,changed){
   items.forEach(function(item){ if (!groups.some(function(g){ return g.title === item.section; })){ groups.push({title:item.section,items:items.filter(function(x){ return x.section === item.section; })}); } });
   var departure = leavingFor(groups.map(function(g){ return {title:g.title,items:g.items.map(refineLabel)}; }),c.inputs.bag === "checked");
   groups.push({title:"Before leaving",depart:true,items:departure.map(function(label){ return refineItem(label,"Before leaving","Derived from your final list",{required:true}); })});
-  return {groups:groups,items:items,warnings:warnings,ruleResults:cache,profileSignature:signature,ran:ran,coverage:c.clothingDays};
+  return {groups:groups,items:items,warnings:warnings,ruleResults:cache,ruleKeys:keys,profileSignature:signature,ran:ran,coverage:c.clothingDays};
 }
