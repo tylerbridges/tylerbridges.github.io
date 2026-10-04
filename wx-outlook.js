@@ -9,7 +9,6 @@
   function stamp(t) { return fmt(t, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" }); }
   function renderOdds() {
     var host = document.getElementById("winter-odds"); if (!host || !odds) return;
-    renderWinterBrief();
     if (!odds.covered) { host.innerHTML = "<p>WPC winter probability maps cover the contiguous U.S. Local NWS forecasts remain available for this location.</p>"; return; }
     host.innerHTML = '<p>Official WPC regional probability bands near ' + esc(context.loc.label) + '. These are chances of exceeding a threshold, not predicted inches or exact point probabilities.</p>' + [1, 2].map(function (day) {
       var rows = odds.rows.filter(function (r) { return r.day === day; }), first = rows.filter(function (r) { return r.state === "available" && r.end > Date.now(); })[0];
@@ -27,7 +26,7 @@
     if (oddsKey === key && !odds && oddsAt) return;
     oddsKey = key; oddsAt = Date.now(); odds = null; var g = ++oddsGen;
     host.innerHTML = "<p>Checking official winter probabilities…</p>";
-    root.WXOfficial.probabilities(l).then(function (r) { if (g !== oddsGen) return; odds = r; renderOdds(); }, function () { if (g !== oddsGen) return; oddsAt = 0; host.innerHTML = "<p>Winter probabilities are unavailable right now.</p>"; renderWinterBrief(); });
+    root.WXOfficial.probabilities(l).then(function (r) { if (g !== oddsGen) return; odds = r; renderOdds(); }, function () { if (g !== oddsGen) return; oddsAt = 0; host.innerHTML = "<p>Winter probabilities are unavailable right now.</p>"; });
   }
   function events(g, now) {
     var out = [], s = g.s || {}, first = Math.max(0, Math.floor((now - g.start) / H)), last = Math.min(g.n, Math.ceil((now + 48 * H - g.start) / H));
@@ -63,51 +62,30 @@
       (r.chance != null ? '<span class="timing-chance">' + (r.chanceLabel === "Thunderstorm chance" ? "Thunder" : "Precip") + ' up to ' + r.chance + '%</span>' : "") +
       (r.detail ? '<span class="timing-detail">' + esc(r.detail) + '</span>' : "") + '</button>';
   }
-  function renderWinterBrief() {
-    var host = document.getElementById("winter-brief"); if (!host || !context) return;
-    var current = odds && oddsKey === context.loc.lat.toFixed(4) + "," + context.loc.lon.toFixed(4);
-    var winter = timingRows.some(function (r) { return /Snow|Sleet|Freezing rain/.test(r.label); });
-    var elevated = current && odds.rows.some(function (r) { return r.state === "available" && r.end > Date.now() && parseInt(r.chance, 10) >= 10; });
-    host.hidden = !winter && !elevated;
-    if (host.hidden) return;
-    host.innerHTML = '<button type="button" class="winter-brief" data-forecast-tool="winter"><b>Winter probabilities</b>' +
-      (current && odds.covered ? [1, 2].map(function (d) {
-        var snow = odds.rows.find(function (r) { return r.day === d && r.k === "snow" && r.threshold === 4; });
-        var ice = odds.rows.find(function (r) { return r.day === d && r.k === "ice"; });
-        var available = function (r) { return r && r.state === "available" && r.end > Date.now(); };
-        var chance = function (r) { return available(r) ? r.chance : 'Unavailable'; };
-        var same = available(snow) && available(ice) && snow.start === ice.start && snow.end === ice.end;
-        return '<span><b>Day ' + d + '</b> · Snow 4″+: ' + esc(chance(snow)) + ' · Ice 0.25″+: ' + esc(chance(ice)) + '</span>' +
-          (same ? '<span>' + esc(period(snow.start, snow.end)) + '</span>' : [snow, ice].filter(available).map(function (r) { return '<span>' + (r.k === "snow" ? 'Snow: ' : 'Ice: ') + esc(period(r.start, r.end)) + '</span>'; }).join(""));
-      }).join("") : '<span>' + (current ? 'Outside WPC map coverage' : !oddsAt ? 'WPC probability data unavailable' : 'Checking WPC regional bands…') + '</span>') + '<span>WPC regional bands · all thresholds &amp; issue times ›</span></button>';
+  function renderAlerts() {
+    var host = document.getElementById("weather-alerts"); if (!host || !context) return;
+    var now = context.via === "test" ? context.fetchedAt : Date.now();
+    var alerts = (context.alerts || []).filter(function (a) { var end = a.ends || a.expires; return !end || end > now; });
+    host.innerHTML = alerts.map(function (a) { return '<p class="outlook-hazard"><b>' + esc(a.event) + '</b>' + (a.onset && (a.ends || a.expires) ? '<br>' + esc(period(a.onset, a.ends || a.expires)) : "") + '</p>'; }).join("") +
+      (alerts.length ? '<button type="button" class="text-action" id="weather-alert-details">Read NWS alert details ›</button>' : "") +
+      (context.alerts == null ? '<p>Current NWS alerts could not be checked.</p>' : "");
   }
   function renderTiming() {
-    var host = document.getElementById("weather-timing"), full = document.getElementById("weather-timing-full"), g = context.grid;
+    var host = document.getElementById("weather-alerts"), full = document.getElementById("weather-timing-full"), g = context.grid;
     if (!host) return;
-    if (!g || !g.s) { timingRows = []; host.innerHTML = '<p>Hourly forecast timing is unavailable.</p>'; if (full) full.innerHTML = host.innerHTML; renderWinterBrief(); return; }
+    if (!g || !g.s) { timingRows = []; if (full) full.innerHTML = '<p>Hourly forecast timing is unavailable.</p>'; renderAlerts(); return; }
     var now = context.via === "test" ? context.fetchedAt : Date.now(), first = Math.max(0, Math.floor((now - g.start) / H)), last = Math.min(g.n, Math.ceil((now + 48 * H - g.start) / H));
     timingRows = events(g, now);
-    var alerts = (context.alerts || []).filter(function (a) { var end = a.ends || a.expires; return !end || end > now; });
     var unknown = !g.s.wxKnown || !g.s.wxKnown.slice(first, last).length || g.s.wxKnown.slice(first, last).some(function (v) { return !v; });
-    var priority = ["Freezing rain possible", "Thunderstorms possible", "Snow possible", "Sleet possible", "Wettest NWS block", "Rain possible", "Gusts ≥25 mph"];
-    var featured = timingRows.map(function (r, i) { return { r: r, i: i }; }).sort(function (a, b) {
-      var rank = function (r) { var n = priority.indexOf(r.label); return n < 0 ? priority.length : n; };
-      return rank(a.r) - rank(b.r) || a.r.start - b.r.start;
-    }).filter(function (x, i, all) { return all.findIndex(function (y) { return y.r.label === x.r.label; }) === i; }).slice(0, 3).sort(function (a, b) { return a.r.start - b.r.start; });
     var issued = '<p class="outlook-issued">' + (context.via === "test" ? "Sample NWS timeline · live model maps" : "NWS timing") + ' · issued ' + esc(stamp(g.updated || (context.updated || {}).grid)) + '</p>';
     var warning = unknown || g.start + g.n * H < now + 48 * H ? '<p>Some forecast hours are unavailable.</p>' : "";
     var empty = !timingRows.length ? '<p>No rain, storms, winter precipitation or gusts ≥25 mph flagged in the available hours.</p>' : "";
-    var hazard = alerts.map(function (a) { return '<p class="outlook-hazard"><b>' + esc(a.event) + '</b>' + (a.onset && (a.ends || a.expires) ? '<br>' + esc(period(a.onset, a.ends || a.expires)) : "") + '</p>'; }).join("") +
-      (alerts.length ? '<button type="button" class="text-action" id="weather-alert-details">Read NWS alert details ›</button>' : "") +
-      (context.alerts == null ? '<p>Current NWS alerts could not be checked.</p>' : "");
-    host.innerHTML = issued + hazard + '<div class="weather-timeline">' + featured.map(function (x) { return timingButton(x.r, x.i); }).join("") + '</div>' + empty + warning +
-      (timingRows.length > featured.length ? '<button type="button" class="text-action" data-forecast-tool="timing">See all ' + timingRows.length + ' timing periods ›</button>' : "");
+    renderAlerts();
     if (full) full.innerHTML = issued + '<div class="weather-timeline">' + timingRows.map(timingButton).join("") + '</div>' + empty + warning + '<p>Precip = overall precipitation chance; Thunder = thunderstorm chance. Percentages show the highest chance within each period.</p>';
     var notes = document.getElementById("weather-source-notes");
     if (notes) notes.innerHTML = '<p>NWS hourly timing and model output are separate forecasts. Timing is approximate; the wettest block is a published average, not an instantaneous rainfall peak. Storm potential does not confirm hail or tornadoes, and air temperature alone does not establish surface icing. Missing hours do not establish dry or safe conditions.</p>' +
       (context.hwo && (!context.hwo.expires || context.hwo.expires > now) && (context.hwo.day1 || context.hwo.days27) ?
         '<h3>NWS hazardous weather outlook</h3><p>Issued ' + esc(stamp(context.hwo.issued)) + '</p>' + [context.hwo.day1, context.hwo.days27].filter(Boolean).map(function (x) { return '<p>' + esc(x) + '</p>'; }).join("") : "");
-    renderWinterBrief();
   }
   function selectTool(name) {
     var dialog = document.getElementById("forecast-tools"), tab = document.getElementById("tool-tab-" + name); if (!dialog || !tab) return;

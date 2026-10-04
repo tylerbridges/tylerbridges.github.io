@@ -6,7 +6,7 @@ const { chromium } = require('playwright'), assert = require('node:assert/strict
     for (let i = 0; i < 60; i++) {
       const r = await fetch(base + '?deploy-check=' + Date.now(), { cache: 'no-store' });
       const html = await r.text();
-      if (r.ok && html.includes('wx-outlook.js?v=140') && html.includes('app.js?v=140')) { ready = true; break; }
+      if (r.ok && html.includes('wx-outlook.js?v=141') && html.includes('app.js?v=141')) { ready = true; break; }
       await new Promise(resolve => setTimeout(resolve, 10000));
     }
     assert.ok(ready, 'Live page must serve the new version');
@@ -19,7 +19,9 @@ const { chromium } = require('playwright'), assert = require('node:assert/strict
     await p.waitForFunction(() => /Checked|Partial data/.test(document.querySelector('#ftxt').textContent), null, { timeout: 90000 });
     assert.match(await p.locator('#placebtn').innerText(), /Minneapolis/);
     assert.ok(await p.locator('#weather-outlook').isVisible());
-    assert.match(await p.locator('#weather-timing').innerText(), /NWS timing/);
+    assert.equal(await p.locator('#maps [data-weather-time],#winter-brief').count(), 0);
+    assert.equal(await p.locator('#forecast-local-amounts dd').count(), 3);
+    assert.match(await p.locator('#weather-timing-full').textContent(), /NWS timing/);
     const search = await p.evaluate(async () => {
       const h = await WXLive.geocode('Denver, CO');
       return { label: h.label, covered: await WXLive.covers(h.lat, h.lon) };

@@ -43,7 +43,10 @@ function file(h) {
     });
     await p.goto('http://localhost:8003/?test=ice#forecast');
     await p.waitForFunction(() => document.querySelectorAll('[data-weather-time]').length > 0);
-    assert.match(await p.locator('#weather-timing').innerText(), /Freezing rain possible/);
+    assert.match(await p.locator('#weather-timing-full').innerText(), /Freezing rain possible/);
+    await p.click('[data-oqp="48"]'); assert.match(await p.locator('#forecast-local-period').innerText(), /next 48 hr/);
+    await p.click('[data-oqp="24"]'); assert.match(await p.locator('#forecast-local-period').innerText(), /next 24 hr/);
+    await p.locator('.forecast-tools-open').click();
     await p.locator('[data-weather-time]').first().click();
     await p.waitForFunction(() => WXModels._state().ready, null, { timeout: 60000 });
     assert.equal((await p.evaluate(() => WXModels._state())).param, 'ptype');
@@ -90,11 +93,16 @@ function file(h) {
         assert.equal(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, theme + '/' + width + '/' + tab);
       }
       assert.equal(await p.locator('#maps details').count(), 0);
-      assert.ok(await p.locator('#weather-timing [data-weather-time]').count() <= 3);
+      assert.equal(await p.locator('#foot').isVisible(), false);
+      assert.equal(await p.locator('#maps [data-weather-time],#winter-brief').count(), 0);
+      assert.equal(await p.locator('#forecast-local-amounts dd').count(), 3);
+      assert.ok(await p.locator('#forecast-local-amounts').evaluate(e => e.getBoundingClientRect().height < 80));
+      assert.equal(await p.locator('.forecast-tools-open').textContent(), 'More ›');
       await p.locator('[data-forecast-tool="timing"]').last().click();
       for (const tool of ['timing', 'winter', 'compare', 'reports', 'maps', 'sources']) {
         await p.click('#tool-tab-' + tool);
         assert.ok(await p.locator('#tool-' + tool).isVisible());
+        if (tool === 'sources') assert.match(await p.locator('#forecast-site-notes').innerText(), /Not an official warning source/);
         if (tool === 'maps') {
           await p.locator('[data-mcat="temp"]').click();
           assert.ok(await p.locator('[data-mcat="temp"]').evaluate(e => e.classList.contains('on')));
@@ -114,8 +122,10 @@ function file(h) {
       assert.ok(await p.locator('#compare-kind').evaluate(e => parseFloat(getComputedStyle(e).fontSize) >= 16));
     }
     await p.goto('http://localhost:8003/?test=severe#forecast');
-    await p.waitForFunction(() => document.querySelector('#weather-timing').textContent.includes('Thunderstorms possible'));
-    assert.match(await p.locator('#weather-timing').innerText(), /Rain possible/);
+    await p.waitForFunction(() => document.querySelector('#weather-timing-full').textContent.includes('Thunderstorms possible'));
+    await p.locator('.forecast-tools-open').click();
+    assert.match(await p.locator('#weather-timing-full').innerText(), /Rain possible/);
+    await p.click('#forecast-tools-close');
     await p.click('#weather-alert-details'); assert.ok(await p.locator('#now').isVisible());
     await p.click('button[data-tab="maps"]');
     await p.evaluate(() => {

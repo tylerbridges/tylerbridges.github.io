@@ -1045,15 +1045,16 @@ html.scrolled .top #fresh{display:inline-flex;max-height:0;opacity:0}
 .weather-timeline .timing-chance{grid-column:2;grid-row:1;font-size:12px;color:var(--ink2);align-self:center}
 .weather-timeline .timing-detail{grid-column:1 / -1;font-size:12px;color:var(--ink2)}
 .history-report small{display:block;color:var(--ink2);font-size:12px;line-height:1.45;margin-top:4px}
-.forecast-summary{padding:16px 12px;border-top:1px solid var(--grid)}
+.forecast-wide #foot{display:none}
+.forecast-summary{padding:10px 12px 12px;border-top:1px solid var(--grid)}
 .forecast-summary-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
 .forecast-summary h3{font-size:17px;margin:0}.forecast-summary-head>span,.forecast-summary p{font-size:12px;line-height:1.5;color:var(--ink2)}
 .forecast-summary .outlook-issued{margin:3px 0 8px;color:var(--muted)}
 .forecast-summary .outlook-hazard{font-size:13px;color:var(--ink);margin:10px 0}
-.forecast-tools-open{display:grid;grid-template-columns:1fr auto;gap:3px 8px;text-align:left;width:100%;border:0;border-radius:14px;background:var(--sunk);color:var(--ink);padding:12px;margin-top:14px;font:inherit;font-weight:600;cursor:pointer}
-.forecast-tools-open>span{grid-column:1;font-size:12px;font-weight:400;color:var(--ink2)}.forecast-tools-open>b{grid-column:2;grid-row:1 / 3;align-self:center;font-size:24px}
+.forecast-tools-open{display:flex;align-items:center;gap:8px;border:0;border-radius:10px;background:var(--sunk);color:var(--accent);padding:6px 10px;min-height:32px;font:inherit;font-size:13px;cursor:pointer}
+.forecast-local-amounts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:8px 0 0;font-size:14px}
+.forecast-local-amounts>div{min-width:0}.forecast-local-amounts dt{font-size:12px;color:var(--ink2);margin-bottom:3px}.forecast-local-amounts dd{margin:0;font-size:16px;font-weight:600}
 .forecast-summary .text-action{border:0;background:transparent;color:var(--accent);font:inherit;font-size:13px;min-height:36px;padding:6px 0;cursor:pointer}
-.winter-brief{display:block;width:100%;text-align:left;background:transparent;color:var(--ink);border:0;border-top:1px solid var(--grid);padding:10px 0;font:inherit;font-size:13px;cursor:pointer}.winter-brief span{display:block;color:var(--ink2);font-size:12px;margin-top:4px;line-height:1.45}
 .forecast-tools{box-sizing:border-box;width:min(740px,calc(100% - 24px));max-height:85dvh;overflow:auto;border:1px solid var(--line);border-radius:22px;background:var(--surface);color:var(--ink);padding:0 16px 18px;box-shadow:var(--glass-sh)}
 .forecast-tools::backdrop{background:rgba(0,0,0,.45)}
 .forecast-tools-head{position:sticky;top:0;background:var(--surface);display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 0 8px;z-index:1}.forecast-tools-head h2{font-size:19px;margin:0}.forecast-tools-head button{font-size:25px;width:40px;height:40px;flex:none}
@@ -1063,7 +1064,7 @@ html.scrolled .top #fresh{display:inline-flex;max-height:0;opacity:0}
 .forecast-tools section[hidden]{display:none}.forecast-tools .model-data{padding:0}.forecast-tools .sec-h{margin-top:20px}
 .forecast-tools button:focus-visible,.forecast-summary button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 @media(min-width:700px){.forecast-tools-tabs{grid-template-columns:repeat(6,minmax(0,1fr))}}
-@media(min-width:900px){.forecast-summary{padding:18px}.forecast-summary .weather-timeline{grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}.forecast-tools .weather-timeline{grid-template-columns:1fr}}
+@media(min-width:900px){.forecast-summary{padding:12px 18px 16px}.forecast-tools .weather-timeline{grid-template-columns:1fr}}
 .history-report{padding:10px 0;border-top:1px solid var(--grid);font-size:13px}
 .weather-timeline button:focus-visible,.compare-row button:focus-visible,.odds-grid button:focus-visible{outline:2px solid var(--accent)}
 .outlook-hazard{border-left:3px solid var(--accent);padding-left:8px}
@@ -1155,10 +1156,9 @@ html.scrolled .top #fresh{display:inline-flex;max-height:0;opacity:0}
     </div>
       </div>
       <p class="forecast-context" id="forecast-context">Official regional precipitation amounts · Tap a county for details</p>
-    <section class="forecast-summary" id="weather-outlook" aria-labelledby="weather-outlook-title">
-      <div class="forecast-summary-head"><h3 id="weather-outlook-title">Next 48 hours</h3><span>NWS forecast</span></div>
-      <div id="weather-timing"></div><div id="winter-brief" hidden></div>
-      <button type="button" class="forecast-tools-open" data-forecast-tool="timing" aria-haspopup="dialog" aria-controls="forecast-tools">Forecast tools <span>Comparisons · winter odds · reports</span><b aria-hidden="true">›</b></button>
+    <section class="forecast-summary" id="weather-outlook" aria-label="Local forecast amounts and alerts">
+      <div class="forecast-summary-head"><span id="forecast-local-period">Local NWS amounts</span><button type="button" class="forecast-tools-open" data-forecast-tool="timing" aria-label="More forecast tools" aria-haspopup="dialog" aria-controls="forecast-tools">More <span aria-hidden="true">›</span></button></div>
+      <div id="forecast-local-amounts"></div><div id="weather-alerts"></div>
     </section>
     </div>
   </section>
@@ -1201,7 +1201,7 @@ html.scrolled .top #fresh{display:inline-flex;max-height:0;opacity:0}
       <div class="msrc" id="isrc"></div>
     </div>
 </div></section>
-  <section id="tool-sources" role="tabpanel" aria-labelledby="tool-tab-sources" hidden><h3>Forecast sources &amp; limits</h3><div class="model-data"><div class="msrc" id="msrc"></div><p id="mnote"></p></div><div id="weather-source-notes"></div></section>
+  <section id="tool-sources" role="tabpanel" aria-labelledby="tool-tab-sources" hidden><h3>Forecast sources &amp; limits</h3><div class="model-data"><div class="msrc" id="msrc"></div><p id="mnote"></p></div><div id="official-map-source"></div><div id="weather-source-notes"></div><div id="forecast-site-notes"></div></section>
 </dialog>
 <div id="toast" hidden></div>
 <dialog id="mfull" aria-label="Expanded forecast map" hidden><button type="button" class="mfx" id="mfx" aria-label="Close">&times;</button><div class="mfsc" id="mfsc"><img id="mfimg" alt=""></div><div class="mfhint">Tap map to zoom in/out</div></dialog>
@@ -1219,15 +1219,15 @@ html.scrolled .top #fresh{display:inline-flex;max-height:0;opacity:0}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=140"></script>
+<script src="wx-normalize.js?v=141"></script>
 <script src="wx-live.js?v=136"></script>
 <script src="wx-scenarios.js?v=136"></script>
 <script src="wx-vmap.js?v=136"></script>
 <script src="wx-radar.js?v=136"></script>
-<script src="wx-models.js?v=140"></script>
-<script src="wx-official.js?v=140"></script>
-<script src="wx-archive.js?v=140"></script>
-<script src="wx-outlook.js?v=140"></script>
-<script src="app.js?v=140"></script>
+<script src="wx-models.js?v=141"></script>
+<script src="wx-official.js?v=141"></script>
+<script src="wx-archive.js?v=141"></script>
+<script src="wx-outlook.js?v=141"></script>
+<script src="app.js?v=141"></script>
 </body>
 </html>

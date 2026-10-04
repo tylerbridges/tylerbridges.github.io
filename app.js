@@ -976,6 +976,7 @@
     "NOAA Weather Radio, Wireless Emergency Alerts on your phone and local officials. This is an independent site, not affiliated with or " +
     "endorsed by NWS or NOAA, provided as-is without warranty of any kind; you use it at your own risk.</p>";
   function renderFoot() {
+    $("forecast-site-notes").innerHTML = NOTICE;
     if (!doc) { $("foot").innerHTML = NOTICE; return; }
     var l = doc.loc;
     var link = "https://forecast.weather.gov/MapClick.php?lat=" + l.lat + "&lon=" + l.lon;
@@ -1299,6 +1300,7 @@
       },
       onDaily: function () { showTab("daily"); window.scrollTo({ top: 0, behavior: "auto" }); }
     });
+    renderLocalAmounts();
     $("mtotloc").textContent = (doc && doc.loc && doc.loc.label) || "";
     document.querySelectorAll("[data-forecast-mode]").forEach(function (b) {
       var selected = b.dataset.forecastMode === forecastMode;
@@ -1335,8 +1337,19 @@
   //   forecasts: chance of 4/8/12" snow or 0.25" ice for Day 1 = next 24 h and Day 2 = 24–48 h). Under each map, this
   //   place's official rain/snow/ice for the next 24 or 48 hours from weather.gov.
   var OQ = store("wx-oq2") || { k: "qpf", p: 24, th: "04" };
+  function renderLocalAmounts() {
+    var g = doc && doc.grid, now = Date.now(), end = now + OQ.p * H;
+    $("forecast-local-period").textContent = "Local NWS · next " + OQ.p + " hr (approx.)";
+    $("forecast-local-amounts").innerHTML = g ? '<dl class="forecast-local-amounts">' + [["qpf", "Liquid"], ["snow", "Snow"], ["ice", "Ice"]].map(function (r) {
+      var blocks = (g[r[0]] || []).filter(function (x) { return x[0] < end && x[0] + x[1] * H > now; }).sort(function (a, b) { return a[0] - b[0]; });
+      var cursor = now, known = true;
+      blocks.forEach(function (b) { if (!Number.isFinite(b[2]) || b[0] > cursor || cursor !== now && b[0] < cursor) known = false; cursor = Math.max(cursor, b[0] + b[1] * H); });
+      var value = known && cursor >= end ? sumRange(blocks, now, end).toFixed(2) + " in" : "Unavailable";
+      return '<div><dt>' + r[1] + '</dt><dd>' + value + '</dd></div>';
+    }).join("") + '</dl>' : '<p>Local amounts unavailable.</p>';
+  }
   function renderOfficial() {
-    var el = $("offq"); if (!el) return;
+    var el = $("offq"); if (!el) return; renderLocalAmounts();
     var c = Math.floor((Date.now() - 4 * H) / (12 * H)) * 12 * H, d = OQ.p === 48 ? 2 : 1, img, per, cap;
     if (OQ.k === "qpf") {
       img = OQ.p === 48 ? WPC + "qpf/d12_fill.gif" : WPC + "qpf/fill_94qwbg.gif"; per = span(c, c + OQ.p * H);
@@ -1346,23 +1359,16 @@
       img = WPC + "wwd/day" + d + (OQ.k === "snow" ? "_psnow_gt_" + OQ.th : "_pice_gt_25") + "_conus.gif";
       cap = "Official chance of " + (OQ.k === "snow" ? +OQ.th + '"+ snow' : '0.25"+ ice') + ", Day " + d + (d === 1 ? " (next 24 hours)" : " (24–48 hours out)");
     }
-    var g = doc && doc.grid, now = Date.now(), amt = "";
-    if (g) {
-      var end = now + OQ.p * H, row = [["qpf", "Rain / liquid", sumRange(g.qpf, now, end)], ["snow", "Snow", sumRange(g.snow, now, end)], ["ice", "Ice", sumRange(g.ice, now, end)]];
-      amt = '<div class="oqamt">' + row.map(function (r) {
-        return '<div' + (r[0] === OQ.k ? ' class="on"' : "") + "><b>" + (r[2] < 0.005 ? "0.00" : r[2].toFixed(2)) + " in</b><span>" + r[1] + "</span></div>";
-      }).join("") + "</div>" + '<div class="oqnote">' + esc((doc.loc && doc.loc.label) || "This location") + ", approximate next " + OQ.p + " hours · local NWS forecast</div>";
-    }
     var chip = function (attr, v, label, on) { return '<button type="button" class="chip' + (on ? " on" : "") + '" ' + attr + '="' + v + '">' + label + "</button>"; };
     var bust = "?t=" + Math.floor(Date.now() / 9e5);
     // one compact row: kind and period as two small segmented groups (snow adds its threshold group on the same row when it fits)
     el.innerHTML = '<div class="oqh oqrow"><span class="oqseg">' + chip("data-oqk", "qpf", "Precip", OQ.k === "qpf") + chip("data-oqk", "snow", "Snow chance", OQ.k === "snow") + chip("data-oqk", "ice", "Ice chance", OQ.k === "ice") + "</span>" +
       '<span class="oqseg">' + chip("data-oqp", 24, OQ.k === "qpf" ? "24 hr" : "Day 1", OQ.p === 24) + chip("data-oqp", 48, OQ.k === "qpf" ? "48 hr" : "Day 2", OQ.p === 48) + "</span>" +
       (OQ.k === "snow" ? '<span class="oqseg">' + ["04", "08", "12"].map(function (t) { return chip("data-oqt", t, +t + '"+', OQ.th === t); }).join("") + "</span>" : "") + "</div>" +
-      (window.WXOfficial ? '<div class="mleg oqkey" id="oqkey">' + WXOfficial.legend(OQ) + '</div><div class="oqwrap" id="oqwrap"><span class="mfr num" id="oqper">' + esc(per) + '</span></div><div class="oqcap" id="oqleg">' + esc(WXOfficial.caption(OQ)) + "</div>"
+      (window.WXOfficial ? '<div class="mleg oqkey" id="oqkey">' + WXOfficial.legend(OQ) + '</div><div class="oqwrap" id="oqwrap"><span class="mfr num" id="oqper">' + esc(per) + "</span></div>"
         : '<div class="oqimg" id="oqimg"><img src="' + img + bust + '" alt="' + esc(cap) + '"><span class="mfr num">' + esc(per) + "</span></div>") +
-      '<div class="oqnote"><b>' + esc(cap) + "</b> · NWS Weather Prediction Center · <span id='oqissued'>Issue time unavailable</span> · " + '<a href="' + WPC + (OQ.k === "qpf" ? "qpf/qpf2.shtml" : "wwd/winter_wx.shtml") + '" target="_blank" rel="noopener">Source</a></div>' +
-      (amt ? '<div class="oq-local">' + amt + '</div>' : '');
+      '<div class="oqnote">WPC · <span id="oqissued">Issue time unavailable</span></div>';
+    $("official-map-source").innerHTML = '<h3>Official map</h3><p><b>' + esc(cap) + '</b> · NWS Weather Prediction Center</p><p>' + esc(window.WXOfficial ? WXOfficial.caption(OQ) : cap) + '</p><p><a href="' + WPC + (OQ.k === "qpf" ? "qpf/qpf2.shtml" : "wwd/winter_wx.shtml") + '" target="_blank" rel="noopener">NWS source</a></p><p>Local liquid amounts include rain and melted snow. Rolling totals apportion published NWS blocks and are approximate; unavailable or incomplete coverage is not zero.</p>';
     var mapBox = el.querySelector("#oqwrap,#oqimg"), controls = el.querySelector(".oqrow");
     var regions = document.createElement("div"); regions.id = "official-regions"; regions.className = "map-regions";
     regions.setAttribute("role", "group"); regions.setAttribute("aria-label", "NWS map extent");
@@ -1381,7 +1387,6 @@
       if ($("oqissued")) $("oqissued").textContent = r.issue ? "Issued " + stamp(r.issue) : "Issue time unavailable";
     }).catch(function () {
       if (k0 !== OQ.k + OQ.p + OQ.th || $("oqwrap") !== wrap || tab !== "maps" || forecastMode !== "nws") return;
-      var leg = $("oqleg"); if (leg) leg.remove();
       imgOk(wrap);
     });
   }
