@@ -35,7 +35,7 @@ function rangePicker(startIn,endIn){
     var first = view.getDay(), days = new Date(view.getFullYear(), view.getMonth()+1, 0).getDate();
     for (var i = 0; i < first; i++) grid.appendChild(el("div"));
     for (var d = 1; d <= days; d++){ (function(v){ var b = el("button",null,String(+v.slice(8))); b.type = "button"; b.setAttribute("aria-label",label(v));
-      var cls = []; if (v === S) cls.push("s"); if (v === E || (v === S && !E)) cls.push("e"); if (S && E && v > S && v < E) cls.push("in"); if (v === todayIso) cls.push("today"); b.className = cls.join(" ");
+      var cls = []; if (v === S) cls.push("s"); if (v === E || (v === S && !E)) cls.push("e"); if (S && E && v > S && v < E) cls.push("in"); if (v === todayIso){ cls.push("today"); b.setAttribute("aria-current","date"); } b.className = cls.join(" ");
       if (v === S || v === E) b.setAttribute("aria-pressed","true");
       b.addEventListener("click",function(){ pick(v); }); grid.appendChild(b); })(iso(new Date(view.getFullYear(), view.getMonth(), d))); }
     sync();

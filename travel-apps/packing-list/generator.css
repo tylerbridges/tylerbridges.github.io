@@ -40,7 +40,8 @@
 .rp-grid button.in{background:var(--go-soft);}
 .rp-grid button.s,.rp-grid button.e{background:var(--go);color:var(--surface);font-weight:600;}
 .rp-grid button.s{border-radius:19px 0 0 19px;}.rp-grid button.e{border-radius:0 19px 19px 0;}.rp-grid button.s.e{border-radius:19px;}
-.rp-grid button.today{text-decoration:underline;}
+.rp-grid button.today{position:relative;text-decoration:none;font-weight:700;}
+.rp-grid button.today::after{content:"";position:absolute;left:50%;top:50%;width:34px;height:34px;box-sizing:border-box;border:2px solid #e5484d;border-radius:50%;transform:translate(-50%,-50%);pointer-events:none;}
 .rp-hint{font-size:13px;color:var(--ink-2);margin:6px 0 0;}
 .gen-form input[type=text],.gen-form select{width:100%;min-width:0;}
 .gen-form .field{min-width:0;}
