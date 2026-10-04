@@ -31,12 +31,13 @@ try {
   const initial = await labels();
   if (!initial.includes("Socks ×9") || !initial.includes("Contacts ×10")) fail("initial quantities");
   if (initial.includes('Kindle') || !initial.includes('Medicine pouch')) fail('saved preferences not used');
+  if(initial.includes('Small collapsible backpack'))fail('daypack included by default');
   if(!initial.includes('Lulu shorts ×3') || !initial.includes('T-shirts ×4'))fail('daily workouts must share regular clothes with full shorts coverage');
   if(await p.locator('[data-item-id="pack:light-packable-puffer-jacket"]').evaluate(n=>n.closest('section').querySelector('h3').textContent)!=='Clothing')fail('carry-on moved puffer');
   if(await p.locator('.refine-item summary').count())fail('row explanations returned');
   await p.click('button:has-text("Packing rules")');if(!(await p.textContent('.sheet-body')).includes('Workouts most days'))fail('workout rules not inspectable');await p.click('button:has-text("Close")');
 
-  for(const [name,ids] of [['Packing',['rf-packing']],['Bag',['rf-bag']],['Weather',['rf-climate','rf-thermal','rf-rain']],['Activities',['rf-hike','rf-workout','rf-water','rf-fish','rf-rugged']],['Events',['rf-formal','rf-dinners']],['Flight',['rf-longFlight']],['Laundry',['rf-laundry','rf-first','rf-interval']]]){
+  for(const [name,ids] of [['Packing',['rf-packing']],['Bag',['rf-bag']],['Weather',['rf-climate','rf-thermal','rf-rain']],['Activities',['rf-hike','rf-workout','rf-water','rf-fish','rf-daypack','rf-rugged']],['Events',['rf-formal','rf-dinners']],['Flight',['rf-longFlight']],['Laundry',['rf-laundry','rf-first','rf-interval']]]){
     await p.click(`button:has-text("${name}:")`);
     const actual=await p.locator('.sheet-body input, .sheet-body select').evaluateAll(nodes=>nodes.map(n=>n.id));
     if(JSON.stringify(actual)!==JSON.stringify(ids))fail(`${name} editor contains unrelated fields`);
@@ -47,6 +48,11 @@ try {
   if(!(await labels()).includes('Light packable puffer jacket'))fail('running hot removed cool-weather puffer');
   await p.click('button:has-text("Activities:")');if(await p.locator('#rf-rugged').isVisible())fail('rugged toggle visible without hiking');await p.check('#rf-hike');if(!await p.locator('#rf-rugged').isVisible())fail('rugged toggle missing');await p.click('button:has-text("Apply & recalculate")');await p.waitForSelector('.sheet-bg',{state:'detached'});
   if((await labels()).includes('Hiking boots / trail shoes'))fail('ordinary hiking added extra footwear');
+  if((await labels()).includes('Small collapsible backpack'))fail('hiking automatically added daypack');
+  await p.click('button:has-text("Activities:")');await p.check('#rf-daypack');await p.click('button:has-text("Apply & recalculate")');await p.waitForSelector('.sheet-bg',{state:'detached'});if(!(await labels()).includes('Small collapsible backpack'))fail('daypack toggle did not add item');
+  await p.reload();await p.waitForSelector('#rr-export');if(!(await labels()).includes('Small collapsible backpack'))fail('daypack choice lost on reload');
+  await p.click('button:has-text("Activities:")');await p.uncheck('#rf-daypack');await p.click('button:has-text("Apply & recalculate")');await p.waitForSelector('.sheet-bg',{state:'detached'});if((await labels()).includes('Small collapsible backpack'))fail('daypack toggle did not remove item');
+
   await p.click('button:has-text("Activities:")');await p.check('#rf-rugged');await p.click('button:has-text("Apply & recalculate")');await p.waitForSelector('.sheet-bg',{state:'detached'});if(!(await labels()).includes('Hiking boots / trail shoes'))fail('rugged hiking footwear missing');
   await p.click('button:has-text("Activities:")');await p.uncheck('#rf-hike');await p.click('button:has-text("Apply & recalculate")');await p.waitForSelector('.sheet-bg',{state:'detached'});if((await labels()).includes('Hiking boots / trail shoes'))fail('obsolete hiking footwear retained');
   await p.click('button:has-text("Work:")'); if(await p.locator('.sheet-body input, .sheet-body select').count()!==1)fail('work editor contains unrelated fields'); await p.selectOption('#rf-work','work'); await p.click('button:has-text("Apply & recalculate")'); await p.waitForSelector('.sheet-bg',{state:'detached'});

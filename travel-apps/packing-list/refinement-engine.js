@@ -39,7 +39,7 @@ function refineDefaults(state,profile,c){
   var out = [];
   var optional = /^(kindle|snacks|extra phone case|hotspot|belkin charging pad|wrinkle release|lint roller)$/i;
   (profile.extras || PACK_PREFS.extras).forEach(function(g){ (g.items || []).forEach(function(label){
-    if (qtyKey(label)) return;
+    if (qtyKey(label) || refineId(label) === "daypack") return;
     var item = refineItem(label,g.title,"Your usual packing preferences",{optional:optional.test(qtyBase(label))});
     out.push(item);
   }); });
@@ -63,10 +63,11 @@ function refineActivities(state,profile,c){
   });
   if (a.hike){
     out.push(refineItem(c.r.ruggedHike ? "Hiking boots / trail shoes" : "Brooks running shoes",c.r.ruggedHike ? "Clothing" : "Wear to travel",c.r.ruggedHike ? "Rugged or wet trails require hiking footwear" : "Your Brooks cover ordinary hikes",{required:true}));
-    [["Small collapsible backpack","Personal bag & day gear"],["Water bottle","Personal bag & day gear"],["Hat","Wear to travel"]].forEach(function(x){ out.push(refineItem(x[0],x[1],"Hiking dependency",{required:true})); });
+    [["Water bottle","Personal bag & day gear"],["Hat","Wear to travel"]].forEach(function(x){ out.push(refineItem(x[0],x[1],"Hiking dependency",{required:true})); });
     if (c.unknown) out.push(refineItem("Rain jacket","Clothing","Hiking weather is unconfirmed; conservative weather protection",{required:true}));
     if (c.cool || c.cold) out.push(refineItem("Light packable puffer jacket","Clothing","Hiking insulation",{required:true}));
   }
+  if(c.r.daypack)out.push(refineItem("Small collapsible backpack","Personal bag & day gear","You selected I need a daypack",{required:true}));
   if (a.workout){
     out.push(refineItem("Brooks running shoes","Wear to travel","Workouts use your usual shoes",{required:true}));
     out.push(refineItem("Water bottle","Personal bag & day gear","Workout hydration",{required:true}));
@@ -99,7 +100,7 @@ var REFINE_RULES = {
   clothing:{deps:["dates","laundry","packingMode","climate","thermal","activities"],run:refineClothing},
   defaults:{deps:["profile"],run:refineDefaults},
   layers:{deps:["climate","thermal","rain"],run:refineLayers},
-  activities:{deps:["activities","climate","thermal","rain","dates","laundry","packingMode","intl","mode","longFlight","ruggedHike","profile"],run:refineActivities},
+  activities:{deps:["activities","climate","thermal","rain","dates","laundry","packingMode","intl","mode","longFlight","ruggedHike","daypack","profile"],run:refineActivities},
   events:{deps:["formalDays","dinners","profile"],run:refineEvents},
   work:{deps:["work","profile"],run:refineWork},
   consumables:{deps:["dates"],run:refineConsumables}
@@ -110,7 +111,7 @@ function refineEvaluate(state,profile,changed){
   var c = refineContext(state), signature = JSON.stringify(profile), cache = {}, keys = {}, ran = [];
   // Standalone app: cache validity comes from actual dependency values, never caller hints alone.
   Object.keys(REFINE_RULES).forEach(function(id){var rule=REFINE_RULES[id];
-    keys[id]="preferences-2026-10-v1:"+JSON.stringify(rule.deps.map(function(key){if(key==="profile")return profile;if(key==="dates")return [state.inputs.start,state.inputs.end];return Object.prototype.hasOwnProperty.call(state.inputs,key) ? state.inputs[key] : state.refinements[key];}));
+    keys[id]="preferences-2026-10-v2:"+JSON.stringify(rule.deps.map(function(key){if(key==="profile")return profile;if(key==="dates")return [state.inputs.start,state.inputs.end];return Object.prototype.hasOwnProperty.call(state.inputs,key) ? state.inputs[key] : state.refinements[key];}));
     if(!state.ruleResults || !state.ruleResults[id] || !state.ruleKeys || state.ruleKeys[id]!==keys[id]){cache[id]=rule.run(state,profile,c);ran.push(id);}else cache[id]=state.ruleResults[id];
   });
   var merged = {}, order = [], excluded = profile.refinementProfile && profile.refinementProfile.excluded || {};
