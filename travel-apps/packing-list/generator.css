@@ -187,3 +187,22 @@ h2.k,.gen-opt h3,.psec-head h3,details.panel>summary{font-size:var(--t-foot);let
 .refine-required p{margin:8px 0;overflow-wrap:anywhere;}
 .refine-required .btn{width:100%;}
 .sheet .gen-form input,.sheet .gen-form select{min-width:0;font-size:16px;}
+
+/* Standalone app: keep iteration feedback and launch actions in view. */
+.sheet.test-sheet{overflow:hidden;}
+.test-sheet .sheet-body{overflow:auto;min-height:0;}
+.test-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
+.test-fields .chipchk{min-width:0;white-space:normal;}
+.test-editor input,.test-editor select{min-width:0;width:100%;font-size:16px;}
+.test-editor input[type=checkbox]{width:auto;}
+.test-editor [aria-invalid=true]{outline:2px solid var(--accent);}
+.test-preview{position:sticky;top:0;z-index:2;background:var(--surface);max-height:180px;overflow:auto;padding:10px;}
+.test-preview h3{margin:0 0 4px;font-size:15px;}
+.test-preview p{display:inline-block;margin:3px 8px 3px 0;font-size:13px;}
+.test-preview p.gen-note{display:block;}
+.test-actions{position:sticky;bottom:0;z-index:3;background:var(--surface);padding:10px 0;}
+.test-actions .btn{flex:1 1 140px;}
+.outfit-preview{padding:12px;border-radius:14px;background:var(--surface);border:1px solid var(--glass-edge);}
+.outfit-preview p{margin:6px 0;}
+
+.test-sheet .sheet-body>*{flex-shrink:0;}
