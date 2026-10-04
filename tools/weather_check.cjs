@@ -82,3 +82,11 @@ test('wettest block compares published block averages without splitting or prora
   assert.match(row.detail, /0.30 in/);
   assert.equal(O.events({ ...g, qpf: [[start - H, 6, 10]] }, start).some(r => r.label === 'Wettest NWS block'), false);
 });
+
+test('archive waits for data normalized with missing-value coverage instead of saving older cached zeros', () => {
+  const d = { via: 'live', loc: { lat: 45, lon: -93 }, updated: { grid: Date.now() - H }, grid: { snow: [[Date.now(), 24, 0]] } };
+  const count = A.read().forecasts.length;
+  A.capture(d); assert.equal(A.read().forecasts.length, count);
+  A.capture({ ...d, grid: { ...d.grid, s: { wxKnown: [true] } } });
+  assert.equal(A.read().forecasts.length, count + 1);
+});

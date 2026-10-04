@@ -15,7 +15,7 @@
   }
   function allowed() { return !root.location || !/[?&](?:nostore=1|test=)/.test(root.location.search); }
   function capture(d) {
-    if (!allowed() || d.via !== "live" || !d.grid || !d.updated || !Number.isFinite(d.updated.grid)) return;
+    if (!allowed() || d.via !== "live" || !d.grid || !d.grid.s || !Array.isArray(d.grid.s.wxKnown) || !d.updated || !Number.isFinite(d.updated.grid)) return;
     var a = read(), key = ["nws", d.loc.lat, d.loc.lon, d.updated.grid].join(":");
     if (a.forecasts.some(function (x) { return x.id === key; })) return;
     a.forecasts.push({ id: key, source: "nws", label: "NWS point forecast", lat: d.loc.lat, lon: d.loc.lon,
