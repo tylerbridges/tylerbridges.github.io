@@ -52,6 +52,16 @@ function refinePersist(t,state,result){
   if (!state.baseline) state.baseline = result.items.map(function(x){ return {id:x.id,label:x.label,quantity:x.quantity,reasons:x.reasons}; });
   state.updatedAt = Date.now(); return db.doc(refinePath(t.id)).set(state);
 }
+// Standalone app: a failed second write restores the trip header to its original dates.
+function refineSaveTrip(record,patch,state,result){
+  var doc=db.doc("trips/"+record.id),previous;
+  return doc.get().then(function(snap){previous=snap;return doc.set(patch);}).then(function(){
+    return refinePersist(record,state,result).catch(function(error){
+      var restore=previous.exists ? doc.set(previous.data()) : doc.delete();
+      return restore.then(function(){throw error;});
+    });
+  });
+}
 function refineLegacyResult(state){
   var items = Object.keys(state.overrides.added).filter(function(id){ return !state.overrides.removed[id]; }).map(function(id){ return Object.assign({},state.overrides.added[id],state.overrides.edited[id] || {},{manual:true,reasons:["Preserved from your existing list"]}); });
   var groups = []; items.forEach(function(item){ var g = groups.find(function(x){ return x.title === item.section; }); if (!g){ g = {title:item.section,items:[]}; groups.push(g); } g.items.push(item); });

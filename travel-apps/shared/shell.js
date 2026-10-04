@@ -73,5 +73,7 @@ function tripForm(t){
 (function boot(){
   function calm(){ var a = document.activeElement; return !(a && (a.tagName === "TEXTAREA" || a.tagName === "INPUT" || a.tagName === "SELECT")) && !document.querySelector(".stopedit") && !sheetBg; }
   db.collection("trips").onSnapshot(function(sn){ var first = !READY; RAW = {}; (sn.docs || []).forEach(function(d){ RAW[d.id] = d.data(); }); rebuild(); READY = true;
-    if (first || (calm() && route().tab !== APP.tab)) render(); if (APP.onTrips) APP.onTrips(); });
+    // Standalone app: keep setup controls and save errors visible during document notifications.
+    var current=route(),editing=APP.preserveSetup && (current.tab==="edit" || current.page==="new");
+    if (first || (calm() && current.tab !== APP.tab && !editing)) render(); if (APP.onTrips) APP.onTrips(); });
 })();

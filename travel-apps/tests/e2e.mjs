@@ -132,6 +132,27 @@ try {
   if(await sandbox.evaluate(()=>Object.keys(Store.exportAll()).filter(k=>k.startsWith('trips/')).length)!==1)fail('test reset accumulated trips');
   await sandbox.click('button:has-text("Update trip & list")');await sandbox.waitForSelector('#rr-export');
   if(await sandbox.locator('[data-item-id="pack:socks"] strong').textContent()!=='Socks ×9')fail('laundry scenario quantities');
+  await sandbox.click('button:has-text("Check this scenario")');await sandbox.waitForSelector('[data-test-check]');if(await sandbox.locator('[data-test-check="fail"]').count())fail('embedded laundry checks failed');await sandbox.click('button:has-text("Close")');
+  await sandbox.click('button:has-text("Test menu / reset")');await sandbox.click('button:has-text("Run all scenario checks")');await sandbox.waitForSelector('[data-test-check]');if(await sandbox.locator('[data-test-check="fail"]').count())fail('embedded scenario checks failed: '+await sandbox.locator('[data-test-check="fail"]').allTextContents());await sandbox.click('button:has-text("Close")');
+  await sandbox.locator('[data-item-id="pack:wrinkle-release"]').getByRole('button',{name:'Remove',exact:true}).click();await sandbox.click('button:has-text("Usually don’t pack this")');await sandbox.waitForSelector('.sheet-bg',{state:'detached'});
+  await sandbox.evaluate(()=>document.querySelector('.refine-one').open=true);await sandbox.click('button:has-text("Packing:")');await sandbox.selectOption('#rf-packing','extra');await sandbox.click('button:has-text("Apply & recalculate")');await sandbox.waitForSelector('.sheet-bg',{state:'detached'});
+  await sandbox.locator('.refine-changes').getByRole('button',{name:'Undo',exact:true}).click();await sandbox.waitForFunction(()=>document.querySelector('.refine-changes').textContent.includes('Last change undone'));
+  if(!await sandbox.evaluate(()=>!!generatorPrefs().refinementProfile.excluded['pack:wrinkle-release']))fail('Undo of packing erased an older preference exclusion');
+  const savedBefore=await sandbox.evaluate(()=>({trip:lsGet('ta:trips/PACKING-TEST'),state:lsGet('ta:'+refinePath('PACKING-TEST'))}));
+  await sandbox.click('a:has-text("Trip basics")');await sandbox.waitForSelector('#rs-where');
+  const nextEndLabel=await sandbox.evaluate(()=>{var d=pd(TRIPS['PACKING-TEST'].end);d.setDate(d.getDate()+1);return d.toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});});await sandbox.locator('.rp-sum button').nth(1).click();for(let n=0;n<3 && !(await sandbox.getByRole('button',{name:nextEndLabel,exact:true}).count());n++)await sandbox.getByRole('button',{name:'Next month',exact:true}).click();await sandbox.getByRole('button',{name:nextEndLabel,exact:true}).click();await sandbox.getByRole('button',{name:'OK',exact:true}).click();
+  await sandbox.evaluate(()=>{window.testOriginalDoc=db.doc;db.doc=function(path){var doc=window.testOriginalDoc(path);if(path===refinePath('PACKING-TEST'))doc.set=function(){return Promise.reject(new Error('Injected second write failure'));};return doc;};document.querySelector('.rs-form').requestSubmit();});
+  await sandbox.waitForFunction(()=>document.querySelector('.rs-form .gen-error').textContent.includes('Could not save'));
+  const savedAfter=await sandbox.evaluate(()=>{db.doc=window.testOriginalDoc;return {trip:lsGet('ta:trips/PACKING-TEST'),state:lsGet('ta:'+refinePath('PACKING-TEST'))};});
+  if(JSON.stringify(savedBefore)!==JSON.stringify(savedAfter))fail('Failed second write left dates or state changed');await sandbox.reload();await sandbox.waitForSelector('#rs-where');await sandbox.click('a:has-text("Cancel")');await sandbox.waitForSelector('#rr-export');
+
+  await sandbox.goto(B+'packing-list/?test=1#rules');await sandbox.waitForSelector('.gen-rule');if(/Kindle always|1 day of dress clothes by default|fewer pants/.test(await sandbox.textContent('#view')))fail('legacy rules prose still displayed');await sandbox.goto(B+'packing-list/?test=1#PACKING-TEST');await sandbox.waitForSelector('#rr-export');
+  await sandbox.click('button:has-text("Test menu / reset")');await sandbox.selectOption('#pt-scenario','one-day');await sandbox.fill('#pt-name','Five-day suit variant');await sandbox.fill('#pt-days','5');await sandbox.fill('#pt-workDays','3');await sandbox.fill('#pt-formal','2');await sandbox.fill('#pt-dinners','2');await sandbox.click('button:has-text("Save named scenario")');await sandbox.waitForFunction(()=>document.querySelector('#pt-error').textContent.includes('Scenario saved'));await sandbox.click('button:has-text("Reset & generate list")');await sandbox.waitForSelector('#rr-export');
+  if(await sandbox.evaluate(()=>refineLoad(TRIPS['PACKING-TEST']).refinements.formalDays)!==2)fail('configured suit days not applied');
+  if(await sandbox.evaluate(()=>refineDays(TRIPS['PACKING-TEST'].start,TRIPS['PACKING-TEST'].end))!==5)fail('configured trip length not applied');
+  await sandbox.click('button:has-text("Test menu / reset")');if(!(await sandbox.locator('#pt-scenario').textContent()).includes('Five-day suit variant'))fail('saved variant disappeared on reset');await sandbox.selectOption('#pt-scenario','long-trip');await sandbox.click('button:has-text("Reset & generate list")');await sandbox.waitForSelector('#rr-export');
+  if(await sandbox.evaluate(()=>refineLoad(TRIPS['PACKING-TEST']).refinements.laundry.firstWash)!==3)fail('configured first wash not applied');
+  await sandbox.click('button:has-text("Test menu / reset")');if(!(await sandbox.locator('#pt-scenario').textContent()).includes('Five-day suit variant'))fail('reset deleted the scenario library');await sandbox.click('button:has-text("Close")');
   const realAfter=await sandbox.evaluate(()=>Object.fromEntries(Object.keys(localStorage).filter(k=>!k.startsWith('packing-test:')).map(k=>[k,localStorage.getItem(k)])));
   if(JSON.stringify(realBefore)!==JSON.stringify(realAfter))fail('test flow changed live data');
   for(const width of [360,390,430]){await sandbox.setViewportSize({width,height:844});if(await sandbox.evaluate(()=>document.documentElement.scrollWidth>innerWidth))fail('test controls mobile overflow');}
@@ -144,7 +165,7 @@ try {
   const d1 = await p.textContent('section.day[data-date="2026-10-08"]');
   if (!/11:35a/.test(d1) || !/Leave home for/.test(d1) || !/Lodging · 4 nights/.test(d1)) fail("itinerary day 1: " + d1.replace(/\s+/g, " ").slice(0, 200));
   if ((await p.$$("section.day")).length !== 5) fail("expected 5 days");
-} catch (e) { fail(e.message); }
+} catch (e) { fail(e.stack || e.message); }
 if (errs.length) fail("page errors: " + errs.join(" | "));
 if(apiCalls)fail('routine refinement made an AI API call');
 await b.close(); srv.close();

@@ -65,3 +65,7 @@ python3 -m http.server 8000
 ```
 
 Packing List → Test flow opens a reusable sandbox (`?test=1`). Choose Professional, Laundry + workouts, or Warm weather + activities; reset into setup or generated review, resume the saved test, and exercise normal refinements/manual overrides/Notes export. The separate `packing-test:` namespace isolates test trips, preferences, exclusions and export documents. Reset copies current real preferences and clears only sandbox data.
+
+In Test flow, **Check this scenario** or **Run all scenario checks** shows fixed expected/actual results for outfit sharing, tie/khaki rotation, laundry buffers, activity dependencies, manual quantity preservation and native Notes formatting. Checks run entirely in memory; the saved test remains unchanged, and its pending export decisions are listed separately.
+
+The Test flow menu also configures trip length (1–60 days), video workdays, suit days, nice dinners, weather, activities, baggage and laundry timing, with an immediate quantity preview. Save named variants or make another copy; presets and named variants remain available across resets. Fixed checks use the selected scenario’s original regression family and are separate from the configurable preview.

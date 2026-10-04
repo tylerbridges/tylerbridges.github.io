@@ -8,19 +8,26 @@ var PACK_TEST_SCENARIOS=[
   {id:"laundry",label:"Laundry + workouts · 14 days",days:14,setup:{workout:true,climate:"cool",laundry:"cycle",interval:4},hint:"Change laundry timing, then select Pack extra. Check the single buffer. Edit a quantity and recalculate to check that your override stays."},
   {id:"activities",label:"Warm weather + activities · 4 days",days:4,setup:{water:true,hike:true,climate:"hot",dinners:2},hint:"Choose dinner clothes, toggle rugged hiking and the daypack, then change to cold weather. Check that dependent items appear and disappear."}
 ];
-function packingTestScenario(){return PACK_TEST_SCENARIOS.find(function(x){return x.id===lsGet("test-scenario","professional");}) || PACK_TEST_SCENARIOS[0];}
+PACK_TEST_SCENARIOS.push(
+  {id:"one-day",base:"professional",label:"One-day professional",days:1,setup:{tripType:"work",work:"laptop",workDays:1,formal:1,dinners:1,climate:"mild"},hint:"Check same-day sharing and a one-shirt, one-tie rotation."},
+  {id:"long-trip",base:"laundry",label:"Long trip · 30 days",days:30,setup:{workout:true,climate:"cool",laundry:"cycle",firstWash:3,interval:5},hint:"Test long-trip clothing caps, different first-wash timing and frequent workouts."},
+  {id:"uncertain",base:"activities",label:"Uncertain weather · 10 days",days:10,setup:{hike:true,climate:"unknown",dinners:2},hint:"Confirm weather later and test how activities, layers and dinner outfits change."}
+);
+function packingTestLibrary(){return lsGet("test-scenario-library",[]);}
+function packingTestOptions(){return PACK_TEST_SCENARIOS.concat(packingTestLibrary());}
+function packingTestScenario(){return lsGet("test-scenario-config",null) || packingTestOptions().find(function(x){return x.id===lsGet("test-scenario","professional");}) || PACK_TEST_SCENARIOS[0];}
+function packingTestRecord(scenario){var start=isoToday(),date=pd(start);return {id:"PACKING-TEST",name:"Test · "+scenario.label,where:"Sample destination",start:start,end:isoOf(new Date(date.getFullYear(),date.getMonth(),date.getDate()+scenario.days-1)),status:"Researching",bookings:{},days:[],createdAt:Date.now()};}
 function packingTestStart(scenario,setup){
   var error=document.getElementById("pt-error");
   try{
     if(!PACK_TEST_MODE)throw new Error("Open test mode first.");
     var live=localStorage.getItem("ta:meta/packing"),prefs=live ? JSON.parse(live):PACK_PREFS;
-    var keys=[];for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);if(k && k.indexOf(PACK_TEST_PREFIX)===0)keys.push(k);}
+    var keys=[];for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);if(k && k.indexOf(PACK_TEST_PREFIX+"ta:")===0)keys.push(k);}
     // Reset only this sandbox, including its exports and overrides.
     keys.forEach(function(k){localStorage.removeItem(k);});
-    localStorage.setItem(PACK_TEST_PREFIX+"ta:meta/packing",JSON.stringify(prefs));lsSet("test-scenario",scenario.id);
-    var start=isoToday(),date=pd(start),end=isoOf(new Date(date.getFullYear(),date.getMonth(),date.getDate()+scenario.days-1));
-    var t={id:"PACKING-TEST",name:"Test · "+scenario.label,where:"Sample destination",start:start,end:end,status:"Researching",bookings:{},days:[],createdAt:Date.now()};
-    var state=refineNewState(t,scenario.setup),result=refineEvaluate(state,prefs,null);
+    localStorage.setItem(PACK_TEST_PREFIX+"ta:meta/packing",JSON.stringify(prefs));lsSet("test-scenario",scenario.id);lsSet("test-scenario-config",scenario);
+    var t=packingTestRecord(scenario);
+    var state=refineNewState(t,scenario.setup);state.refinements.laundry.firstWash=scenario.setup.firstWash || scenario.setup.interval || 4;var result=refineEvaluate(state,prefs,null);
     return db.doc("trips/"+t.id).set(t).then(function(){return refinePersist(t,state,result);}).then(function(){
       // Reload drops subscriptions/caches from the preceding scenario.
       location.replace("?test=1#"+t.id+(setup ? ".edit":""));location.reload();
@@ -28,17 +35,72 @@ function packingTestStart(scenario,setup){
   }catch(e){if(error)error.textContent="Could not reset the test. Check browser storage and try again.";return Promise.resolve();}
 }
 function packingTestMenu(){
-  var body=openSheet("Test flow");body.appendChild(el("p","muted","Reusable sandbox using the same setup, rules, refinements and Notes export. Real trips and preferences stay separate. Reset copies your current preferences."));
+  var body=openSheet("Test flow");body.appendChild(el("p","muted","Configure reusable test scenarios. Preview quantities, save named variants, then start setup or jump to the generated list. Real trips and preferences stay separate."));
   if(!PACK_TEST_MODE){body.appendChild(generatorLink("Open test flow","?test=1",true));return;}
-  var select=sel("pt-scenario",PACK_TEST_SCENARIOS.map(function(x){return [x.id,x.label];}),packingTestScenario().id),hint=el("p","gen-note"),error=el("p","gen-error");error.id="pt-error";error.setAttribute("role","status");
-  function selected(){return PACK_TEST_SCENARIOS.find(function(x){return x.id===select.value;});}function describe(){hint.textContent=selected().hint;}select.addEventListener("change",describe);describe();
-  body.appendChild(fieldEl("Sample scenario",select));body.appendChild(hint);
-  var actions=el("div","gen-actions");actions.appendChild(generatorButton("Reset & test setup",function(){packingTestStart(selected(),true);},true));actions.appendChild(generatorButton("Reset & generate list",function(){packingTestStart(selected(),false);}));
-  if(TRIPS["PACKING-TEST"]){var resume=generatorLink("Resume current test","#PACKING-TEST");resume.addEventListener("click",closeSheet);actions.appendChild(resume);}body.appendChild(actions);body.appendChild(error);body.appendChild(generatorLink("Exit test mode","./"));
+  var options=packingTestOptions(),active=packingTestScenario(),select=sel("pt-scenario",options.map(function(x){return [x.id,x.label];}),active.id),hint=el("p","gen-note"),error=el("p","gen-error"),preview=el("div","panel"),config=clone(active),fields={},form=el("div","stack"),name=inp("pt-name","text",active.label);
+  error.id="pt-error";error.setAttribute("role","status");preview.setAttribute("aria-live","polite");body.appendChild(fieldEl("Sample or saved scenario",select));body.appendChild(fieldEl("Scenario name",name));body.appendChild(hint);
+  function number(key,label,max){var input=inp("pt-"+key,"number",0);input.min=key==="days" || key==="interval" || key==="firstWash" ? "1":"0";input.max=String(max);input.style.fontSize="16px";fields[key]=input;form.appendChild(fieldEl(label,input));input.addEventListener("input",drawPreview);return input;}
+  number("days","Trip length (days)",60);number("workDays","Video-call workdays",60);number("formal","Full suit days",60);number("dinners","Nice dinners",60);
+  var climate=sel("pt-climate",[["unknown","Uncertain weather"],["hot","Hot"],["mild","Mild"],["cool","Cool"],["cold","Cold"]],"cool");form.appendChild(fieldEl("Coldest outdoor conditions",climate));climate.addEventListener("change",drawPreview);
+  var checks={};[["workout","Workouts most days"],["hike","Hiking"],["water","Swimming"],["daypack","Daypack"],["laundry","Laundry available"],["carryon","Carry-on only"]].forEach(function(x){var label=el("label","chipchk"),c=el("input");c.type="checkbox";c.id="pt-"+x[0];checks[x[0]]=c;label.appendChild(c);label.appendChild(el("span",null,x[1]));form.appendChild(label);c.addEventListener("change",drawPreview);});
+  number("firstWash","First wash day",60);number("interval","Wash interval (days)",60);
+  function bounded(key,min,max){return Math.max(min,Math.min(max,Math.floor(+fields[key].value || min)));}
+  function current(){var s=clone(config),days=bounded("days",1,60);s.label=name.value.trim() || "My scenario";s.days=days;s.setup=Object.assign({},s.setup,{formal:bounded("formal",0,days),dinners:bounded("dinners",0,days),workDays:bounded("workDays",0,days),climate:climate.value,laundry:checks.laundry.checked ? "cycle":"none",interval:bounded("interval",1,days),firstWash:bounded("firstWash",1,days),bag:checks.carryon.checked ? "carryon":"checked"});["workout","hike","water","daypack"].forEach(function(key){s.setup[key]=checks[key].checked;});if(s.setup.workDays>0)s.setup.work="laptop";return s;}
+  function makeState(s,t){var state=refineNewState(t,s.setup);state.refinements.laundry.firstWash=s.setup.firstWash || s.setup.interval || 4;return state;}
+  function drawPreview(){var s=current();["formal","dinners","workDays","firstWash","interval"].forEach(function(key){fields[key].max=String(s.days);});fields.firstWash.parentNode.hidden=fields.interval.parentNode.hidden=!checks.laundry.checked;preview.textContent="";preview.appendChild(el("h3",null,"Quantity preview"));preview.appendChild(el("p","gen-note","Assumes button-up dinners share video-work shirts, separate white suit shirts, usual ties and khakis. Confirm outfit choices in the flow."));
+    try{var t=packingTestRecord(s),state=makeState(s,t);state.refinements.dinnerTop="buttonup";state.refinements.dinnerBottoms=s.setup.climate==="hot" || s.setup.climate==="mild" ? "shorts":"khakis";var result=refineEvaluate(state,generatorPrefs(),null);["tshirts","socks","lulu-shorts","button-up-long-sleeve-shirt","white-shirt","tie","khakis"].forEach(function(id){var item=result.items.find(function(x){return x.id==="pack:"+id;});if(item)preview.appendChild(el("p",null,refineLabel(item)));});}catch(e){preview.appendChild(el("p","gen-error","Enter valid settings to preview."));}}
+  function fill(s){config=clone(s);name.value=s.label;fields.days.value=s.days;fields.workDays.value=s.setup.workDays==null ? (s.setup.work && s.setup.work!=="none" ? s.days:0):s.setup.workDays;fields.formal.value=s.setup.formal || 0;fields.dinners.value=s.setup.dinners || 0;fields.firstWash.value=s.setup.firstWash || s.setup.interval || 4;fields.interval.value=s.setup.interval || 4;climate.value=s.setup.climate || "unknown";["workout","hike","water","daypack"].forEach(function(key){checks[key].checked=!!s.setup[key];});checks.laundry.checked=s.setup.laundry==="cycle";checks.carryon.checked=s.setup.bag!=="checked";hint.textContent=s.hint;drawPreview();}
+  fields.days.addEventListener("change",function(){var days=bounded("days",1,60);["workDays","formal","dinners","firstWash","interval"].forEach(function(key){fields[key].value=bounded(key,key==="firstWash" || key==="interval" ? 1:0,days);});drawPreview();});select.addEventListener("change",function(){fill(options.find(function(x){return x.id===select.value;}));});body.appendChild(form);body.appendChild(preview);
+  var actions=el("div","gen-actions");
+  function start(setup){var s=current();return packingTestStart(s,setup);}
+  actions.appendChild(generatorButton("Reset & test setup",function(){start(true);},true));actions.appendChild(generatorButton("Reset & generate list",function(){start(false);}));
+  function saveScenario(copy){var s=current(),library=packingTestLibrary();s.base=s.base || s.id;if(copy || s.id.indexOf("custom-")!==0)s.id="custom-"+Date.now().toString(36);var index=library.findIndex(function(x){return x.id===s.id;});if(index<0)library.push(s);else library[index]=s;try{localStorage.setItem(PACK_TEST_PREFIX+"test-scenario-library",JSON.stringify(library));options=PACK_TEST_SCENARIOS.concat(library);var option=Array.from(select.options).find(function(x){return x.value===s.id;});if(!option){option=el("option");option.value=s.id;select.appendChild(option);}option.textContent=s.label;select.value=s.id;config=clone(s);error.textContent="Scenario saved. Resetting the test keeps your named scenarios.";}catch(e){error.textContent="Could not save this scenario.";}}
+  actions.appendChild(generatorButton("Save named scenario",function(){saveScenario(false);}));actions.appendChild(generatorButton("Save as another scenario",function(){saveScenario(true);}));
+  if(TRIPS["PACKING-TEST"]){var resume=generatorLink("Resume current test","#PACKING-TEST");resume.addEventListener("click",closeSheet);actions.appendChild(resume);}actions.appendChild(generatorButton("Run all scenario checks",function(){packingTestCheckSheet(PACK_TEST_SCENARIOS.slice(0,3));}));body.appendChild(actions);body.appendChild(error);body.appendChild(generatorLink("Exit test mode","./"));fill(active);
 }
 function packingTestBanner(){
-  var panel=el("section","panel"),actions=el("div","gen-actions");panel.appendChild(el("h2","k","Test mode"));panel.appendChild(el("p","muted","Changes are saved only in your test sandbox."));panel.appendChild(el("p","gen-note",packingTestScenario().hint));actions.appendChild(generatorButton("Test menu / reset",packingTestMenu));actions.appendChild(generatorLink("Exit test mode","./"));panel.appendChild(actions);return panel;
+  var panel=el("section","panel"),actions=el("div","gen-actions");panel.appendChild(el("h2","k","Test mode"));panel.appendChild(el("p","muted","Changes are saved only in your test sandbox."));panel.appendChild(el("p","gen-note",packingTestScenario().hint));actions.appendChild(generatorButton("Test menu / reset",packingTestMenu));actions.appendChild(generatorButton("Check this scenario",function(){packingTestCheckSheet([packingTestScenario()]);}));actions.appendChild(generatorLink("Exit test mode","./"));panel.appendChild(actions);return panel;
 }
 function packingTestHome(){
   var w=el("div","stack"),panel=el("section","panel");w.appendChild(packingTestBanner());panel.appendChild(generatorButton("Choose a test scenario",packingTestMenu,true));if(TRIPS["PACKING-TEST"])panel.appendChild(generatorLink("Resume current test","#PACKING-TEST"));w.appendChild(panel);return w;
+}
+// Standalone app: fixed regression cases run in memory without changing the saved sandbox.
+function packingTestFixture(scenario){var found=PACK_TEST_SCENARIOS.find(function(x){return x.id===(scenario.base || scenario.id);}) || PACK_TEST_SCENARIOS[0];return found.base ? PACK_TEST_SCENARIOS.find(function(x){return x.id===found.base;}):found;}
+function packingTestChecks(scenario){
+  scenario=packingTestFixture(scenario);
+  var t={id:"CHECK",name:"Scenario check",where:"Sample",start:"2026-10-01",end:"2026-10-"+String(scenario.days).padStart(2,"0")},state=refineNewState(t,scenario.setup),rows=[],result;
+  function expect(name,expected,actual){rows.push({name:name,expected:String(expected),actual:String(actual),pass:expected===actual});}
+  function run(){result=refineEvaluate(state,PACK_PREFS,[]);state.ruleResults=result.ruleResults;state.ruleKeys=result.ruleKeys;return result;}
+  function quantity(id){var item=result.items.find(function(x){return x.id==="pack:"+id;});return item ? item.quantity:0;}
+  function count(name,id,expected){expect(name,expected,quantity(id));}
+  try{
+    if(scenario.id==="professional"){
+      state.refinements.workDays=5;state.refinements.dinnerTop="buttonup";state.refinements.dinnerBottoms="khakis";run();
+      count("5 video days + 3 same-day dinners share 5 button-ups","button-up-long-sleeve-shirt",5);count("3 suit days need 3 white shirts","white-shirt",3);count("Multiple suit days rotate 2 ties","tie",2);count("Suit/dinner khakis share 2 pairs","khakis",2);count("Suit and dinner share one belt","belt",1);
+      state.refinements.shareSuitShirts=true;state.refinements.suitOverlap=2;run();count("Compatible shirts with 2 shared suit days need 6 shirts","white-shirt",6);count("Compatible shirts replace the separate button-up pool","button-up-long-sleeve-shirt",0);
+      state.refinements.shareSuitShirts=false;state.refinements.formalDays=1;run();count("One suit day reduces rotation to one tie","tie",1);count("One suit day needs one white shirt","white-shirt",1);
+    }else if(scenario.id==="laundry"){
+      run();count("14 days, wash every 4 days: 4 packed T-shirts","tshirts",4);count("Laundry plus spare day: 9 packed socks","socks",9);count("Workouts have 3 pairs of shorts for 5 clothing days","lulu-shorts",3);
+      state.refinements.packingMode="extra";run();count("Pack extra does not stack another laundry buffer","socks",9);count("Pack extra keeps the shared T-shirt buffer","tshirts",4);
+      state.refinements.laundry.firstWash=2;state.refinements.laundry.interval=2;run();count("Wash every 2 days recalculates socks to 5","socks",5);count("Wash every 2 days recalculates T-shirts to 2","tshirts",2);
+    }else{
+      state.refinements.dinnerTop="polo";state.refinements.dinnerBottoms="shorts";run();count("2 dinners need 2 polos","polo-shirts",2);count("Ordinary hiking does not add hiking footwear","hiking-footwear",0);count("Hiking does not automatically add a daypack","daypack",0);
+      state.refinements.ruggedHike=true;state.refinements.daypack=true;run();count("Rugged hiking adds footwear","hiking-footwear",1);count("Selected daypack is included","daypack",1);
+      state.inputs.activities.hike=false;state.refinements.daypack=false;run();count("Turning hiking off removes its footwear","hiking-footwear",0);count("Turning daypack off removes it","daypack",0);
+      state.refinements.climate="cold";run();expect("Cold weather adds a puffer",true,result.items.some(function(x){return /puffer/i.test(x.label);}));
+    }
+    var original=result.items.find(function(x){return x.id==="pack:tshirts";});state.overrides.edited[original.id]=Object.assign({},original,{quantity:9});state.refinements.packingMode=state.refinements.packingMode==="extra" ? "standard":"extra";run();count("Manual T-shirt quantity survives recalculation","tshirts",9);
+    expect("Manual quantity is visibly marked",true,result.items.find(function(x){return x.id===original.id;}).manual===true);
+    var pending=refinePendingDecisions(state);if(state.refinements.formalDays || state.refinements.dinners || state.refinements.work!=="none")expect("Unconfirmed outfit decisions block export",true,pending.length>0);pending.forEach(function(step){state.decisionReviews[step]=refineDecisionKey(state,step);});expect("Confirmed outfit decisions permit export",0,refinePendingDecisions(state).length);
+    var data={title:"Scenario check",detail:"",groups:result.groups.map(function(g){return {title:g.title,items:g.items.map(function(x){return {label:refineLabel(x),checked:false};})};})},xml=packExportEnex(data),total=data.groups.reduce(function(n,g){return n+g.items.length;},0);
+    expect("Notes export has a checkbox for every item",total,(xml.match(/<en-todo /g) || []).length);expect("Notes export preserves every section heading",data.groups.length,(xml.match(/<h2>/g) || []).length);expect("Notes export does not duplicate the title",false,xml.indexOf("<h1>")>=0);
+  }catch(e){rows.push({name:"Scenario checks completed",expected:"No error",actual:e.message,pass:false});}
+  return rows;
+}
+function packingTestCheckSheet(scenarios){
+  if(!PACK_TEST_MODE)return;
+  var body=openSheet("Scenario checks"),summary=el("p","muted");body.appendChild(summary);body.appendChild(el("p","gen-note","These fixed sample cases check the engine and Notes format in memory. They do not change your saved test. Expected and actual values are shown below."));
+  var all=[];scenarios.forEach(function(scenario){var base=packingTestFixture(scenario);body.appendChild(el("h3",null,"Fixed checks: "+base.label));var rows=packingTestChecks(scenario);all=all.concat(rows);rows.forEach(function(row){var p=el("p",null,(row.pass ? "PASS · ":"FAIL · ")+row.name+" — expected "+row.expected+"; actual "+row.actual);p.dataset.testCheck=row.pass ? "pass":"fail";body.appendChild(p);});});
+  summary.textContent=all.filter(function(x){return x.pass;}).length+" / "+all.length+" checks passed";summary.setAttribute("role","status");
+  var t=TRIPS["PACKING-TEST"];if(t){var pending=refinePendingDecisions(refineLoad(t));body.appendChild(el("h3",null,"Your saved test"));body.appendChild(el("p",null,pending.length ? "Before export, confirm: "+pending.join(" → "):"Outfit decisions confirmed; ready for export review."));}
 }
