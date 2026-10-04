@@ -1,6 +1,7 @@
 (function (root) {
   "use strict";
   var H = 3600000, context = null, options = {}, oddsKey = "", oddsAt = 0, oddsGen = 0, odds = null;
+  var activeTool = "timing", toolsOpener = null;
   var timingRows = [], compareRows = [], compareGen = 0, compareLocation = "", reportState = { key: "", state: "loading" };
   function esc(v) { return String(v == null ? "" : v).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
   function fmt(t, o) { return Number.isFinite(t) ? options.fmt ? options.fmt(t, o) : new Date(t).toLocaleString("en-US", o) : "time unavailable"; }
@@ -8,14 +9,15 @@
   function stamp(t) { return fmt(t, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" }); }
   function renderOdds() {
     var host = document.getElementById("winter-odds"); if (!host || !odds) return;
+    renderWinterBrief();
     if (!odds.covered) { host.innerHTML = "<p>WPC winter probability maps cover the contiguous U.S. Local NWS forecasts remain available for this location.</p>"; return; }
     host.innerHTML = '<p>Official WPC regional probability bands near ' + esc(context.loc.label) + '. These are chances of exceeding a threshold, not predicted inches or exact point probabilities.</p>' + [1, 2].map(function (day) {
       var rows = odds.rows.filter(function (r) { return r.day === day; }), first = rows.filter(function (r) { return r.state === "available" && r.end > Date.now(); })[0];
       return '<div class="odds-day"><b>Day ' + day + (first ? " · " + esc(period(first.start, first.end)) : " · period unavailable") + '</b><div class="odds-grid">' + rows.map(function (r) {
-        var label = r.k === "snow" ? r.threshold + '″+ snow' : '0.25″+ ice', available = r.state === "available";
-        var extra = available && first && (r.start !== first.start || r.end !== first.end || r.issue !== first.issue) ? " · " + period(r.start, r.end) + " · issued " + stamp(r.issue) : "";
+        var label = r.k === "snow" ? r.threshold + '″+ snow' : '0.25″+ ice', available = r.state === "available" && r.end > Date.now();
+        var extra = available && first ? (r.start !== first.start || r.end !== first.end ? period(r.start, r.end) + " · " : "") + "Issued " + stamp(r.issue) : "";
         return '<button type="button" data-weather-odds="' + odds.rows.indexOf(r) + '"' + (available ? "" : " disabled") + ' title="' + esc(available ? "NWS issued " + stamp(r.issue) + " · " + period(r.start, r.end) : "No current probability data") + '"><span>' + label + '</span><b>' + esc(available ? r.chance : r.state === "expired" || r.end && r.end <= Date.now() ? "Expired" : "Unavailable") + '</b>' + (extra ? '<span>' + esc(extra) + '</span>' : "") + '</button>';
-      }).join("") + "</div>" + (first ? '<p>NWS issued ' + esc(stamp(first.issue)) + '</p>' : "") + "</div>";
+      }).join("") + "</div></div>";
     }).join("") + '<p>Tap a threshold to open its map. <a href="https://www.wpc.ncep.noaa.gov/wwd/winter_wx.shtml" target="_blank" rel="noopener">NWS winter outlook</a></p>';
   }
   function loadOdds() {
@@ -25,7 +27,7 @@
     if (oddsKey === key && !odds && oddsAt) return;
     oddsKey = key; oddsAt = Date.now(); odds = null; var g = ++oddsGen;
     host.innerHTML = "<p>Checking official winter probabilities…</p>";
-    root.WXOfficial.probabilities(l).then(function (r) { if (g !== oddsGen) return; odds = r; renderOdds(); }, function () { if (g !== oddsGen) return; oddsAt = 0; host.innerHTML = "<p>Winter probabilities are unavailable right now.</p>"; });
+    root.WXOfficial.probabilities(l).then(function (r) { if (g !== oddsGen) return; odds = r; renderOdds(); }, function () { if (g !== oddsGen) return; oddsAt = 0; host.innerHTML = "<p>Winter probabilities are unavailable right now.</p>"; renderWinterBrief(); });
   }
   function events(g, now) {
     var out = [], s = g.s || {}, first = Math.max(0, Math.floor((now - g.start) / H)), last = Math.min(g.n, Math.ceil((now + 48 * H - g.start) / H));
@@ -55,22 +57,75 @@
     }
     return out.sort(function (a, b) { return a.start - b.start; });
   }
+  function timingButton(r, i) {
+    return '<button type="button" data-weather-time="' + i + '"><b>' + esc(r.label) + '</b>' +
+      '<span class="timing-period">' + esc(period(r.start, r.end)) + '</span>' +
+      (r.chance != null ? '<span class="timing-chance">' + (r.chanceLabel === "Thunderstorm chance" ? "Thunder" : "Precip") + ' up to ' + r.chance + '%</span>' : "") +
+      (r.detail ? '<span class="timing-detail">' + esc(r.detail) + '</span>' : "") + '</button>';
+  }
+  function renderWinterBrief() {
+    var host = document.getElementById("winter-brief"); if (!host || !context) return;
+    var current = odds && oddsKey === context.loc.lat.toFixed(4) + "," + context.loc.lon.toFixed(4);
+    var winter = timingRows.some(function (r) { return /Snow|Sleet|Freezing rain/.test(r.label); });
+    var elevated = current && odds.rows.some(function (r) { return r.state === "available" && r.end > Date.now() && parseInt(r.chance, 10) >= 10; });
+    host.hidden = !winter && !elevated;
+    if (host.hidden) return;
+    host.innerHTML = '<button type="button" class="winter-brief" data-forecast-tool="winter"><b>Winter probabilities</b>' +
+      (current && odds.covered ? [1, 2].map(function (d) {
+        var snow = odds.rows.find(function (r) { return r.day === d && r.k === "snow" && r.threshold === 4; });
+        var ice = odds.rows.find(function (r) { return r.day === d && r.k === "ice"; });
+        var available = function (r) { return r && r.state === "available" && r.end > Date.now(); };
+        var chance = function (r) { return available(r) ? r.chance : 'Unavailable'; };
+        var same = available(snow) && available(ice) && snow.start === ice.start && snow.end === ice.end;
+        return '<span><b>Day ' + d + '</b> · Snow 4″+: ' + esc(chance(snow)) + ' · Ice 0.25″+: ' + esc(chance(ice)) + '</span>' +
+          (same ? '<span>' + esc(period(snow.start, snow.end)) + '</span>' : [snow, ice].filter(available).map(function (r) { return '<span>' + (r.k === "snow" ? 'Snow: ' : 'Ice: ') + esc(period(r.start, r.end)) + '</span>'; }).join(""));
+      }).join("") : '<span>' + (current ? 'Outside WPC map coverage' : !oddsAt ? 'WPC probability data unavailable' : 'Checking WPC regional bands…') + '</span>') + '<span>WPC regional bands · all thresholds &amp; issue times ›</span></button>';
+  }
   function renderTiming() {
-    var host = document.getElementById("weather-timing"), g = context.grid; if (!host || !g) return;
+    var host = document.getElementById("weather-timing"), full = document.getElementById("weather-timing-full"), g = context.grid;
+    if (!host) return;
+    if (!g || !g.s) { timingRows = []; host.innerHTML = '<p>Hourly forecast timing is unavailable.</p>'; if (full) full.innerHTML = host.innerHTML; renderWinterBrief(); return; }
     var now = context.via === "test" ? context.fetchedAt : Date.now(), first = Math.max(0, Math.floor((now - g.start) / H)), last = Math.min(g.n, Math.ceil((now + 48 * H - g.start) / H));
     timingRows = events(g, now);
     var alerts = (context.alerts || []).filter(function (a) { var end = a.ends || a.expires; return !end || end > now; });
-    var unknown = !g.s.wxKnown || g.s.wxKnown.slice(first, last).some(function (v) { return !v; });
-    host.innerHTML = '<p><b>' + (context.via === "test" ? "Sample NWS timeline · model maps remain live" : "NWS timing · next 48 hours") + '</b> · issued ' + esc(stamp(g.updated || (context.updated || {}).grid)) + '</p><div class="weather-timeline">' +
-      timingRows.map(function (r, i) { return '<button type="button" data-weather-time="' + i + '"><b>' + esc(r.label) + '</b><span>' + esc(period(r.start, r.end)) + '</span>' + (r.chance != null ? '<span>' + esc(r.chanceLabel) + ' up to ' + r.chance + '%</span>' : "") + (r.detail ? '<span>' + esc(r.detail) + '</span>' : "") + '</button>'; }).join("") + '</div>' +
-      (!timingRows.length ? '<p>No rain, thunderstorms, winter precipitation, 32°F crossings or gusts ≥25 mph appear in the available hourly forecast.</p>' : "") +
-      (unknown || g.start + g.n * H < now + 48 * H ? '<p>Some hours are unavailable. Missing hours do not establish dry or safe conditions.</p>' : "") +
-      alerts.map(function (a) { return '<p class="outlook-hazard"><b>' + esc(a.event) + '</b> · ' + esc(a.headline || a.event) + (a.onset && (a.ends || a.expires) ? '<br>' + esc(period(a.onset, a.ends || a.expires)) : "") + '</p>'; }).join("") +
-      (alerts.length ? '<button type="button" class="chip" id="weather-alert-details">Read alert details on Daily</button>' : "") +
-      (context.alerts == null ? '<p>Current NWS alerts could not be checked.</p>' : "") +
+    var unknown = !g.s.wxKnown || !g.s.wxKnown.slice(first, last).length || g.s.wxKnown.slice(first, last).some(function (v) { return !v; });
+    var priority = ["Freezing rain possible", "Thunderstorms possible", "Snow possible", "Sleet possible", "Wettest NWS block", "Rain possible", "Gusts ≥25 mph"];
+    var featured = timingRows.map(function (r, i) { return { r: r, i: i }; }).sort(function (a, b) {
+      var rank = function (r) { var n = priority.indexOf(r.label); return n < 0 ? priority.length : n; };
+      return rank(a.r) - rank(b.r) || a.r.start - b.r.start;
+    }).filter(function (x, i, all) { return all.findIndex(function (y) { return y.r.label === x.r.label; }) === i; }).slice(0, 3).sort(function (a, b) { return a.r.start - b.r.start; });
+    var issued = '<p class="outlook-issued">' + (context.via === "test" ? "Sample NWS timeline · live model maps" : "NWS timing") + ' · issued ' + esc(stamp(g.updated || (context.updated || {}).grid)) + '</p>';
+    var warning = unknown || g.start + g.n * H < now + 48 * H ? '<p>Some forecast hours are unavailable.</p>' : "";
+    var empty = !timingRows.length ? '<p>No rain, storms, winter precipitation or gusts ≥25 mph flagged in the available hours.</p>' : "";
+    var hazard = alerts.map(function (a) { return '<p class="outlook-hazard"><b>' + esc(a.event) + '</b>' + (a.onset && (a.ends || a.expires) ? '<br>' + esc(period(a.onset, a.ends || a.expires)) : "") + '</p>'; }).join("") +
+      (alerts.length ? '<button type="button" class="text-action" id="weather-alert-details">Read NWS alert details ›</button>' : "") +
+      (context.alerts == null ? '<p>Current NWS alerts could not be checked.</p>' : "");
+    host.innerHTML = issued + hazard + '<div class="weather-timeline">' + featured.map(function (x) { return timingButton(x.r, x.i); }).join("") + '</div>' + empty + warning +
+      (timingRows.length > featured.length ? '<button type="button" class="text-action" data-forecast-tool="timing">See all ' + timingRows.length + ' timing periods ›</button>' : "");
+    if (full) full.innerHTML = issued + '<div class="weather-timeline">' + timingRows.map(timingButton).join("") + '</div>' + empty + warning + '<p>Precip = overall precipitation chance; Thunder = thunderstorm chance. Percentages show the highest chance within each period.</p>';
+    var notes = document.getElementById("weather-source-notes");
+    if (notes) notes.innerHTML = '<p>NWS hourly timing and model output are separate forecasts. Timing is approximate; the wettest block is a published average, not an instantaneous rainfall peak. Storm potential does not confirm hail or tornadoes, and air temperature alone does not establish surface icing. Missing hours do not establish dry or safe conditions.</p>' +
       (context.hwo && (!context.hwo.expires || context.hwo.expires > now) && (context.hwo.day1 || context.hwo.days27) ?
-        '<details><summary>NWS hazardous weather outlook</summary><p>Issued ' + esc(stamp(context.hwo.issued)) + '</p>' + [context.hwo.day1, context.hwo.days27].filter(Boolean).map(function (x) { return '<p>' + esc(x) + '</p>'; }).join("") + '</details>' : "") +
-      '<p>Tap a period to open a model map at the nearest available hour. Hourly timing is approximate; NWS timing and model output are separate forecasts. The wettest block is a published average, not an instantaneous rainfall peak. Storm potential does not confirm hail or tornadoes, and air temperature alone does not establish surface icing.</p>';
+        '<h3>NWS hazardous weather outlook</h3><p>Issued ' + esc(stamp(context.hwo.issued)) + '</p>' + [context.hwo.day1, context.hwo.days27].filter(Boolean).map(function (x) { return '<p>' + esc(x) + '</p>'; }).join("") : "");
+    renderWinterBrief();
+  }
+  function selectTool(name) {
+    var dialog = document.getElementById("forecast-tools"), tab = document.getElementById("tool-tab-" + name); if (!dialog || !tab) return;
+    activeTool = name;
+    dialog.querySelectorAll("[data-tool-tab]").forEach(function (b) {
+      var selected = b.dataset.toolTab === name; b.setAttribute("aria-selected", String(selected)); b.tabIndex = selected ? 0 : -1;
+      document.getElementById(b.getAttribute("aria-controls")).hidden = !selected;
+    });
+    if (options.onTool) options.onTool(name);
+    if (name === "compare") updateCompare();
+    dialog.scrollTop = 0; tab.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }
+  function openTools(name, opener) {
+    var dialog = document.getElementById("forecast-tools"); toolsOpener = opener;
+    if (!dialog.open) dialog.showModal(); selectTool(name); document.getElementById("tool-tab-" + name).focus({ preventScroll: true });
+  }
+  function closeTools() {
+    var dialog = document.getElementById("forecast-tools"); if (dialog && dialog.open) dialog.close();
   }
   var KINDS = {
     qpf: { param: "qpf", models: ["hrrr", "nam", "nam12", "rap", "gfs", "nbm"], label: "Precipitation · liquid equivalent" },
@@ -128,7 +183,7 @@
     var key = doc.loc.lat + "," + doc.loc.lon;
     if (compareLocation !== key) {
       compareLocation = key; compareGen++; compareRows = []; var host = document.getElementById("weather-compare"); if (host) host.innerHTML = "";
-      if (document.getElementById("model-compare").open) setTimeout(function () { if (compareLocation === key) updateCompare(); }, 0);
+      if (document.getElementById("forecast-tools").open && activeTool === "compare") setTimeout(function () { if (compareLocation === key) updateCompare(); }, 0);
     }
   }
   function setReports(features, state, l) {
@@ -136,17 +191,26 @@
     if (state === "available" && root.WXArchive) root.WXArchive.reports(features); renderHistory();
   }
   if (typeof document !== "undefined") {
-    document.addEventListener("toggle", function (e) { if (e.target.id === "model-compare" && e.target.open) updateCompare(); }, true);
+    document.getElementById("forecast-tools").addEventListener("close", function () { if (toolsOpener && toolsOpener.isConnected) toolsOpener.focus({ preventScroll: true }); });
+    document.querySelector(".forecast-tools-tabs").addEventListener("keydown", function (e) {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+      e.preventDefault(); e.stopPropagation(); var tabs = Array.from(this.querySelectorAll("[data-tool-tab]")), i = tabs.indexOf(document.activeElement);
+      var next = e.key === "Home" ? 0 : e.key === "End" ? tabs.length - 1 : (i + (e.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+      selectTool(tabs[next].dataset.toolTab); tabs[next].focus({ preventScroll: true });
+    });
     document.addEventListener("change", function (e) { if (/^compare-/.test(e.target.id)) updateCompare(); });
     document.addEventListener("click", function (e) {
-      var b = e.target.closest("[data-weather-odds],[data-weather-time],[data-compare-map],#compare-refresh,#model-window-clear,#weather-export,#weather-alert-details"); if (!b) return;
-      if (b.dataset.weatherOdds != null && odds && options.onOdds) options.onOdds(odds.rows[+b.dataset.weatherOdds]);
-      else if (b.dataset.weatherTime != null && options.onTime) options.onTime(timingRows[+b.dataset.weatherTime]);
+      var b = e.target.closest("[data-weather-odds],[data-weather-time],[data-compare-map],#compare-refresh,#model-window-clear,#weather-export,#weather-alert-details,[data-forecast-tool],[data-tool-tab],#forecast-tools-close"); if (!b) return;
+      if (b.dataset.forecastTool) { openTools(b.dataset.forecastTool, b); return; }
+      if (b.dataset.toolTab) { selectTool(b.dataset.toolTab); return; }
+      if (b.id === "forecast-tools-close") { closeTools(); return; }
+      if (b.dataset.weatherOdds != null && odds && options.onOdds) { closeTools(); options.onOdds(odds.rows[+b.dataset.weatherOdds]); document.getElementById("offq").scrollIntoView({ block: "start", behavior: "auto" }); }
+      else if (b.dataset.weatherTime != null && options.onTime) { closeTools(); options.onTime(timingRows[+b.dataset.weatherTime]); }
       else if (b.dataset.compareMap != null && compareRows[+b.dataset.compareMap]) {
-        if (root.WXModels.useWindow(compareRows[+b.dataset.compareMap])) document.getElementById("mmap").scrollIntoView({ block: "start", behavior: "auto" });
+        if (root.WXModels.useWindow(compareRows[+b.dataset.compareMap])) { closeTools(); document.getElementById("mmap").scrollIntoView({ block: "start", behavior: "auto" }); }
       } else if (b.id === "compare-refresh") updateCompare();
       else if (b.id === "model-window-clear") root.WXModels.clearWindow();
-      else if (b.id === "weather-alert-details" && options.onDaily) options.onDaily();
+      else if (b.id === "weather-alert-details" && options.onDaily) { closeTools(); options.onDaily(); }
       else if (b.id === "weather-export") {
         var url = URL.createObjectURL(new Blob([root.WXArchive.exportJSON()], { type: "application/json" })), link = document.createElement("a");
         link.href = url; link.download = "weather-issued-forecasts.json"; link.click(); setTimeout(function () { URL.revokeObjectURL(url); }, 1000);

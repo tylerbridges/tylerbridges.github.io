@@ -25,6 +25,7 @@ function file(h) {
     p.on('pageerror', e => errors.push(e.stack));
     await ctx.route('https://**/*', async r => {
       const u = new URL(r.request().url());
+      if (/wpc\.ncep|cpc\.ncep|weather\.gov/.test(u.host) && /\.(gif|png)/.test(u.pathname)) { await r.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jY5kAAAAASUVORK5CYII=', 'base64') }); return; }
       if (!/noaa-(?:hrrr|nam|gfs|nbm).*amazonaws|storage.googleapis/.test(u.host)) { await r.abort(); return; }
       if (u.searchParams.has('prefix')) {
         const pre = u.searchParams.get('prefix'), gfs = pre.includes('pgrb2'); const keys = [];
@@ -47,7 +48,7 @@ function file(h) {
     await p.waitForFunction(() => WXModels._state().ready, null, { timeout: 60000 });
     assert.equal((await p.evaluate(() => WXModels._state())).param, 'ptype');
     assert.equal(await p.evaluate(() => WXArchive.read().forecasts.length), 0);
-    await p.locator('#model-compare summary').click();
+    await p.locator('[data-forecast-tool="timing"]').last().click(); await p.click('#tool-tab-compare');
     await p.waitForFunction(() => document.querySelectorAll('[data-compare-map]').length >= 3, null, { timeout: 60000 });
     await p.locator('[data-compare-map]').first().click();
     await p.waitForFunction(() => WXModels._state().ready && WXModels._state().window);
@@ -55,6 +56,7 @@ function file(h) {
     assert.equal(s.window.end - s.window.start, 24 * H); assert.equal(s.hours.length, 1);
     assert.equal(await p.locator('#mplay').isDisabled(), true);
     await p.click('#model-window-clear'); assert.equal((await p.evaluate(() => WXModels._state())).window, null);
+    await p.locator('[data-forecast-tool="timing"]').last().click(); await p.click('#tool-tab-compare');
     await p.selectOption('#compare-mode', 'trends');
     await p.waitForFunction(() => document.querySelectorAll('[data-compare-map]').length >= 2, null, { timeout: 60000 });
     assert.match(await p.locator('#compare-results').innerText(), /exact period/);
@@ -87,6 +89,28 @@ function file(h) {
         await p.click('button[data-tab="' + tab + '"]');
         assert.equal(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, theme + '/' + width + '/' + tab);
       }
+      assert.equal(await p.locator('#maps details').count(), 0);
+      assert.ok(await p.locator('#weather-timing [data-weather-time]').count() <= 3);
+      await p.locator('[data-forecast-tool="timing"]').last().click();
+      for (const tool of ['timing', 'winter', 'compare', 'reports', 'maps', 'sources']) {
+        await p.click('#tool-tab-' + tool);
+        assert.ok(await p.locator('#tool-' + tool).isVisible());
+        if (tool === 'maps') {
+          await p.locator('[data-mcat="temp"]').click();
+          assert.ok(await p.locator('[data-mcat="temp"]').evaluate(e => e.classList.contains('on')));
+          await p.waitForFunction(() => document.querySelector('#mimg').complete && document.querySelector('#mimg').naturalWidth > 0);
+          await p.click('#mimgbox'); assert.ok(await p.locator('#mfull').isVisible());
+          assert.equal(await p.locator('#mfull').evaluate(e => e.matches(':modal')), true);
+          await p.keyboard.press('Escape'); await p.locator('#mfull').waitFor({ state: 'hidden' });
+          assert.ok(await p.locator('#forecast-tools').isVisible());
+        }
+        assert.equal(await p.locator('#forecast-tools').evaluate(e => e.scrollWidth > e.clientWidth + 1), false, theme + '/' + width + '/' + tool);
+      }
+      await p.locator('#tool-tab-sources').focus(); await p.keyboard.press('ArrowRight');
+      assert.equal(await p.locator('#tool-tab-timing').getAttribute('aria-selected'), 'true');
+      await p.keyboard.press('Escape');
+      assert.equal(await p.locator('#forecast-tools').isVisible(), false);
+      assert.ok(await p.locator('[data-forecast-tool="timing"]').last().evaluate(e => e === document.activeElement));
       assert.ok(await p.locator('#compare-kind').evaluate(e => parseFloat(getComputedStyle(e).fontSize) >= 16));
     }
     await p.goto('http://localhost:8003/?test=severe#forecast');
@@ -100,7 +124,7 @@ function file(h) {
       a.reports.push({ id: 'test', kind: 'snow', city: 'Test report', lat, lon, value: 6, start, end, measured: true });
       WXOutlook.show({ via: 'test', loc: { lat, lon, label: 'Minneapolis, MN' }, grid: { start, n: 0, s: {} }, updated: { grid: start }, alerts: [] }, { fmt: t => new Date(t).toISOString() });
     });
-    await p.locator('#weather-history summary').click();
+    await p.locator('[data-forecast-tool="timing"]').last().click(); await p.click('#tool-tab-reports');
     assert.match(await p.locator('#weather-verification').innerText(), /Forecast 5.00 in · observed 6.00 in · difference -1.00 in/);
     const dl = p.waitForEvent('download'); await p.click('#weather-export'); assert.equal((await dl).suggestedFilename(), 'weather-issued-forecasts.json');
     assert.deepEqual(errors, []);

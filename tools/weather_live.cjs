@@ -6,7 +6,7 @@ const { chromium } = require('playwright'), assert = require('node:assert/strict
     for (let i = 0; i < 60; i++) {
       const r = await fetch(base + '?deploy-check=' + Date.now(), { cache: 'no-store' });
       const html = await r.text();
-      if (r.ok && html.includes('wx-outlook.js?v=139') && html.includes('app.js?v=139')) { ready = true; break; }
+      if (r.ok && html.includes('wx-outlook.js?v=140') && html.includes('app.js?v=140')) { ready = true; break; }
       await new Promise(resolve => setTimeout(resolve, 10000));
     }
     assert.ok(ready, 'Live page must serve the new version');
@@ -32,12 +32,13 @@ const { chromium } = require('playwright'), assert = require('node:assert/strict
         assert.equal(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
       }
     }
-    await p.locator('#winter-outlook summary').click();
+    await p.locator('[data-forecast-tool="timing"]').last().click(); await p.click('#tool-tab-winter');
     await p.waitForFunction(() => document.querySelectorAll('[data-weather-odds]').length === 8, null, { timeout: 90000 });
     console.log('Live winter probabilities:', await p.locator('#winter-odds').innerText());
+    await p.click('#forecast-tools-close');
     await p.click('#forecast-models-tab');
     await p.waitForFunction(() => WXModels._state().ready, null, { timeout: 180000 });
-    await p.locator('#model-compare summary').click();
+    await p.locator('[data-forecast-tool="timing"]').last().click(); await p.click('#tool-tab-compare');
     await p.waitForFunction(() => document.querySelectorAll('[data-compare-map]').length > 0, null, { timeout: 180000 });
     await p.locator('[data-compare-map]').first().click();
     await p.waitForFunction(() => WXModels._state().ready && WXModels._state().window, null, { timeout: 120000 });

@@ -541,8 +541,8 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
 .mmsg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px;font-size:13px;color:#555;background:#fff}
 .mfr{position:absolute;left:6px;top:6px;font:600 12px var(--sans);background:rgba(0,0,0,.62);color:#fff;border-radius:6px;padding:3px 7px;pointer-events:none}
 .mhint{position:absolute;right:6px;bottom:6px;font-size:10.5px;background:rgba(0,0,0,.55);color:#fff;border-radius:6px;padding:2px 6px;pointer-events:none}
-#mfull{position:fixed;inset:0;z-index:70;background:#000;display:flex;flex-direction:column}
-#mfull[hidden]{display:none}
+#mfull{position:fixed;inset:0;width:100vw;height:100dvh;max-width:none;max-height:none;margin:0;padding:0;border:0;z-index:70;background:#000;display:flex;flex-direction:column}
+#mfull[hidden],#mfull:not([open]){display:none}
 .mfsc{flex:1;overflow:auto;display:flex;align-items:center;-webkit-overflow-scrolling:touch}
 .mfsc img{display:block;width:100%;height:auto;margin:auto;background:#fff;cursor:zoom-in}
 .mfsc.z{align-items:flex-start}
@@ -1022,7 +1022,7 @@ html.scrolled .top #fresh{display:inline-flex;max-height:0;opacity:0}
 .model-data p{margin:4px 0;line-height:1.45}
 #now{margin-bottom:4px}
 
-/* Forecast outlook: map-first controls and compact disclosures. */
+/* Map-first forecast summary and shared tools panel. */
 .model-window-lock{padding:8px 12px;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink2)}
 .model-window-lock[hidden]{display:none}.model-window-lock span{flex:1}
 .outlook-card{padding:8px 12px;border-top:1px solid var(--grid)}
@@ -1039,9 +1039,31 @@ html.scrolled .top #fresh{display:inline-flex;max-height:0;opacity:0}
 .compare-row{display:flex;justify-content:space-between;align-items:center;gap:6px;padding:8px 0;border-top:1px solid var(--grid);font-size:12px}
 .compare-row small{display:block;color:var(--muted);margin-top:3px}
 .compare-row button{font:inherit;background:var(--sunk);color:var(--ink);border:0;border-radius:10px;padding:8px;cursor:pointer;flex:none}
-.weather-timeline{display:flex;gap:6px;overflow-x:auto;padding:4px 0;scrollbar-width:thin}
-.weather-timeline button{flex:0 0 190px;text-align:left;font:inherit;font-size:12px;line-height:1.4;padding:10px;background:var(--sunk);color:var(--ink);border:0;border-radius:12px;cursor:pointer}
-.weather-timeline span,.history-report small{display:block;color:var(--ink2);font-size:12px;line-height:1.45;margin-top:4px}
+.weather-timeline{display:grid;gap:0}
+.weather-timeline button{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 12px;text-align:left;font:inherit;font-size:14px;line-height:1.45;padding:12px 0;background:transparent;color:var(--ink);border:0;border-bottom:1px solid var(--grid);cursor:pointer;min-width:0;width:100%}
+.weather-timeline button>b{grid-column:1}.weather-timeline .timing-period{grid-column:1 / -1;font-size:12px;color:var(--ink2)}
+.weather-timeline .timing-chance{grid-column:2;grid-row:1;font-size:12px;color:var(--ink2);align-self:center}
+.weather-timeline .timing-detail{grid-column:1 / -1;font-size:12px;color:var(--ink2)}
+.history-report small{display:block;color:var(--ink2);font-size:12px;line-height:1.45;margin-top:4px}
+.forecast-summary{padding:16px 12px;border-top:1px solid var(--grid)}
+.forecast-summary-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.forecast-summary h3{font-size:17px;margin:0}.forecast-summary-head>span,.forecast-summary p{font-size:12px;line-height:1.5;color:var(--ink2)}
+.forecast-summary .outlook-issued{margin:3px 0 8px;color:var(--muted)}
+.forecast-summary .outlook-hazard{font-size:13px;color:var(--ink);margin:10px 0}
+.forecast-tools-open{display:grid;grid-template-columns:1fr auto;gap:3px 8px;text-align:left;width:100%;border:0;border-radius:14px;background:var(--sunk);color:var(--ink);padding:12px;margin-top:14px;font:inherit;font-weight:600;cursor:pointer}
+.forecast-tools-open>span{grid-column:1;font-size:12px;font-weight:400;color:var(--ink2)}.forecast-tools-open>b{grid-column:2;grid-row:1 / 3;align-self:center;font-size:24px}
+.forecast-summary .text-action{border:0;background:transparent;color:var(--accent);font:inherit;font-size:13px;min-height:36px;padding:6px 0;cursor:pointer}
+.winter-brief{display:block;width:100%;text-align:left;background:transparent;color:var(--ink);border:0;border-top:1px solid var(--grid);padding:10px 0;font:inherit;font-size:13px;cursor:pointer}.winter-brief span{display:block;color:var(--ink2);font-size:12px;margin-top:4px;line-height:1.45}
+.forecast-tools{box-sizing:border-box;width:min(740px,calc(100% - 24px));max-height:85dvh;overflow:auto;border:1px solid var(--line);border-radius:22px;background:var(--surface);color:var(--ink);padding:0 16px 18px;box-shadow:var(--glass-sh)}
+.forecast-tools::backdrop{background:rgba(0,0,0,.45)}
+.forecast-tools-head{position:sticky;top:0;background:var(--surface);display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 0 8px;z-index:1}.forecast-tools-head h2{font-size:19px;margin:0}.forecast-tools-head button{font-size:25px;width:40px;height:40px;flex:none}
+.forecast-tools-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;border-bottom:1px solid var(--grid);padding-bottom:8px;scrollbar-width:thin}
+.forecast-tools-tabs button{min-width:0;border:0;border-radius:10px;background:transparent;color:var(--ink2);font:inherit;font-size:13px;white-space:nowrap;padding:8px 10px;min-height:36px;cursor:pointer}.forecast-tools-tabs button[aria-selected="true"]{background:var(--sunk);color:var(--accent);font-weight:700}
+.forecast-tools section>h3{font-size:16px;margin:16px 0 8px}.forecast-tools p,.forecast-tools .oqnote{font-size:12px;line-height:1.5;color:var(--ink2)}
+.forecast-tools section[hidden]{display:none}.forecast-tools .model-data{padding:0}.forecast-tools .sec-h{margin-top:20px}
+.forecast-tools button:focus-visible,.forecast-summary button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media(min-width:700px){.forecast-tools-tabs{grid-template-columns:repeat(6,minmax(0,1fr))}}
+@media(min-width:900px){.forecast-summary{padding:18px}.forecast-summary .weather-timeline{grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}.forecast-tools .weather-timeline{grid-template-columns:1fr}}
 .history-report{padding:10px 0;border-top:1px solid var(--grid);font-size:13px}
 .weather-timeline button:focus-visible,.compare-row button:focus-visible,.odds-grid button:focus-visible{outline:2px solid var(--accent)}
 .outlook-hazard{border-left:3px solid var(--accent);padding-left:8px}
@@ -1128,33 +1150,19 @@ html.scrolled .top #fresh{display:inline-flex;max-height:0;opacity:0}
       <div class="map-regions" id="model-regions" role="group" aria-label="Model map extent"></div>
       </div>
       <div class="model-window-lock" id="model-window-lock" hidden><span></span><button type="button" class="chip" id="model-window-clear">Return to timeline</button></div>
-      <details class="outlook-card" id="model-compare"><summary>Compare models &amp; run trends</summary><div id="weather-compare"></div></details>
-      <details class="model-data"><summary>Forecast details</summary><div class="msrc" id="msrc"></div><p id="mnote"></p></details>
+
+
     </div>
       </div>
       <p class="forecast-context" id="forecast-context">Official regional precipitation amounts · Tap a county for details</p>
-    <details class="outlook-card" id="weather-outlook" open><summary>Weather outlook</summary><div id="weather-timing"></div><details id="winter-outlook"><summary>Winter probability maps</summary><div id="winter-odds"></div></details></details>
-    <details class="outlook-card" id="weather-history"><summary>Saved forecasts &amp; observed amounts</summary><div id="weather-verification"></div></details>
-    <details class="forecast-extra" id="forecast-extra"><summary>More NWS maps &amp; outlooks</summary>
-    <div class="mcats" id="mcats"></div>
-    <div class="card mview mimgcard">
-      <div class="mhead"><select id="msel" class="msel" aria-label="Map"></select><div class="marea" id="marea"></div></div>
-      <div class="mimg" id="mimgbox"><img id="mimg" alt="" decoding="async"><div class="mmsg" id="mmsg" hidden></div><span class="mfr num" id="mfr"></span><span class="mhint">Tap to enlarge</span></div>
-      <div class="mctl" id="ictl">
-        <button type="button" class="rbtn" id="iprev" aria-label="Previous"><svg viewBox="0 0 24 24" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button>
-        <button type="button" class="rbtn" id="iplay" aria-label="Play"></button>
-        <input type="range" id="irange" min="0" max="0" value="0" aria-label="Forecast time">
-        <button type="button" class="rbtn" id="inext" aria-label="Next"><svg viewBox="0 0 24 24" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button>
-      </div>
-      <div class="msrc" id="isrc"></div>
+    <section class="forecast-summary" id="weather-outlook" aria-labelledby="weather-outlook-title">
+      <div class="forecast-summary-head"><h3 id="weather-outlook-title">Next 48 hours</h3><span>NWS forecast</span></div>
+      <div id="weather-timing"></div><div id="winter-brief" hidden></div>
+      <button type="button" class="forecast-tools-open" data-forecast-tool="timing" aria-haspopup="dialog" aria-controls="forecast-tools">Forecast tools <span>Comparisons · winter odds · reports</span><b aria-hidden="true">›</b></button>
+    </section>
     </div>
-    </details>
-    </div>
-    <details class="card forecast-totals"><summary>Local storm totals</summary>
-    <div class="sec-h"><h2>Storm totals</h2><span class="meta" id="mtotloc"></span></div>
-    <div class="card tot" id="tot"></div>
-    </details>
   </section>
+
 
 
   <section id="detail" class="sec" data-tab="daily" hidden>
@@ -1171,8 +1179,32 @@ html.scrolled .top #fresh{display:inline-flex;max-height:0;opacity:0}
 </div>
 <div class="tabdock" id="tabdock"><nav class="nav" id="nav" aria-label="Sections"><span class="navpill" aria-hidden="true"></span><button type="button" class="chip on" data-tab="daily"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="3.5"/><path d="M3.5 10h17M8.5 3v4M15.5 3v4"/></svg><span>Daily</span></button><button type="button" class="chip" data-tab="hourly"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.75"/><path d="M12 7.25V12l3.25 2"/></svg><span>Hourly</span></button><button type="button" class="chip" data-tab="radar"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.75"/><circle cx="12" cy="12" r="4.5"/><path d="M12 12l6.2-6.2"/></svg><span>Radar</span></button><button type="button" class="chip" data-tab="maps"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4.5 3.5 6.6v13l5.5-2.1 6 2.1 5.5-2.1v-13L15 6.6Z"/><path d="M9 4.5v13M15 6.6v13"/></svg><span>Forecast</span></button></nav></div>
 <dialog class="data-info" id="data-info" aria-labelledby="data-info-title"><div class="data-info-head"><h2 id="data-info-title">Data &amp; sources</h2><button type="button" class="rbtn" id="data-info-close" aria-label="Close data sources">×</button></div><div id="data-info-body"></div></dialog>
+<dialog class="forecast-tools" id="forecast-tools" aria-labelledby="forecast-tools-title">
+  <div class="forecast-tools-head"><h2 id="forecast-tools-title">Forecast tools</h2><button type="button" class="rbtn" id="forecast-tools-close" aria-label="Close forecast tools">×</button></div>
+  <div class="forecast-tools-tabs" role="tablist" aria-label="Forecast tools"><button type="button" id="tool-tab-timing" role="tab" aria-selected="true" aria-controls="tool-timing" tabindex="0" data-tool-tab="timing">Timing</button><button type="button" id="tool-tab-winter" role="tab" aria-selected="false" aria-controls="tool-winter" tabindex="-1" data-tool-tab="winter">Winter odds</button><button type="button" id="tool-tab-compare" role="tab" aria-selected="false" aria-controls="tool-compare" tabindex="-1" data-tool-tab="compare">Compare</button><button type="button" id="tool-tab-reports" role="tab" aria-selected="false" aria-controls="tool-reports" tabindex="-1" data-tool-tab="reports">Reports</button><button type="button" id="tool-tab-maps" role="tab" aria-selected="false" aria-controls="tool-maps" tabindex="-1" data-tool-tab="maps">More maps</button><button type="button" id="tool-tab-sources" role="tab" aria-selected="false" aria-controls="tool-sources" tabindex="-1" data-tool-tab="sources">Sources</button></div>
+  <section id="tool-timing" role="tabpanel" aria-labelledby="tool-tab-timing"><h3>Full 48-hour timeline</h3><div id="weather-timing-full"></div><p class="tool-note">NWS hourly timing is approximate. A timing link opens the nearest available model hour; NWS and model forecasts can differ. The wettest block opens its exact accumulation period.</p></section>
+  <section id="tool-winter" role="tabpanel" aria-labelledby="tool-tab-winter" hidden><h3>Regional winter probabilities</h3><div id="winter-outlook"><div id="winter-odds"></div></div></section>
+  <section id="tool-compare" role="tabpanel" aria-labelledby="tool-tab-compare" hidden><h3>Models &amp; run trends</h3><div id="model-compare"><div id="weather-compare"></div></div></section>
+  <section id="tool-reports" role="tabpanel" aria-labelledby="tool-tab-reports" hidden><h3>Saved forecasts &amp; observed amounts</h3><div id="weather-history"><div id="weather-verification"></div></div>    <div class="sec-h"><h2>Local forecast totals</h2><span class="meta" id="mtotloc"></span></div>
+    <div class="card tot" id="tot"></div>
+</section>
+  <section id="tool-maps" role="tabpanel" aria-labelledby="tool-tab-maps" hidden><h3>More NWS maps &amp; outlooks</h3><div id="forecast-extra">    <div class="mcats" id="mcats"></div>
+    <div class="card mview mimgcard">
+      <div class="mhead"><select id="msel" class="msel" aria-label="Map"></select><div class="marea" id="marea"></div></div>
+      <div class="mimg" id="mimgbox"><img id="mimg" alt="" decoding="async"><div class="mmsg" id="mmsg" hidden></div><span class="mfr num" id="mfr"></span><span class="mhint">Tap to enlarge</span></div>
+      <div class="mctl" id="ictl">
+        <button type="button" class="rbtn" id="iprev" aria-label="Previous"><svg viewBox="0 0 24 24" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button>
+        <button type="button" class="rbtn" id="iplay" aria-label="Play"></button>
+        <input type="range" id="irange" min="0" max="0" value="0" aria-label="Forecast time">
+        <button type="button" class="rbtn" id="inext" aria-label="Next"><svg viewBox="0 0 24 24" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button>
+      </div>
+      <div class="msrc" id="isrc"></div>
+    </div>
+</div></section>
+  <section id="tool-sources" role="tabpanel" aria-labelledby="tool-tab-sources" hidden><h3>Forecast sources &amp; limits</h3><div class="model-data"><div class="msrc" id="msrc"></div><p id="mnote"></p></div><div id="weather-source-notes"></div></section>
+</dialog>
 <div id="toast" hidden></div>
-<div id="mfull" hidden><button type="button" class="mfx" id="mfx" aria-label="Close">&times;</button><div class="mfsc" id="mfsc"><img id="mfimg" alt=""></div><div class="mfhint">Tap map to zoom in/out</div></div>
+<dialog id="mfull" aria-label="Expanded forecast map" hidden><button type="button" class="mfx" id="mfx" aria-label="Close">&times;</button><div class="mfsc" id="mfsc"><img id="mfimg" alt=""></div><div class="mfhint">Tap map to zoom in/out</div></dialog>
 <div id="locsheet" hidden>
   <div class="ls-back" data-close></div>
   <div class="ls-card" role="dialog" aria-label="Change location">
@@ -1187,15 +1219,15 @@ html.scrolled .top #fresh{display:inline-flex;max-height:0;opacity:0}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=139"></script>
+<script src="wx-normalize.js?v=140"></script>
 <script src="wx-live.js?v=136"></script>
 <script src="wx-scenarios.js?v=136"></script>
 <script src="wx-vmap.js?v=136"></script>
 <script src="wx-radar.js?v=136"></script>
-<script src="wx-models.js?v=139"></script>
-<script src="wx-official.js?v=139"></script>
-<script src="wx-archive.js?v=139"></script>
-<script src="wx-outlook.js?v=139"></script>
-<script src="app.js?v=139"></script>
+<script src="wx-models.js?v=140"></script>
+<script src="wx-official.js?v=140"></script>
+<script src="wx-archive.js?v=140"></script>
+<script src="wx-outlook.js?v=140"></script>
+<script src="app.js?v=140"></script>
 </body>
 </html>

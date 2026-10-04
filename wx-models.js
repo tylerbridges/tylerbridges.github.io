@@ -840,7 +840,7 @@
       model: box.querySelector("#mmodel"), param: box.querySelector("#mparam"), run: box.querySelector("#mrun"),
       locate: box.querySelector("#mlocate"), home: box.querySelector("#mhome"), locationStatus: box.querySelector("#mlocation-status"),
       play: box.querySelector("#mplay"), prev: box.querySelector("#mprev"), next: box.querySelector("#mnext"), range: box.querySelector("#mrange"), time: box.querySelector("#mtime"),
-      leg: box.querySelector("#mleg"), src: box.querySelector("#msrc"), note: box.querySelector("#mnote"), title: box.querySelector("#mtitle"), quick: box.querySelector("#mquick")
+      leg: box.querySelector("#mleg"), src: document.getElementById("msrc"), note: document.getElementById("mnote"), title: box.querySelector("#mtitle"), quick: box.querySelector("#mquick")
     };
     if (ui.quick) ui.quick.addEventListener("click", function (e) { var b = e.target.closest("[data-q]"); if (!b || b.disabled) return; setParam(b.dataset.q); });
     ui.st.hidden = true; ui.ro.hidden = true;

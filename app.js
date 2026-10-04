@@ -1293,6 +1293,10 @@
           else toast("No model hour is available right now");
         }).catch(function () { toast("Model data couldn't load"); });
       },
+      onTool: function (name) {
+        if (name === "compare" && forecastMode !== "models") { forecastMode = "models"; renderMaps(); }
+        if (name === "maps") renderImgMaps(); else iStop();
+      },
       onDaily: function () { showTab("daily"); window.scrollTo({ top: 0, behavior: "auto" }); }
     });
     $("mtotloc").textContent = (doc && doc.loc && doc.loc.label) || "";
@@ -1302,14 +1306,14 @@
     });
     $("forecast-nws").hidden = forecastMode !== "nws";
     $("forecast-models").hidden = forecastMode !== "models";
-    $("forecast-extra").hidden = forecastMode !== "nws";
+
     $("forecast-context").textContent = forecastMode === "nws" ? "NWS regional amounts · Tap a county" : "Model forecasts · Play or scrub ahead";
     if (forecastMode === "models") {
       if (window.WXOfficial) WXOfficial.hide(); iStop();
       if (window.WXModels) WXModels.show($("mmap"), curLoc(), { fmt: fmt, regions: $("model-regions") });
     } else {
       if (window.WXModels) WXModels.hide();
-      renderOfficial(); if ($("forecast-extra").open) renderImgMaps();
+      renderOfficial(); if ($("forecast-tools").open && !$("tool-maps").hidden) renderImgMaps();
     }
   }
   document.querySelector(".forecast-modes").addEventListener("click", function (e) {
@@ -1322,9 +1326,7 @@
     forecastMode = e.key === "Home" ? "nws" : e.key === "End" ? "models" : forecastMode === "nws" ? "models" : "nws";
     renderMaps(); $("forecast-" + forecastMode + "-tab").focus();
   });
-  $("forecast-extra").addEventListener("toggle", function () {
-    if (this.open && tab === "maps" && forecastMode === "nws") renderImgMaps(); else iStop();
-  });
+  $("forecast-tools").addEventListener("close", function () { iStop(); });
   // Official NWS precipitation: the Weather Prediction Center's 24- and 48-hour forecasts (the human-issued national
   //   forecast the NWS grids are built from), drawn by wx-official.js as a monochrome county map with each county's
   //   amount printed on it (tap for the county and value), plus this place's official amounts from its weather.gov forecast
@@ -1349,7 +1351,7 @@
       var end = now + OQ.p * H, row = [["qpf", "Rain / liquid", sumRange(g.qpf, now, end)], ["snow", "Snow", sumRange(g.snow, now, end)], ["ice", "Ice", sumRange(g.ice, now, end)]];
       amt = '<div class="oqamt">' + row.map(function (r) {
         return '<div' + (r[0] === OQ.k ? ' class="on"' : "") + "><b>" + (r[2] < 0.005 ? "0.00" : r[2].toFixed(2)) + " in</b><span>" + r[1] + "</span></div>";
-      }).join("") + "</div>" + '<div class="oqnote">' + esc((doc.loc && doc.loc.label) || "This location") + ", next " + OQ.p + " hours, from the official weather.gov forecast</div>";
+      }).join("") + "</div>" + '<div class="oqnote">' + esc((doc.loc && doc.loc.label) || "This location") + ", approximate next " + OQ.p + " hours · local NWS forecast</div>";
     }
     var chip = function (attr, v, label, on) { return '<button type="button" class="chip' + (on ? " on" : "") + '" ' + attr + '="' + v + '">' + label + "</button>"; };
     var bust = "?t=" + Math.floor(Date.now() / 9e5);
@@ -1360,7 +1362,7 @@
       (window.WXOfficial ? '<div class="mleg oqkey" id="oqkey">' + WXOfficial.legend(OQ) + '</div><div class="oqwrap" id="oqwrap"><span class="mfr num" id="oqper">' + esc(per) + '</span></div><div class="oqcap" id="oqleg">' + esc(WXOfficial.caption(OQ)) + "</div>"
         : '<div class="oqimg" id="oqimg"><img src="' + img + bust + '" alt="' + esc(cap) + '"><span class="mfr num">' + esc(per) + "</span></div>") +
       '<div class="oqnote"><b>' + esc(cap) + "</b> · NWS Weather Prediction Center · <span id='oqissued'>Issue time unavailable</span> · " + '<a href="' + WPC + (OQ.k === "qpf" ? "qpf/qpf2.shtml" : "wwd/winter_wx.shtml") + '" target="_blank" rel="noopener">Source</a></div>' +
-      (amt ? '<details class="oq-local"><summary>Local forecast amounts</summary>' + amt + '</details>' : '');
+      (amt ? '<div class="oq-local">' + amt + '</div>' : '');
     var mapBox = el.querySelector("#oqwrap,#oqimg"), controls = el.querySelector(".oqrow");
     var regions = document.createElement("div"); regions.id = "official-regions"; regions.className = "map-regions";
     regions.setAttribute("role", "group"); regions.setAttribute("aria-label", "NWS map extent");
@@ -1386,7 +1388,7 @@
   $("offq").addEventListener("click", function (e) {
     var b = e.target.closest("[data-oqk],[data-oqp],[data-oqt]");
     if (b) { if (b.dataset.oqk) OQ.k = b.dataset.oqk; if (b.dataset.oqp) OQ.p = +b.dataset.oqp; if (b.dataset.oqt) OQ.th = b.dataset.oqt; store("wx-oq2", OQ); renderOfficial(); return; }
-    var im = e.target.closest("#oqimg img"); if (im) { $("mfimg").src = im.src; $("mfimg").alt = im.alt; $("mfsc").classList.remove("z"); $("mfull").hidden = false; }
+    var im = e.target.closest("#oqimg img"); if (im) { $("mfimg").src = im.src; $("mfimg").alt = im.alt; $("mfsc").classList.remove("z"); $("mfull").hidden = false; $("mfull").showModal(); }
   });
   function mStop() { if (window.WXModels) WXModels.hide(); if (window.WXOfficial) WXOfficial.hide(); iStop(); }
   document.addEventListener("keydown", function (e) {
@@ -1513,7 +1515,7 @@
     img.src = url;
   }
   function mStep(d) { var n = mProd().frames.length; M.f = (M.f + d + n) % n; mShow(); }
-  $("maps").addEventListener("click", function (e) {
+  $("forecast-extra").addEventListener("click", function (e) {
     var b;
     if ((b = e.target.closest("[data-mcat]"))) { iStop(); M.cat = b.dataset.mcat; M.id = null; M.f = 0; renderImgMaps(); mSave(); return; }
     if ((b = e.target.closest("[data-marea]"))) { M.area = b.dataset.marea; mSave(); renderImgMaps(); return; }
@@ -1524,7 +1526,7 @@
       $("iplay").innerHTML = PAUSE; $("iplay").setAttribute("aria-label", "Pause");
       mTimer = setInterval(function () { mStep(1); }, 900); mShow(); return;
     }
-    if (e.target.closest("#mimgbox") && $("mmsg").hidden) { $("mfimg").src = $("mimg").src; $("mfimg").alt = $("mimg").alt; $("mfsc").classList.remove("z"); $("mfull").hidden = false; }
+    if (e.target.closest("#mimgbox") && $("mmsg").hidden) { $("mfimg").src = $("mimg").src; $("mfimg").alt = $("mimg").alt; $("mfsc").classList.remove("z"); $("mfull").hidden = false; $("mfull").showModal(); }
   });
   $("msel").addEventListener("change", function () { iStop(); M.id = this.value; M.f = 0; mSave(); renderImgMaps(); });
   $("irange").addEventListener("input", function () { iStop(); M.f = +this.value; mShow(); });
@@ -1534,8 +1536,8 @@
     sc.classList.toggle("z");
     if (sc.classList.contains("z")) { sc.scrollLeft = fx * im.clientWidth - sc.clientWidth / 2; sc.scrollTop = fy * im.clientHeight - sc.clientHeight / 2; }
   });
-  $("mfx").addEventListener("click", function () { $("mfull").hidden = true; });
-  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !$("mfull").hidden) $("mfull").hidden = true; });
+  $("mfx").addEventListener("click", function () { $("mfull").close(); });
+  $("mfull").addEventListener("close", function () { $("mfull").hidden = true; });
 
   // ---------- location ----------
   // Location comes from the URL (?q=Duluth MN or ?lat=46.78&lon=-92.1), else the last one used on this device, else Minneapolis.
