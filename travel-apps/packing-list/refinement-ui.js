@@ -9,7 +9,7 @@ function rangePicker(startIn,endIn){
   box.appendChild(sum); box.appendChild(cal); var open = false;
   function setOpen(v){ open = v; cal.hidden = !v; box.classList.toggle("open",v); sD.setAttribute("aria-expanded",String(v)); eD.setAttribute("aria-expanded",String(v)); sync(); }
   var mode = ""; sD.addEventListener("click",function(){ mode = "s"; setOpen(true); }); eD.addEventListener("click",function(){ mode = S ? "e" : "s"; setOpen(true); }); ok.addEventListener("click",function(){ setOpen(false); });
-  box.openCal = function(){ setOpen(true); };
+  box.openCal = function(){ setOpen(true); };box.restoreDates=function(s,e){S=s || "";E=e || "";var d=pd(S) || new Date();view=new Date(d.getFullYear(),d.getMonth(),1);draw();setOpen(false);};
   var MON = ["January","February","March","April","May","June","July","August","September","October","November","December"];
   function iso(d){ return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0"); }
   var S = startIn.value || "", E = endIn.value || "", base = pd(S) || new Date(), view = new Date(base.getFullYear(), base.getMonth(), 1), todayIso = iso(new Date());
@@ -26,8 +26,8 @@ function rangePicker(startIn,endIn){
     else if (!S) S = v;
     else if (v < S) S = v;
     else E = v;
-    if (S && E && (pd(E) - pd(S)) / 86400000 + 1 > 60){ E = ""; hint.textContent = "Trips can be up to 60 days."; draw(); startIn.value = S; endIn.value = E; return; }
-    draw();
+    if (S && E && (pd(E) - pd(S)) / 86400000 + 1 > 60){ E = ""; hint.textContent = "Trips can be up to 60 days."; draw(); startIn.value = S; endIn.value = E;box.dispatchEvent(new Event("packingchange",{bubbles:true}));return; }
+    draw();box.dispatchEvent(new Event("packingchange",{bubbles:true}));
   }
   function draw(){
     title.textContent = MON[view.getMonth()] + " " + view.getFullYear(); grid.textContent = "";
@@ -93,8 +93,8 @@ function refineSetup(t){
     state.refinements.formalDays = Math.min(span,state.refinements.formalDays); state.refinements.dinners=Math.min(span,state.refinements.dinners);if(state.refinements.workDays!=null)state.refinements.workDays=Math.min(span,state.refinements.workDays); if (existing){state.undo = before;delete state.undoProfile;}
     var result = state.legacy ? refineLegacyResult(state) : refineEvaluate(state,generatorPrefs(),null); go.disabled = true;
     var patch = Object.assign({},RAW[record.id] || {},{name:record.name,where:record.where,start:record.start,end:record.end}); if (!existing) Object.assign(patch,{status:"Researching",bookings:{},days:[],createdAt:Date.now()});
-    refineSaveTrip(record,patch,state,result).then(function(){ RAW[record.id] = patch; rebuild(); location.hash = record.id; }).catch(function(){ go.disabled = false; msg.textContent = "Could not save the trip. Check browser storage and try again."; });
-  }); return f;
+    refineSaveTrip(record,patch,state,result).then(function(){ setupDraft.clear();RAW[record.id] = patch; rebuild(); location.hash = record.id; }).catch(function(){ go.disabled = false; msg.textContent = "Could not save the trip. Check browser storage and try again."; });
+  });var setupDraft=packingDraftAttach(f,"setup:"+(existing ? t.id:"new"),existing ? JSON.stringify([inputs,saved.refinements]):"new-trip-v1",{extras:[start,end],restoreEvents:false,beforeRestore:function(data){var style=data.fields["rs-style"];if(styleSelect && style){styleSelect.value=style.value;styleSelect.dispatchEvent(new Event("change"));}},onRestore:function(){picker.restoreDates(start.value,end.value);countVisibility();hikingVisibility();growWhere();}});return f;
 }
 function refinePage(t){ var w = el("div","stack"), back = el("a","back","← Packing generator"); back.href = "#"; w.appendChild(back); if(PACK_TEST_MODE)w.appendChild(packingTestBanner()); w.appendChild(el("p","muted",[t.where,fmt(t.start)+" – "+fmt(t.end || t.start)].join(" · "))); var pk = packData(t.id);
   if (!pk.ready){ w.appendChild(el("p",null,"Loading your saved list…")); setTimeout(function(){ if (route().t && route().t.id === t.id) render(); },100); return w; }
@@ -118,14 +118,14 @@ function refineReview(t){
   function assumptionList(){var r=state.refinements,list=[["Laundry",r.laundry.available ? "planned":"none"],["Packing",r.packingMode],["Extras",REFINE_EXTRAS.filter(function(choice){return r.extraItems[choice.key];}).length+" selected"],["Bag",state.inputs.bag==="carryon" ? "carry-on":"checked"],["Weather",r.climate],["Activities",Object.keys(state.inputs.activities).filter(function(k){return state.inputs.activities[k];}).map(function(k){return {hike:"hiking",workout:"workouts",water:"swimming",fish:"fishing"}[k];}).concat(r.daypack ? ["daypack"] : []).join(", ") || "none"],["Events",r.formalDays+" suit days / "+r.dinners+" dinners"],["Work",r.work+" · "+(r.workDays==null ? "workdays to confirm":r.workDays+" video-call days")],["Flight",r.longFlight ? "long international":"usual"]];
     if(r.dinners>0)list.push(["Dinner outfit",r.dinnerTop && r.dinnerBottoms ? r.dinnerTop+" / "+r.dinnerBottoms:"choose top and bottoms"]);
     if(r.formalDays>0)list.push(["Suit outfit",r.alternateKhakis ? "suit + khakis":"reusable suit"]);
-    if(refineWardrobe(state).canShare)list.push(["Shirt sharing","check shared days"]);return list;
+    if(!state.legacy && refineWardrobe(state).canShare)list.push(["Shirt sharing","check shared days"]);return list;
   }
   function outfitSummary(){
     var review=el("div");review.appendChild(el("h2","k","Outfit quantities"));review.appendChild(el("p","gen-note","Confirmed assumptions produced these quantities. Manual edits and removals remain in effect."));
     result.groups.filter(function(g){return !g.depart;}).forEach(function(g){var items=g.items.filter(function(x){return x.category==="clothing" || /tie|belt|dress-shoes/.test(x.id);});if(!items.length)return;review.appendChild(el("h3",null,g.title));items.forEach(function(x){review.appendChild(el("p",null,refineLabel(x)+(x.manual ? " · Manual override":"")));});});
     var finalWarnings=el("div");result.warnings.forEach(function(x){finalWarnings.appendChild(el("p","gen-note",x.text));});review.appendChild(generatorButton("Review full list",closeSheet));
     var groups=result.groups.map(function(g){return {title:g.title,depart:!!g.depart,items:g.items.map(refineLabel)};});
-    var data={title:(t.name || t.where || "Trip")+" — Packing List",detail:[t.where,t.start+(t.end!==t.start ? " – "+t.end:"")].filter(Boolean).join(" · "),groups:groups.map(function(g){return {title:g.title,items:g.items.map(function(label){return {label:label,checked:false};})};})};
+    var data={title:(t.name || t.where || "Trip")+" — Packing List",detail:[t.where,t.start ? t.start+(t.end && t.end!==t.start ? " – "+t.end:""):""].filter(Boolean).join(" · "),groups:groups.map(function(g){return {title:g.title,items:g.items.map(function(label){return {label:label,checked:false};})};})};
     packExportSheet(t,{reviewNode:review,warningNode:finalWarnings,data:data,onExport:function(){return state.legacy ? Promise.resolve():packingLearningCapture(t,state,result);},prepare:function(){return refinePersist(t,state,result).then(function(){return generatorSaveDraft(t,groups,{bag:state.inputs.bag});});}});
   }
   function relevantAssumptions(){var r=state.refinements,i=state.inputs;return assumptionList().filter(function(x){var name=x[0];if(name==="Work")return r.work!=="none" || r.workDays>0;if(name==="Events")return r.formalDays>0 || r.dinners>0 || i.tripType==="event";if(name==="Flight")return i.intl && i.mode==="fly";if(name==="Laundry")return r.laundry.available || refineDays(i.start,i.end)>7;if(name==="Activities")return Object.keys(i.activities).some(function(k){return i.activities[k];}) || r.daypack;return name!=="Extras" && name!=="Bag";});}
@@ -204,27 +204,27 @@ function refineReview(t){
     f.appendChild(el("p","gen-note",note));
     if(["Work","Events","Dinner outfit","Suit outfit","Shirt sharing","Laundry"].indexOf(focus)>=0){var preview=el("div","outfit-preview");preview.setAttribute("aria-live","polite");f.appendChild(preview);function showQuantities(){preview.textContent="";preview.appendChild(el("strong",null,"Quantity impact"));if(!f.checkValidity()){preview.appendChild(el("p","gen-note","Complete the fields to see the resulting quantities."));return;}updates.forEach(function(update){update();});try{var proposed=refineEvaluate(n,profile,[]);proposed.items.filter(function(x){return /tshirts|socks|underwear|button-up|white-shirt|polo-shirts|khakis|tie|dress-pants|belt/.test(x.id);}).forEach(function(x){preview.appendChild(el("p",null,refineLabel(x)+(x.manual ? " · Manual override":"")));});}catch(e){preview.appendChild(el("p","gen-note","Enter valid assumptions to preview."));}}f.addEventListener("input",showQuantities);f.addEventListener("change",showQuantities);showQuantities();}
     var go=el("button","btn primary",flow ? "Apply & next":"Apply & recalculate");go.type="submit";f.appendChild(go);
-    if(flow && !requiredStep)f.appendChild(generatorButton("Skip for now",after));body.appendChild(f);
+    if(flow && !requiredStep)f.appendChild(generatorButton("Skip for now",after));body.appendChild(f);var assumptionDraft=packingDraftAttach(f,"refine:"+t.id+":"+focus,JSON.stringify([state.inputs.start,state.inputs.end]));
     f.addEventListener("submit",function(e){e.preventDefault();updates.forEach(function(update){update();});n.reviewed=n.reviewed||{};n.reviewed[focus]=true;
       if(decision)n.decisionReviews[focus]=refineDecisionKey(n,focus);
       if(JSON.stringify(n.inputs)===JSON.stringify(state.inputs) && JSON.stringify(n.refinements)===JSON.stringify(state.refinements)){
-        if(state.reviewed && state.reviewed[focus] && (!decision || state.decisionReviews[focus]===n.decisionReviews[focus])){after();return;}
-        go.disabled=true;refinePersist(t,n,result).then(function(){state=n;result=state.legacy ? refineLegacyResult(state):refineEvaluate(state,profile,[]);paint();after();}).catch(function(){go.disabled=false;failure("Could not save this review.");});return;
+        if(state.reviewed && state.reviewed[focus] && (!decision || state.decisionReviews[focus]===n.decisionReviews[focus])){assumptionDraft.clear();after();return;}
+        go.disabled=true;refinePersist(t,n,result).then(function(){assumptionDraft.clear();state=n;result=state.legacy ? refineLegacyResult(state):refineEvaluate(state,profile,[]);paint();after();}).catch(function(){go.disabled=false;failure("Could not save this review.");});return;
       }
-      go.disabled=true;commit(n,[],focus+" updated").then(function(ok){if(ok)after();else go.disabled=false;});
+      go.disabled=true;commit(n,[],focus+" updated").then(function(ok){if(ok){assumptionDraft.clear();after();}else go.disabled=false;});
     });
   }
 
   function edit(item){
     var body = openSheet("Edit this item"), f = el("form","form gen-form"), label=inp("ri-label","text",item.label), quantity=inp("ri-quantity","number",item.quantity); label.required=true; quantity.required=true; quantity.min="1"; quantity.max="999";
-    f.appendChild(fieldEl("Item",label)); f.appendChild(fieldEl("Quantity",quantity)); f.appendChild(el("p","muted","This creates a pinned manual override. Refinements will preserve it until you choose Return to automatic.")); var go=el("button","btn primary","Save override");go.type="submit";f.appendChild(go);body.appendChild(f);
-    f.addEventListener("submit",function(e){e.preventDefault();var next=clone(state); var value=Object.assign({},item,{label:label.value.trim(),quantity:+quantity.value}); if(next.overrides.added[item.id])next.overrides.added[item.id]=value;else next.overrides.edited[item.id]=value;commit(next,[],"Manual item override saved").then(function(ok){if(ok)closeSheet();});});
+    f.appendChild(fieldEl("Item",label)); f.appendChild(fieldEl("Quantity",quantity)); f.appendChild(el("p","muted","This creates a pinned manual override. Refinements will preserve it until you choose Return to automatic.")); var go=el("button","btn primary","Save override");go.type="submit";f.appendChild(go);body.appendChild(f);var itemDraft=packingDraftAttach(f,"edit:"+t.id+":"+item.id,JSON.stringify([item.label,item.quantity,item.section]));
+    f.addEventListener("submit",function(e){e.preventDefault();var next=clone(state); var value=Object.assign({},item,{label:label.value.trim(),quantity:+quantity.value}); if(next.overrides.added[item.id])next.overrides.added[item.id]=value;else next.overrides.edited[item.id]=value;commit(next,[],"Manual item override saved").then(function(ok){if(ok){itemDraft.clear();closeSheet();}});});
   }
   function remove(item){ var body=openSheet("Remove "+item.label); body.appendChild(el("p",null,item.critical || item.required ? "This item supports a critical or required need. Removing it will leave a visible warning; account for a replacement." : "Remove only for this trip, or change your future packing defaults."));
     body.appendChild(generatorButton("Remove for this trip",function(){var next=clone(state);next.overrides.removed[item.id]=true;commit(next,[],"Removed for this trip").then(function(ok){if(ok)closeSheet();});},true));
     if(!item.critical && !item.required && !item.manual)body.appendChild(generatorButton("Usually don’t pack this",function(){ if(busy)return;var oldProfile=clone(profile),p=refineExclude(profile,item);db.doc("meta/packing").set(p).then(function(){var next=clone(state);next.overrides.removed[item.id]=true;return commit(next,["profile"],"Default exclusion saved; inspect or reset it in Defaults & exclusions",oldProfile);}).then(function(ok){if(ok)closeSheet();else return db.doc("meta/packing").set(oldProfile).then(function(){profile=oldProfile;error.textContent="The trip could not be saved; the default exclusion was rolled back.";}).catch(function(){error.textContent="The default exclusion was saved but the trip change failed. Reset the exclusion in Defaults & exclusions.";});}).catch(function(){error.textContent="Could not save the default exclusion.";}); }));
   }
-  function add(){var body=openSheet("Add an edge-case item"),f=el("form","form gen-form"),label=inp("ra-label","text",""),quantity=inp("ra-quantity","number",1),section=sel("ra-section",REFINE_ORDER.filter(function(x){return x!=="Before leaving";}).map(function(x){return [x,x];}),"Personal bag & day gear");label.required=true;quantity.required=true;quantity.min="1";quantity.max="999";f.appendChild(fieldEl("Item",label));f.appendChild(fieldEl("Quantity",quantity));f.appendChild(fieldEl("Section",section));var go=el("button","btn primary","Add item");go.type="submit";f.appendChild(go);body.appendChild(f);f.addEventListener("submit",function(e){e.preventDefault();var next=clone(state),id="manual:"+Date.now().toString(36);next.overrides.added[id]={id:id,label:label.value.trim(),quantity:+quantity.value,section:section.value};commit(next,[],"Manual item added").then(function(ok){if(ok)closeSheet();});});}
+  function add(){var body=openSheet("Add an edge-case item"),f=el("form","form gen-form"),label=inp("ra-label","text",""),quantity=inp("ra-quantity","number",1),section=sel("ra-section",REFINE_ORDER.filter(function(x){return x!=="Before leaving";}).map(function(x){return [x,x];}),"Personal bag & day gear");label.required=true;quantity.required=true;quantity.min="1";quantity.max="999";f.appendChild(fieldEl("Item",label));f.appendChild(fieldEl("Quantity",quantity));f.appendChild(fieldEl("Section",section));var go=el("button","btn primary","Add item");go.type="submit";f.appendChild(go);body.appendChild(f);var addDraft=packingDraftAttach(f,"add:"+t.id);f.addEventListener("submit",function(e){e.preventDefault();var next=clone(state),id="manual:"+Date.now().toString(36);next.overrides.added[id]={id:id,label:label.value.trim(),quantity:+quantity.value,section:section.value};commit(next,[],"Manual item added").then(function(ok){if(ok){addDraft.clear();closeSheet();}});});}
   // Standalone app: explanations live in one section, keeping individual list rows compact.
   function rules(){
     var body=openSheet("Packing rules");body.appendChild(el("p","muted","Rules currently applied to this trip. Refinements update these automatically; manual overrides remain pinned. Manage your usual items and exclusions in Defaults & exclusions."));

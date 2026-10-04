@@ -78,8 +78,9 @@ function generatorPreferences(){
     p.prefRemoved = removed;
     p.extras = groups.map(function(g){ return {title:g.title,items:g.items.filter(function(x){ return x.on && !hidden(x.label); }).map(function(x){ return x.label; })}; }).filter(function(g){ return g.items.length; });
     p.generatorExtras = custom.value.split(/\r?\n/).map(function(s){ return s.trim(); }).filter(Boolean); p.generatorConfirmedAt = isoToday();
-    db.doc("meta/packing").set(p).then(function(){ EXTRAS = p.extras; MAYBE = p.maybe; closeSheet(); render(); }).catch(function(){ status.textContent = "Preferences could not be saved. Storage may be full or blocked."; });
+    db.doc("meta/packing").set(p).then(function(){ preferenceDraft.clear();EXTRAS = p.extras; MAYBE = p.maybe; closeSheet(); render(); }).catch(function(){ status.textContent = "Preferences could not be saved. Storage may be full or blocked."; });
   },true)); body.appendChild(status); body.appendChild(generatorButton("Inspect refinement exclusions",refineProfileSheet));
+  var preferenceDraft=packingDraftAttach(body,"preferences",JSON.stringify(generatorPrefs()),{saveClicks:true,capture:function(){return {groups:groups,removed:removed};},beforeRestore:function(data){if(data.custom){groups=clone(data.custom.groups);removed=data.custom.removed.slice();draw();}}});
 }
 function generatorSetup(t){
   var original = t, existing = !!t, s = t && t.generatorSetup || {}, f = el("form","panel form gen-form"), step = 0;
