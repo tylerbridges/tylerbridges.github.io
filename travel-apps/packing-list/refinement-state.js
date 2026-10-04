@@ -4,7 +4,7 @@ function refinePath(id){ return "trip/" + id + "/pack_meta/refinement"; }
 function refineNewState(t,setup){
   setup = setup || {}; var activities = {}; ["hike","workout","water","fish"].forEach(function(k){ activities[k] = !!setup[k] || (k === "workout" && !!setup.run); });
   return {version:2,inputs:{where:t.where,start:t.start,end:t.end,mode:setup.mode || "fly",tripType:setup.tripType || "leisure",bag:setup.bag || "carryon",intl:!!setup.intl,activities:activities},
-    refinements:{climate:setup.climate || "unknown",rain:!!setup.rain,thermal:"neutral",packingMode:"standard",laundry:{available:setup.laundry === "cycle",firstWash:setup.interval || 4,interval:setup.interval || 4},formalDays:setup.formal || 0,dinners:setup.dinners || 0,work:setup.work || "none",workDays:setup.workDays == null ? (setup.work && setup.work!=="none" ? null : 0) : setup.workDays,dinnerTop:null,dinnerBottoms:null,tie:false,alternateKhakis:false,shareSuitShirts:false,shirtOverlap:null,suitOverlap:null,warmWeather:false,extraItems:clone(setup.extraItems || {}),daypack:!!setup.daypack,ruggedHike:!!setup.ruggedHike,longFlight:!!setup.longintl},
+    refinements:{climate:setup.climate || "unknown",rain:!!setup.rain,thermal:"neutral",packingMode:"standard",laundry:{available:setup.laundry === "cycle",firstWash:setup.interval || 4,interval:setup.interval || 4},formalDays:setup.formal || 0,dinners:setup.dinners || 0,work:setup.work || "none",workDays:setup.workDays == null ? (setup.work && setup.work!=="none" ? null : 0) : setup.workDays,dinnerTop:null,dinnerBottoms:null,tie:true,alternateKhakis:true,shareSuitShirts:false,shirtOverlap:null,suitOverlap:null,warmWeather:false,extraItems:clone(setup.extraItems || {}),daypack:!!setup.daypack,ruggedHike:!!setup.ruggedHike,longFlight:!!setup.longintl},
     overrides:{removed:{},edited:{},added:{}},reviewed:{},decisionReviews:{},ruleResults:{},history:[],baseline:null};
 }
 // Standalone app: normalize old assumptions without changing preferences or explicit item overrides.
@@ -15,7 +15,7 @@ function refineNormalizeState(state){
   if(state.refinements.packingMode==="light")state.refinements.packingMode="standard";
   if(!state.reviewed)state.reviewed={};
   if(!state.decisionReviews)state.decisionReviews={};
-  var r=state.refinements,defaults={workDays:r.work!=="none" ? null:0,dinnerTop:null,dinnerBottoms:null,tie:false,alternateKhakis:false,shareSuitShirts:false,shirtOverlap:null,suitOverlap:null,warmWeather:false};
+  var r=state.refinements,defaults={workDays:r.work!=="none" ? null:0,dinnerTop:null,dinnerBottoms:null,tie:true,alternateKhakis:true,shareSuitShirts:false,shirtOverlap:null,suitOverlap:null,warmWeather:false};
   Object.keys(defaults).forEach(function(key){if(!Object.prototype.hasOwnProperty.call(r,key))r[key]=defaults[key];});
   if(!state.refinements.extraItems)state.refinements.extraItems={};
   if(state.refinements.daypack == null)state.refinements.daypack=false;
@@ -24,7 +24,7 @@ function refineNormalizeState(state){
 }
 // Standalone app: decisions depend on their context, so changing counts/weather reopens relevant questions.
 function refineDecisionKey(state,focus){var r=state.refinements;
-  var values={Work:[state.inputs.start,state.inputs.end,state.inputs.tripType,r.work,r.workDays],Events:[state.inputs.start,state.inputs.end,state.inputs.tripType,r.formalDays,r.dinners],"Dinner outfit":[r.dinners,r.climate,r.thermal,r.dinnerTop,r.dinnerBottoms],"Suit outfit":[r.formalDays,r.tie,r.alternateKhakis,r.shareSuitShirts],"Shirt sharing":[r.work,r.workDays,r.dinners,r.dinnerTop,r.formalDays,r.shareSuitShirts,r.shirtOverlap,r.suitOverlap]};
+  var values={Work:[state.inputs.start,state.inputs.end,state.inputs.tripType,r.work,r.workDays],Events:[state.inputs.start,state.inputs.end,state.inputs.tripType,r.formalDays,r.dinners],"Dinner outfit":[r.dinners,r.climate,r.thermal,r.dinnerTop,r.dinnerBottoms],"Suit outfit":["professional-rotation-v2",r.formalDays,r.tie,r.alternateKhakis,r.shareSuitShirts],"Shirt sharing":[r.work,r.workDays,r.dinners,r.dinnerTop,r.formalDays,r.shareSuitShirts,r.shirtOverlap,r.suitOverlap]};
   return values[focus] ? JSON.stringify(values[focus]):null;
 }
 function refinePendingDecisions(state){

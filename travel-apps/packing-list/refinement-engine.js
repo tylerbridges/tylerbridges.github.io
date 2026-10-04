@@ -19,7 +19,7 @@ function refineDays(start,end){
 }
 function refineId(label){
   var key = normItem(label);
-  var aliases = {"shirt":"tshirts","t shirts":"tshirts","t shirt":"tshirts","socks":"socks","underwear":"underwear","contacts":"contacts","small collapsible backpack":"daypack","solid color dress shirts":"white-shirt","dress pants suit trousers":"dress-pants","rain jacket umbrella":"rain-protection","hiking boots trail shoes":"hiking-footwear"};
+  var aliases = {"shirt":"tshirts","t shirts":"tshirts","t shirt":"tshirts","socks":"socks","underwear":"underwear","contacts":"contacts","small collapsible backpack":"daypack","solid color dress shirts":"white-shirt","white dress shirts":"white-shirt","dress pants suit trousers":"dress-pants","rain jacket umbrella":"rain-protection","hiking boots trail shoes":"hiking-footwear"};
   return aliases[key] || key.replace(/ /g,"-");
 }
 function refineItem(label,section,reason,options){
@@ -105,10 +105,10 @@ function refineEvents(state,profile,c){
     ["Suit jacket","Dress pants (suit trousers)","Dress shoes","Belt"].forEach(function(label){add(label,"Formal wear","One reusable suit outfit; no undershirt",1);});
     add("Lint roller","Formal wear","Suit care",1);
     add("Dress socks","Formal wear","Fresh dress socks for every full suit day",r.formalDays);
-    if(r.tie)add("Tie","Formal wear","Tie selected for suit attire",1);
-    if(r.alternateKhakis)add("Khakis","Formal wear","Alternate suit trousers with khakis; share with dinners",1);
+    if(r.tie)add("Tie","Formal wear","Professional rotation: one tie for one suit day, two different ties for multiple days",Math.min(2,r.formalDays));
+    if(r.alternateKhakis)add("Khakis","Formal wear","Professional rotation: up to two different pairs; reuse and share with dinners",Math.min(2,r.formalDays));
   }
-  add("Solid-color dress shirts","Formal wear",r.shareSuitShirts ? "Compatible shirts shared across suit/work/dinner needs; "+w.suitOverlap+" suit day(s) share a shirt; fresh shirts, no laundry reduction":"Separate solid-color suit shirts: fresh shirt for every suit day, no laundry reduction",w.dressShirts);
+  add("White dress shirts","Formal wear",r.shareSuitShirts ? "Compatible shirts shared across suit/work/dinner needs; "+w.suitOverlap+" suit day(s) share a shirt; fresh shirts, no laundry reduction":"Separate white suit shirts: fresh shirt for every suit day, no laundry reduction",w.dressShirts);
   add("Button-up long sleeve shirt","Clothing","Fresh work/dinner button-ups: "+w.workDays+" workday(s), "+w.dinnerButtons+" button-up dinner(s), "+w.overlap+" sharing a work shirt; no laundry reduction",w.buttonUps);
   if(r.dinners){
     if(r.dinnerTop==="polo")add("Polo shirts","Clothing","One fresh polo for each nice dinner; no laundry reduction",r.dinners);
@@ -144,7 +144,7 @@ function refineEvaluate(state,profile,changed){
   var c = refineContext(state), signature = JSON.stringify(profile), cache = {}, keys = {}, ran = [];
   // Standalone app: cache validity comes from actual dependency values, never caller hints alone.
   Object.keys(REFINE_RULES).forEach(function(id){var rule=REFINE_RULES[id];
-    keys[id]="wardrobe-2026-10-v1:"+JSON.stringify(rule.deps.map(function(key){if(key==="profile")return profile;if(key==="dates")return [state.inputs.start,state.inputs.end];return Object.prototype.hasOwnProperty.call(state.inputs,key) ? state.inputs[key] : state.refinements[key];}));
+    keys[id]="wardrobe-2026-10-v2:"+JSON.stringify(rule.deps.map(function(key){if(key==="profile")return profile;if(key==="dates")return [state.inputs.start,state.inputs.end];return Object.prototype.hasOwnProperty.call(state.inputs,key) ? state.inputs[key] : state.refinements[key];}));
     if(!state.ruleResults || !state.ruleResults[id] || !state.ruleKeys || state.ruleKeys[id]!==keys[id]){cache[id]=rule.run(state,profile,c);ran.push(id);}else cache[id]=state.ruleResults[id];
   });
   var merged = {}, order = [], excluded = profile.refinementProfile && profile.refinementProfile.excluded || {};

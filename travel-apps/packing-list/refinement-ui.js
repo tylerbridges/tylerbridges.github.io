@@ -165,10 +165,10 @@ function refineReview(t){
       var bottoms=select("dinnerBottoms","Suitable dinner bottoms",[["","Choose dinner bottoms"],["shorts","Reuse suitable regular Lulu shorts"],["jeans","Jeans + belt"],["khakis","Khakis + belt"]],r.dinnerBottoms || "",function(v){n.refinements.dinnerBottoms=v;});bottoms.required=true;
       note="Reuse a suitable pair already on the list; add one only if missing. Jeans/khakis share one belt with suit attire. Button-ups can share a work shirt on the same day. Choose for the coldest outdoor conditions: "+r.climate+".";
     }else if(focus==="Suit outfit"){
-      check("tie","Include a tie",r.tie,function(v){n.refinements.tie=v;});
-      check("alternateKhakis","Alternate suit trousers with khakis",r.alternateKhakis,function(v){n.refinements.alternateKhakis=v;});
+      check("tie","Include ties ("+Math.min(2,r.formalDays)+" different)",r.tie,function(v){n.refinements.tie=v;});
+      check("alternateKhakis","Alternate suit trousers with khakis ("+Math.min(2,r.formalDays)+" pairs)",r.alternateKhakis,function(v){n.refinements.alternateKhakis=v;});
       check("shareSuitShirts","My solid-color shirts work for both suit and work/dinner",r.shareSuitShirts,function(v){n.refinements.shareSuitShirts=v;});
-      note="One reusable suit jacket, suit trousers, dress shoes and belt. Fresh dress shirts and dress socks per suit day; no undershirt. Suit shirts stay separate from patterned work/dinner shirts unless you confirm compatibility. Khakis and the belt are shared with dinners when appropriate.";
+      note="One reusable suit jacket, suit trousers, dress shoes and belt. Fresh white dress shirts and dress socks per suit day; no undershirt. For multiple professional dress days, the usual rotation is two different ties and two pairs of khakis; for one day, one of each. Suit shirts stay separate from patterned work/dinner shirts unless you confirm compatibility. Khakis and the belt are shared with dinners when appropriate.";
     }else if(focus==="Shirt sharing"){
       var w=refineWardrobe(state);
       function sharing(key,label,max,value){var automatic=check(key+"Auto",label+": assume maximum overlap",value==null,function(v){n.refinements[key]=v ? null:+count.value;});var count=number(key,"How many days share a shirt?",value==null ? max:Math.min(max,value),max,function(v){if(!automatic.checked)n.refinements[key]=v;});
