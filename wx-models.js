@@ -702,6 +702,7 @@
     var r = cur3(), p = PBY[cur.param], dk = dark();
     if (r && p.cont && r.c) contours(c, r, r.c, p.cont, dk);
     if (r && p.barbs && r.u) barbs(c, r, dk);
+    if (gps && gpsMode !== "off") { var g = toScr(gps.lat, gps.lon); c.beginPath(); c.arc(g.x, g.y, 6.5, 0, 7); c.fillStyle = "#0a84ff"; c.fill(); c.lineWidth = 2.5; c.strokeStyle = "#fff"; c.stroke(); }
     if (loc) { var q = toScr(loc.lat, loc.lon); c.beginPath(); c.arc(q.x, q.y, 5.5, 0, 7); c.lineWidth = 2.5; c.strokeStyle = dk ? "#000" : "#fff"; c.stroke(); c.lineWidth = 1.6; c.strokeStyle = dk ? "#fff" : "#15202b"; c.stroke(); }
   }
   function toScr(lat, lon) { var s = scaleZ(drawn.z); return { x: (wx(lon) - drawn.x) * s + SW / 2, y: (wy(lat) - drawn.y) * s + SH / 2 }; }
@@ -831,21 +832,10 @@
     ui.model.addEventListener("change", function (e) { var v = e.target.value; if (v && v !== cur.model && modelOk(v)) switchModel(v); });
     ui.param.addEventListener("change", function () { setParam(this.value); });
     ui.run.addEventListener("change", function () { userRun = true; setRun(+this.value); });
-    ui.locate.addEventListener("click", function () {
-      if (!root.navigator.geolocation) { ui.locationStatus.textContent = "Location isn't available in this browser"; return; }
-      ui.locate.disabled = true; ui.locationStatus.textContent = "Finding your location…";
-      root.navigator.geolocation.getCurrentPosition(function (p) {
-        ui.locate.disabled = false; ui.locationStatus.textContent = "";
-        if (on) fly(wx(p.coords.longitude), wy(p.coords.latitude), Math.max(view.z, 8));
-      }, function (err) {
-        ui.locate.disabled = false;
-        ui.locationStatus.textContent = err && err.code === 1 ? "Location permission is off for this site" : "Couldn't get your location";
-      }, { enableHighAccuracy: true, maximumAge: 15000, timeout: 20000 });
-    });
-    ui.home.addEventListener("click", function () {
-      ui.locationStatus.textContent = "";
-      if (loc) fly(wx(loc.lon), wy(loc.lat), 7.4);
-    });
+    // locate / back-to-place work as on Radar: locate flies to the device and stays locked on it as it moves; while
+    //   locked the pin (back to the forecast location) replaces it; dragging unlocks (both show)
+    ui.locate.addEventListener("click", locate);
+    ui.home.addEventListener("click", toForecast);
     ui.play.addEventListener("click", function () { play(!playing); });
     ui.time.addEventListener("click", function () { play(false); cur.k = 0; showHour(); });
     ui.prev.addEventListener("click", function () { play(false); step(-1); });
@@ -1007,6 +997,37 @@
     cancelAnimationFrame(tween); var a = { x: view.x, y: view.y, z: view.z }, t0 = performance.now();
     (function stepT(t) { var f = Math.min(1, (t - t0) / 380), e = f * (2 - f); setView(a.x + (x - a.x) * e, a.y + (y - a.y) * e, a.z + (z - a.z) * e); if (f < 1) tween = requestAnimationFrame(stepT); else settle(); })(t0);
   }
+  var gps = null, gpsMode = "off", watchId = null, locT = 0; // gpsMode: off | wait | locked | free
+  function locMsg(t) { clearTimeout(locT); if (!ui.locationStatus) return; ui.locationStatus.textContent = t || ""; if (t && !/…$/.test(t)) locT = setTimeout(function () { ui.locationStatus.textContent = ""; }, 3500); }
+  function locate() {
+    if (!root.navigator.geolocation) { locMsg("Location isn't available in this browser"); return; }
+    if (gps) { gpsMode = "locked"; locUi(); locMsg(""); fly(wx(gps.lon), wy(gps.lat), Math.max(view.z, 8)); }
+    else { gpsMode = "wait"; locUi(); locMsg("Finding your location…"); }
+    startWatch();
+  }
+  function startWatch() {
+    if (watchId != null || !root.navigator.geolocation) return;
+    watchId = root.navigator.geolocation.watchPosition(function (p) {
+      var first = !gps || gpsMode === "wait";
+      gps = { lat: p.coords.latitude, lon: p.coords.longitude }; paint(4);
+      if (gpsMode === "wait") { gpsMode = "locked"; locUi(); locMsg(""); if (on) fly(wx(gps.lon), wy(gps.lat), Math.max(view.z, 8)); }
+      else if (gpsMode === "locked" && !first && on && !pts.size) setView(wx(gps.lon), wy(gps.lat), view.z);
+    }, function (err) {
+      var denied = err && err.code === 1;
+      if (gps && !denied) return;
+      stopWatch(); if (gpsMode === "wait") { gpsMode = "off"; locUi(); }
+      locMsg(denied ? "Location permission is off for this site" : "Couldn't get your location");
+    }, { enableHighAccuracy: true, maximumAge: 15000, timeout: 20000 });
+  }
+  function stopWatch() { if (watchId != null && root.navigator.geolocation) root.navigator.geolocation.clearWatch(watchId); watchId = null; }
+  function toForecast() { gpsMode = "off"; stopWatch(); locUi(); locMsg(""); paint(4); if (loc) fly(wx(loc.lon), wy(loc.lat), 7.4); }
+  function unlock() { if (gpsMode === "locked") { gpsMode = "free"; locUi(); } }
+  function locUi() {
+    if (!ui.locate) return;
+    ui.locate.hidden = gpsMode === "locked" || gpsMode === "wait" && !!gps;
+    ui.locate.classList.toggle("on", gpsMode === "wait");
+    ui.home.hidden = gpsMode === "off" || gpsMode === "wait";
+  }
   function gestures() {
     el.addEventListener("pointerdown", function (e) {
       if (e.target.closest("button")) return;
@@ -1018,6 +1039,7 @@
       var g = snap(); if (!g0 || g.n !== g0.n) { g0 = g; return; }
       if (Math.abs(g.cx - g0.cx) + Math.abs(g.cy - g0.cy) > 4 || g.n > 1) moved = true;
       if (!moved) return;
+      unlock();
       var z = g0.z + (g.n > 1 && g0.d > 0 ? Math.log2(g.d / g0.d) : 0), s = scaleZ(z), r = el.getBoundingClientRect();
       var wpt = g0.w, x = wpt.x - (g.cx - r.left - W / 2) / s, y = wpt.y - (g.cy - r.top - HH / 2) / s;
       setView(x, y, z);
@@ -1036,7 +1058,7 @@
     };
     el.addEventListener("pointerup", end); el.addEventListener("pointercancel", end);
     el.addEventListener("wheel", function (e) {
-      e.preventDefault(); var r = el.getBoundingClientRect(), sx = e.clientX - r.left, sy = e.clientY - r.top, w = at(sx, sy), z = view.z - e.deltaY * (e.deltaMode ? 0.05 : 0.0022);
+      e.preventDefault(); var r = el.getBoundingClientRect(), sx = e.clientX - r.left, sy = e.clientY - r.top, w = at(sx, sy), z = view.z - e.deltaY * (e.deltaMode ? 0.05 : 0.0022); unlock();
       var s = scaleZ(Math.max(2.5, Math.min(10, z))); setView(w.x - (sx - W / 2) / s, w.y - (sy - HH / 2) / s, z); clearTimeout(settleT); settleT = setTimeout(settle, 160);
     }, { passive: false });
   }
@@ -1061,13 +1083,13 @@
       loc = { lat: l.lat, lon: l.lon };
       if (moved2) { view = { x: wx(loc.lon), y: wy(loc.lat), z: view.z && drawn ? view.z : 5.7 }; drawn = null; BOX = null; resetFrames(); }
       if (!modelOk(cur.model)) cur.model = "gfs";
-      on = true; size(); uiModels(); uiParams(); uiQuick(); legend(); uiTime();
+      on = true; if (gpsMode !== "off") startWatch(); locUi(); size(); uiModels(); uiParams(); uiQuick(); legend(); uiTime();
       if (!cur.run) switchModel(cur.model); else if (moved2) showHour();
       else if (Date.now() - lastRefresh > 10 * 60000) refresh();
       clearInterval(refreshT); refreshT = setInterval(function () { if (on && !document.hidden) refresh(); }, 10 * 60000);
       paint(31);
     },
-    hide: function () { on = false; if (el) play(false); clearInterval(refreshT); },
+    hide: function () { on = false; if (el) play(false); clearInterval(refreshT); if (gpsMode !== "off") { stopWatch(); if (gpsMode === "wait") gpsMode = "off"; locUi(); } },
     _state: function () { var hs = hours(), f = frames[fkey(hs[cur.k])]; var c3 = f && f.r && f.r.c; return { model: cur.model, param: cur.param, run: cur.run, hours: hs, k: cur.k, ready: !!(f && f.r), err: f && f.err, view: view, queue: Q.length + busy, c: c3 ? { nx: c3.nx, ny: c3.ny, s: c3.s, a0: c3.a[0], mid: c3.a[c3.a.length >> 1] } : null, v: f && f.r && f.r.v ? { nx: f.r.v.nx, ny: f.r.v.ny, s: f.r.v.s } : null }; },
     _set: function (o) { if (o.model && o.model !== cur.model) switchModel(o.model); if (o.param) setParam(o.param); if (o.k != null) { cur.k = o.k; showHour(); } },
     // one product at one hour, decoded off-screen (for check.html): value range and share of missing values

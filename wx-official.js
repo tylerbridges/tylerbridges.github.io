@@ -36,8 +36,9 @@
   function dark() { var t = document.documentElement.dataset.theme; return t ? t === "dark" : !!(root.matchMedia && root.matchMedia("(prefers-color-scheme: dark)").matches); }
   // WPC's lowest band is .01–.10, so anything averaging under .10 can only honestly read "<.1"; above that, county
   //   averages round to .05 (to .1 from 1 in up)
-  function amt(v) { if (v < 0.1) return "<.1"; var r = v < 0.975 ? Math.round(v * 20) / 20 : Math.round(v * 10) / 10; return r < 1 ? r.toFixed(2).replace(/^0/, "") : r.toFixed(1); }
-  function num(v) { return v < 1 ? v.toFixed(2).replace(/^0/, "") : String(v); }
+  // amounts are padded to two decimals with a leading zero (0.10, 0.50, 1.20)
+  function amt(v) { if (v < 0.1) return "<0.10"; var r = v < 0.975 ? Math.round(v * 20) / 20 : Math.round(v * 10) / 10; return r.toFixed(2); }
+  function num(v) { return (+v).toFixed(2); }
 
   function getJSON(url) {
     var ac = root.AbortController ? new AbortController() : null, to = setTimeout(function () { if (ac) ac.abort(); }, 25000);
@@ -273,7 +274,7 @@
     list.forEach(function (c) {
       var v = countyVal(c), dry = data.qpf ? v < 0.005 : !v; if (dry && !SET.zeros) return;
       var p = toScr(c.lat, c.lon); if (p.x < 0 || p.y < 0 || p.x > SW || p.y > SH) return;
-      items.push({ v: dry ? -1 : v, x: p.x, y: p.y, t: dry ? (data.qpf ? "0" : "0%") : data.qpf ? amt(v) : CATL[v], dry: dry });
+      items.push({ v: dry ? -1 : v, x: p.x, y: p.y, t: dry ? (data.qpf ? "0.00" : "0%") : data.qpf ? amt(v) : CATL[v], dry: dry });
     });
     items.sort(function (a, b) { return b.v - a.v; });
     cx.textAlign = "center"; cx.textBaseline = "middle"; cx.lineJoin = "round";
@@ -310,7 +311,7 @@
       if (v < 0.005) return nm + "under .01 in";
       // the WPC bands the county spans, e.g. ".25–.75 in", and its average
       var r = data.rng[c.fips] || [0, 0], a = r[0] ? QL[r[0] - 1] : 0, z = QL[r[1]];
-      return nm + (a ? num(a) : "0") + (z != null ? "–" + num(z) : "+") + " in" + (v >= 0.1 ? " (avg " + amt(v) + ")" : "");
+      return nm + (a ? num(a) : "0.00") + (z != null ? "–" + num(z) : "+") + " in" + (v >= 0.1 ? " (avg " + amt(v) + ")" : "");
     }
     var what = cur.k === "ice" ? '0.25"+ ice' : +cur.th + '"+ snow';
     return nm + (v ? CATLONG[v] : "under 10%") + " chance of " + what;
@@ -379,7 +380,7 @@
 
   // one line under the map saying what the numbers are (no colour key)
   function caption(s) {
-    if (s.k === "qpf") return "Numbers: each county's average forecast precipitation, inches of liquid (rain + melted snow); <.1 = .01 to .10. Tap a county for its range.";
+    if (s.k === "qpf") return "Numbers: each county's average forecast precipitation, inches of liquid (rain + melted snow); <0.10 = 0.01 to 0.10. Tap a county for its range.";
     return "Numbers: each county's chance of " + (s.k === "ice" ? '0.25"+ ice' : +s.th + '"+ snow') + " (10% = 10–39%, 40% = 40–69%, 70% = 70%+). Blank or 0%: under 10%.";
   }
 

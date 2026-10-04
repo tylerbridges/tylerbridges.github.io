@@ -900,6 +900,12 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
 .forecast-workspace .model-tools .mmsel{max-width:84px}
 .forecast-workspace .model-tools .mrun{max-width:92px}
 .forecast-workspace .model-tools .mhead #mparam{flex:1 1 0;width:0;max-width:none}
+/* locate / back-to-place buttons sit on the model map's top-right corner, as on Radar */
+.forecast-workspace .model-map .model-location{position:absolute;right:10px;top:10px;z-index:3;padding:0;display:flex;flex-direction:column;gap:8px}
+.forecast-workspace .model-map .model-location .rloc{width:36px;height:36px}
+.mlocmsg{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);z-index:3;max-width:calc(100% - 20px);padding:5px 12px;border-radius:999px;font-size:12px;color:var(--ink2);white-space:nowrap;pointer-events:none;background:color-mix(in srgb,var(--surface) 84%,transparent);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border:1px solid color-mix(in srgb,var(--line) 70%,transparent)}
+.mlocmsg:empty{display:none}
+.mhdr{max-width:calc(100% - 66px)}
 /* map header, like Pivotal's title bar: product, period and run on the map itself */
 .mhdr{position:absolute;left:8px;top:8px;z-index:2;max-width:calc(100% - 16px);pointer-events:none;padding:5px 9px;border-radius:10px;background:color-mix(in srgb,var(--surface) 84%,transparent);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border:1px solid color-mix(in srgb,var(--line) 70%,transparent);line-height:1.25}
 .mhdr:empty{display:none}
@@ -966,6 +972,11 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
       <div class="mleg" id="mleg"></div>
       <div class="mmapw model-map">
         <div id="mmap"></div>
+      <div class="model-location rbtns">
+        <button type="button" class="rloc" id="mlocate" aria-label="Go to my current location"><svg viewBox="0 0 24 24"><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2" class="f"/></svg></button>
+        <button type="button" class="rloc rhome" id="mhome" hidden aria-label="Back to the forecast location"><svg viewBox="0 0 24 24"><path d="M12 21.5s-6.5-6.2-6.5-11.2a6.5 6.5 0 0 1 13 0c0 5-6.5 11.2-6.5 11.2Z"/><circle cx="12" cy="10.3" r="2.3" class="f"/></svg></button>
+      </div>
+        <span id="mlocation-status" class="mlocmsg" role="status"></span>
       </div>
         <div class="rbar model-bar">
           <button type="button" class="rplay" id="mplay" aria-label="Play"></button>
@@ -983,11 +994,6 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
       </div>
       <div class="model-nav">
       <div class="map-regions" id="model-regions" role="group" aria-label="Model map extent"></div>
-      <div class="model-location">
-        <button type="button" class="rloc" id="mlocate" aria-label="Go to my current location"><svg viewBox="0 0 24 24"><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2" class="f"/></svg></button>
-        <button type="button" class="rloc" id="mhome" aria-label="Back to the forecast location"><svg viewBox="0 0 24 24"><path d="M12 21.5s-6.5-6.2-6.5-11.2a6.5 6.5 0 0 1 13 0c0 5-6.5 11.2-6.5 11.2Z"/><circle cx="12" cy="10.3" r="2.3" class="f"/></svg></button>
-        <span id="mlocation-status" role="status"></span>
-      </div>
       </div>
       <div class="msrc" id="msrc"></div>
     </div>
@@ -1043,11 +1049,11 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=118"></script>
-<script src="wx-live.js?v=118"></script>
-<script src="wx-scenarios.js?v=118"></script>
-<script src="wx-vmap.js?v=118"></script>
-<script src="wx-radar.js?v=118"></script>
+<script src="wx-normalize.js?v=119"></script>
+<script src="wx-live.js?v=119"></script>
+<script src="wx-scenarios.js?v=119"></script>
+<script src="wx-vmap.js?v=119"></script>
+<script src="wx-radar.js?v=119"></script>
 <script src="wx-models.js?v=121"></script>
 <script src="wx-official.js?v=121"></script>
 <script src="app.js?v=121"></script>

@@ -1270,7 +1270,7 @@
     if (g) {
       var end = now + OQ.p * H, row = [["qpf", "Rain / liquid", sumRange(g.qpf, now, end)], ["snow", "Snow", sumRange(g.snow, now, end)], ["ice", "Ice", sumRange(g.ice, now, end)]];
       amt = '<div class="oqamt">' + row.map(function (r) {
-        return '<div' + (r[0] === OQ.k ? ' class="on"' : "") + "><b>" + (r[2] < 0.005 ? "0" : r[2] < 1 ? r[2].toFixed(2).replace(/^0/, "") : r[2].toFixed(1)) + " in</b><span>" + r[1] + "</span></div>";
+        return '<div' + (r[0] === OQ.k ? ' class="on"' : "") + "><b>" + (r[2] < 0.005 ? "0.00" : r[2].toFixed(2)) + " in</b><span>" + r[1] + "</span></div>";
       }).join("") + "</div>" + '<div class="oqnote">' + esc((doc.loc && doc.loc.label) || "This location") + ", next " + OQ.p + " hours, from the official weather.gov forecast</div>";
     }
     var chip = function (attr, v, label, on) { return '<button type="button" class="chip' + (on ? " on" : "") + '" ' + attr + '="' + v + '">' + label + "</button>"; };
