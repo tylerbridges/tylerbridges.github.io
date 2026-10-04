@@ -934,6 +934,20 @@ html.scrolled .top{padding-top:6px;padding-bottom:6px}
 .tabdock.mini #nav .chip{font-size:12px;border-radius:18px}
 .tabdock.mini #nav .chip svg{width:0;height:0;opacity:0}
 .tabdock.mini .navpill{top:3px;bottom:3px;border-radius:18px}
+/* smooth size changes (Oct 4): both bars ease between full and compact in 0.28 s, like iOS toolbars; the pill sits by
+   column (left/width from --i, the padding --p and the gap), so it rides along with the bar instead of being re-placed */
+.tabdock #nav{--p:4px;--g:2px;width:min(560px,100%);max-width:none;transition:width .28s cubic-bezier(.2,.8,.2,1),height .28s cubic-bezier(.2,.8,.2,1),padding .28s cubic-bezier(.2,.8,.2,1),border-radius .28s ease}
+.tabdock.mini #nav{--p:3px;width:290px;max-width:none}
+.tabdock #nav .navpill{left:calc(var(--p) + var(--i,0) * ((100% - 2 * var(--p) - 3 * var(--g)) / 4 + var(--g)));width:calc((100% - 2 * var(--p) - 3 * var(--g)) / 4);transform:none;transition:top .28s cubic-bezier(.2,.8,.2,1),bottom .28s cubic-bezier(.2,.8,.2,1),border-radius .28s ease}
+.tabdock #nav.anim .navpill{transition:left .28s cubic-bezier(.3,1.3,.4,1),top .28s cubic-bezier(.2,.8,.2,1),bottom .28s cubic-bezier(.2,.8,.2,1),border-radius .28s ease}
+.tabdock #nav .chip{transition:font-size .28s cubic-bezier(.2,.8,.2,1),color .2s ease,border-radius .28s ease}
+.tabdock #nav .chip svg{transition:width .28s cubic-bezier(.2,.8,.2,1),height .28s cubic-bezier(.2,.8,.2,1),opacity .18s ease}
+.top{transition:padding .28s cubic-bezier(.2,.8,.2,1)}
+.top-row .fresh{max-height:22px;overflow:hidden;transition:max-height .28s cubic-bezier(.2,.8,.2,1),opacity .18s ease}
+html.scrolled .top #fresh{display:inline-flex;max-height:0;opacity:0}
+.top-row .rbtn{transition:width .28s cubic-bezier(.2,.8,.2,1),height .28s cubic-bezier(.2,.8,.2,1)}
+.top-row .rbtn svg{transition:width .28s ease,height .28s ease}
+@media (prefers-reduced-motion: reduce){.tabdock #nav,.tabdock #nav .navpill,.tabdock #nav .chip,.tabdock #nav .chip svg,.top,.top-row .fresh,.top-row .rbtn{transition:none!important}}
 @media (prefers-reduced-motion: reduce){.tabdock #nav,.tabdock #nav .chip svg{transition:none}}
 .wrap{padding-bottom:calc(max(env(safe-area-inset-bottom,0px),12px) + 76px)}
 #toast{bottom:calc(max(env(safe-area-inset-bottom,0px),12px) + 66px)}
@@ -1124,13 +1138,13 @@ html.scrolled .top{padding-top:6px;padding-bottom:6px}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=135"></script>
-<script src="wx-live.js?v=135"></script>
-<script src="wx-scenarios.js?v=135"></script>
-<script src="wx-vmap.js?v=135"></script>
-<script src="wx-radar.js?v=135"></script>
-<script src="wx-models.js?v=135"></script>
-<script src="wx-official.js?v=135"></script>
-<script src="app.js?v=135"></script>
+<script src="wx-normalize.js?v=136"></script>
+<script src="wx-live.js?v=136"></script>
+<script src="wx-scenarios.js?v=136"></script>
+<script src="wx-vmap.js?v=136"></script>
+<script src="wx-radar.js?v=136"></script>
+<script src="wx-models.js?v=136"></script>
+<script src="wx-official.js?v=136"></script>
+<script src="app.js?v=136"></script>
 </body>
 </html>

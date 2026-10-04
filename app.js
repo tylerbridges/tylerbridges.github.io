@@ -1073,7 +1073,8 @@
     //   snaps, and the transition is switched on again only at the moment of the next tab change
     if (!animate) n.classList.remove("anim");
     else if (!n.classList.contains("anim")) { n.classList.add("anim"); void p.offsetWidth; }
-    p.style.width = on.offsetWidth + "px"; p.style.transform = "translateX(" + on.offsetLeft + "px)";
+    // the pill is placed by column (CSS works out left/width from --i), so it follows the bar as it grows or shrinks
+    p.style.width = p.style.transform = ""; p.style.setProperty("--i", Array.prototype.indexOf.call(n.querySelectorAll(".chip"), on));
     if (animate) { p.classList.remove("go"); void p.offsetWidth; p.classList.add("go"); }
     n.classList.add("pilled");
     if (n.scrollWidth > n.clientWidth) on.scrollIntoView({ block: "nearest", inline: "nearest", behavior: animate ? "smooth" : "auto" });
@@ -1112,7 +1113,7 @@
     //   the browser then shifts the scroll position by the header's change (scroll anchoring); that shift isn't the user
     //   scrolling, so it's ignored (otherwise it flips the state straight back, over and over)
     var quiet = 0;
-    function set(small) { if (dock.classList.contains("mini") === small) return; dock.classList.toggle("mini", small); document.documentElement.classList.toggle("scrolled", small); setTopH(); movePill(false); acc = 0; quiet = performance.now() + 200; requestAnimationFrame(function () { last = window.scrollY; }); }
+    function set(small) { if (dock.classList.contains("mini") === small) return; dock.classList.toggle("mini", small); document.documentElement.classList.toggle("scrolled", small); setTopH(); movePill(false); acc = 0; quiet = performance.now() + 380; setTimeout(setTopH, 300); requestAnimationFrame(function () { last = window.scrollY; }); }
     function upd() {
       tick = false; var y = window.scrollY, d = y - last; last = y;
       if (performance.now() < quiet) return;
