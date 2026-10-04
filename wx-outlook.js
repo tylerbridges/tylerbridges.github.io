@@ -96,11 +96,13 @@
     });
     if (options.onTool) options.onTool(name);
     if (name === "compare") updateCompare();
-    dialog.scrollTop = 0; tab.scrollIntoView({ block: "nearest", inline: "nearest" });
+    dialog.scrollTop = 0;
   }
   function openTools(name, opener) {
     var dialog = document.getElementById("forecast-tools"); toolsOpener = opener;
-    if (!dialog.open) dialog.showModal(); selectTool(name); document.getElementById("tool-tab-" + name).focus({ preventScroll: true });
+    selectTool(name);
+    if (!dialog.open) dialog.showModal();
+    dialog.scrollTop = 0; document.getElementById("tool-tab-" + name).focus({ preventScroll: true });
   }
   function closeTools() {
     var dialog = document.getElementById("forecast-tools"); if (dialog && dialog.open) dialog.close();

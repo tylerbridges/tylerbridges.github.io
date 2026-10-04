@@ -54,6 +54,10 @@ jobs:
       - name: Install browser check tools
         run: |
           npm install --prefix "$RUNNER_TEMP/weather-qa" playwright
-          "$RUNNER_TEMP/weather-qa/node_modules/.bin/playwright" install --with-deps chromium
+          "$RUNNER_TEMP/weather-qa/node_modules/.bin/playwright" install --with-deps chromium webkit
       - name: Confirm deployed version and live behavior
         run: NODE_PATH="$RUNNER_TEMP/weather-qa/node_modules" node tools/weather_live.cjs --production
+      - name: More panel layout in Chromium and WebKit
+        run: |
+          python -m http.server 8003 > "$RUNNER_TEMP/weather-server.log" 2>&1 &
+          NODE_PATH="$RUNNER_TEMP/weather-qa/node_modules" node tools/weather_tools_layout.cjs --webkit
