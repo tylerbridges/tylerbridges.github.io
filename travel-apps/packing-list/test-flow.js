@@ -65,7 +65,7 @@ function packingTestStart(scenario,setup){
     var keys=[];for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);if(k && k.indexOf(PACK_TEST_PREFIX+"ta:")===0)keys.push(k);}
     // Reset only this sandbox, including its exports and overrides.
     keys.forEach(function(k){localStorage.removeItem(k);});
-    localStorage.setItem(PACK_TEST_PREFIX+"ta:meta/packing",JSON.stringify(prefs));lsSet("test-scenario",scenario.id);lsSet("test-scenario-config",scenario);
+    localStorage.setItem(PACK_TEST_PREFIX+"ta:meta/packing",JSON.stringify(prefs));lsSet("test-scenario",scenario.id);lsSet("test-scenario-config",scenario);lsSet("test-initial-setup",!!setup);
     var t=packingTestRecord(scenario);
     var state=packingTestState(t,scenario);var result=refineEvaluate(state,prefs,null);
     return db.doc("trips/"+t.id).set(t).then(function(){return refinePersist(t,state,result);}).then(function(){

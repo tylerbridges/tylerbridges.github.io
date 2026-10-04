@@ -210,3 +210,5 @@ h2.k,.gen-opt h3,.psec-head h3,details.panel>summary{font-size:var(--t-foot);let
 
 /* Standalone app: conditional controls must honor the native hidden state. */
 [hidden]{display:none!important;}
+
+.gen-pref-row{flex-wrap:wrap;}.gen-pref-row>input[type=text]{width:auto;flex:1 1 120px;}.gen-pref-row>.chipchk{min-height:44px;flex:0 0 auto;}.gen-pref-row>.gen-note{flex-basis:100%;}

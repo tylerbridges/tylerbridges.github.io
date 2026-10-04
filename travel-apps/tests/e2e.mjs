@@ -15,10 +15,10 @@ async function testPage(options){const page=await b.newPage(options);await page.
 let apiCalls=0;p.on('request',q=>{if(/api\.(anthropic|openai)\.com/.test(q.url()))apiCalls++;});
 p.on("pageerror", e => errs.push(e.message)); p.on("console", m => { if (m.type() === "error" && !/fonts\.g/.test(m.text())) errs.push(m.text()); });
 try {
-  await p.goto(B + "packing-list/"); await p.click('button:has-text("My preferences")');
-  await p.getByLabel('Include Snacks',{exact:true}).uncheck(); await p.fill('#gp-custom','Medicine pouch');
+  await p.goto(B + "packing-list/"); await p.click('button:has-text("Packing preferences")');
+  await p.getByLabel('Include Snacks',{exact:true}).uncheck(); await p.getByText('Add usual item',{exact:true}).click();await p.fill('#gp-addName','Medicine pouch');await p.check('#gp-addAlways');await p.getByRole('button',{name:'Add item',exact:true}).click();
   await p.click('button:has-text("Save my preferences")'); await p.waitForSelector('.sheet-bg',{state:'detached'});
-  await p.click('button:has-text("My preferences")');
+  await p.click('button:has-text("Packing preferences")');
   if (await p.getByLabel('Include Snacks',{exact:true}).isChecked()) fail('preference exclusion not saved');
   await p.click('button:has-text("Close")'); await p.click("text=Generate a packing list");
   async function mobileLayout(){ for (const width of [360,390,430]){ for (const colorScheme of ['light','dark']){
@@ -45,8 +45,8 @@ try {
   if(await p.locator('.refine-item summary').count())fail('row explanations returned');
   await p.click('button:has-text("Packing rules")');if(!(await p.textContent('.sheet-body')).includes('Workouts most days'))fail('workout rules not inspectable');await p.click('button:has-text("Close")');
 
-  for(const [name,ids] of [['Packing',['rf-packing']],['Extras',['rf-extra-kindle','rf-extra-hotspot','rf-extra-chargingPad','rf-extra-garmin','rf-extra-phoneCase']],['Bag',['rf-bag']],['Weather',['rf-climate','rf-thermal','rf-rain','rf-warmWeather']],['Activities',['rf-hike','rf-workout','rf-water','rf-fish','rf-daypack','rf-rugged']],['Events',['rf-formal','rf-dinners']],['Flight',['rf-longFlight']],['Laundry',['rf-laundry','rf-first','rf-interval']]]){
-    await p.click("#rr-adjust");await p.click(`button:has-text("${name}:")`);
+  for(const [name,ids] of [['Packing',['rf-packing']],['Extras',['rf-extra-kindle','rf-extra-hotspot','rf-extra-chargingPad','rf-extra-garmin','rf-extra-phoneCase']],['Weather',['rf-climate','rf-thermal','rf-rain','rf-warmWeather']],['Activities',['rf-hike','rf-workout','rf-water','rf-fish','rf-daypack','rf-rugged']],['Outfits & work',['rf-work','rf-workDays','rf-formal','rf-dinners']],['Laundry',['rf-laundry','rf-first','rf-interval']]]){
+    await p.click("#rr-adjust");if(name==='Outfits & work'){await p.getByRole('button',{name,exact:true}).click();await p.getByRole('button',{name:'Days & work equipment',exact:true}).click();}else await p.click(`button:has-text("${name}:")`);
     const actual=await p.locator('.sheet-body input, .sheet-body select').evaluateAll(nodes=>nodes.map(n=>n.id));
     if(JSON.stringify(actual)!==JSON.stringify(ids))fail(`${name} editor contains unrelated fields`);
     if(name==='Packing' && (await p.locator('#rf-packing').textContent()).includes('lighter'))fail('pack lighter still offered');
@@ -63,7 +63,7 @@ try {
 
   await p.click('#rr-adjust').then(()=>p.click('button:has-text("Activities:")'));await p.check('#rf-rugged');await p.click('button:has-text("Apply & recalculate")');await p.waitForSelector('.sheet-bg',{state:'detached'});if(!(await labels()).includes('Hiking boots / trail shoes'))fail('rugged hiking footwear missing');
   await p.click('#rr-adjust').then(()=>p.click('button:has-text("Activities:")'));await p.uncheck('#rf-hike');await p.click('button:has-text("Apply & recalculate")');await p.waitForSelector('.sheet-bg',{state:'detached'});if((await labels()).includes('Hiking boots / trail shoes'))fail('obsolete hiking footwear retained');
-  await p.click('#rr-adjust').then(()=>p.click('button:has-text("Work:")')); if(await p.locator('.sheet-body input, .sheet-body select').count()!==2)fail('work editor contains unrelated fields'); await p.selectOption('#rf-work','work'); await p.fill('#rf-workDays','0'); await p.click('button:has-text("Apply & recalculate")'); await p.waitForSelector('.sheet-bg',{state:'detached'});
+  await p.click('#rr-adjust');await p.getByRole('button',{name:'Outfits & work',exact:true}).click();await p.getByRole('button',{name:'Days & work equipment',exact:true}).click();if(await p.locator('.sheet-body input, .sheet-body select').count()!==4)fail('unified outfit counts missing'); await p.selectOption('#rf-work','work'); await p.fill('#rf-workDays','0'); await p.click('button:has-text("Apply & recalculate")'); await p.waitForSelector('.sheet-bg',{state:'detached'});
   if (!(await labels()).includes('Work computer charger')) fail('work power dependency');
   await p.evaluate(()=>{window.testWorkSection=[...document.querySelectorAll('section.panel')].find(n=>n.querySelector('h3')?.textContent==='Work');});
   await p.locator('[data-item-id="pack:socks"]').getByRole('button',{name:'Edit',exact:true}).click(); await p.fill('#ri-quantity','7'); await p.click('button:has-text("Save override")'); await p.waitForSelector('.sheet-bg',{state:'detached'});
@@ -74,7 +74,7 @@ try {
   await p.locator('[data-item-id="pack:socks"]').getByRole('button',{name:'Return to automatic',exact:true}).click(); await p.waitForFunction(()=>document.querySelector('[data-item-id="pack:socks"] strong').textContent==='Socks ×5');
   await p.locator('[data-item-id="pack:wrinkle-release"]').getByRole('button',{name:'Remove',exact:true}).click(); await p.click('button:has-text("Usually don’t pack this")'); await p.waitForSelector('.sheet-bg',{state:'detached'});
   if ((await labels()).includes('Wrinkle release')) fail('default exclusion not applied');
-  await p.click('button:has-text("Defaults & exclusions")'); if (!/Wrinkle release/.test(await p.textContent('.sheet-body'))) fail('default exclusion not inspectable');
+  await p.click('button:has-text("Packing preferences")'); if (!/Wrinkle release/.test(await p.textContent('.sheet-body'))) fail('default exclusion not inspectable');
   await p.click('button:has-text("Close")');
   await p.locator('.refine-changes').getByRole('button',{name:'Undo',exact:true}).click(); await p.waitForFunction(()=>!!document.querySelector('[data-item-id="pack:wrinkle-release"]'));
   const prefs = await p.evaluate(()=>JSON.parse(localStorage.getItem('ta:meta/packing'))); if (prefs.refinementProfile?.excluded?.['pack:wrinkle-release']) fail('Undo failed to restore profile default');
@@ -117,7 +117,7 @@ try {
   await q.click('#rr-adjust');await q.click('button:has-text("Laundry:")');await q.selectOption('#rf-laundry','yes');await q.fill('#rf-first','2');await q.fill('#rf-interval','2');await q.click('button:has-text("Apply & recalculate")');await q.waitForSelector('.sheet-bg',{state:'detached'});
   if(await q.locator('[data-item-id="pack:button-up-long-sleeve-shirt"] strong').textContent()!=='Button-up long sleeve shirt ×6')fail('laundry reduced work shirts');
   await q.click('#rr-adjust');await q.click('button:has-text("Packing:")');await q.selectOption('#rf-packing','extra');await q.click('button:has-text("Apply & recalculate")');await q.waitForSelector('.sheet-bg',{state:'detached'});if(await q.locator('[data-item-id="pack:socks"] strong').textContent()!=='Socks ×5')fail('laundry and extra buffers stacked');
-  await q.click('#rr-adjust');await q.click('button:has-text("Events:")');await q.fill('#rf-dinners','4');await q.click('button:has-text("Apply & recalculate")');await q.waitForSelector('#rf-dinnerTop');await q.selectOption('#rf-dinnerTop','polo');await q.click('button:has-text("Apply & next")');await q.click('button:has-text("Review full list")');await q.waitForSelector('.sheet-bg',{state:'detached'});if(await q.locator('[data-item-id="pack:polo-shirts"] strong').textContent()!=='Polo shirts ×4')fail('dinner style did not recalculate');
+  await q.click('#rr-adjust');await q.getByRole('button',{name:'Outfits & work',exact:true}).click();await q.getByRole('button',{name:'Days & work equipment',exact:true}).click();await q.fill('#rf-dinners','4');await q.click('button:has-text("Apply & recalculate")');await q.waitForSelector('#rf-dinnerTop');await q.selectOption('#rf-dinnerTop','polo');await q.click('button:has-text("Apply & next")');await q.click('button:has-text("Review full list")');await q.waitForSelector('.sheet-bg',{state:'detached'});if(await q.locator('[data-item-id="pack:polo-shirts"] strong').textContent()!=='Polo shirts ×4')fail('dinner style did not recalculate');
   await q.reload();await q.waitForSelector('#rr-export');await q.click('#rr-export');await q.waitForSelector('#pe-enex');await q.click('button:has-text("Close")');
   for(const width of [360,390,430]){for(const colorScheme of ['light','dark']){await q.setViewportSize({width,height:844});await q.emulateMedia({colorScheme});if(await q.evaluate(()=>document.documentElement.scrollWidth>innerWidth))fail('wardrobe mobile overflow');}}await q.close();
   // Embedded test mode reuses one scenario and isolates every write from live data.
@@ -129,7 +129,7 @@ try {
   if(await sandbox.locator('[data-item-id="pack:tie"] strong').textContent()!=='Tie ×2')fail('test scenario did not use production suit rules');
   await sandbox.click('#rr-adjust');await sandbox.click('button:has-text("Packing:")');await sandbox.selectOption('#rf-packing','extra');await sandbox.click('button:has-text("Apply & recalculate")');await sandbox.waitForSelector('.sheet-bg',{state:'detached'});
   await sandbox.reload();await sandbox.waitForSelector('#rr-export');if(await sandbox.evaluate(()=>refineLoad(TRIPS['PACKING-TEST']).refinements.packingMode)!=='extra')fail('test edits did not persist');
-  await sandbox.click('button:has-text("Defaults & exclusions")');await sandbox.click('button:has-text("My usual items")');await sandbox.getByLabel('Include Snacks',{exact:true}).uncheck();await sandbox.click('button:has-text("Save my preferences")');await sandbox.waitForSelector('.sheet-bg',{state:'detached'});
+  await sandbox.click('button:has-text("Packing preferences")');await sandbox.getByLabel('Include Snacks',{exact:true}).uncheck();await sandbox.click('button:has-text("Save my preferences")');await sandbox.waitForSelector('.sheet-bg',{state:'detached'});
   await sandbox.click('button:has-text("Test menu / reset")');await sandbox.selectOption('#pt-scenario','laundry');await sandbox.click('button:has-text("Reset & test setup")');await sandbox.waitForSelector('#rs-where');
   if(await sandbox.evaluate(()=>Object.keys(Store.exportAll()).filter(k=>k.startsWith('trips/')).length)!==1)fail('test reset accumulated trips');
   await sandbox.click('button:has-text("Update trip & list")');await sandbox.waitForSelector('#rr-export');
@@ -141,7 +141,7 @@ try {
   await sandbox.locator('.refine-changes').getByRole('button',{name:'Undo',exact:true}).click();await sandbox.waitForFunction(()=>document.querySelector('.refine-changes').textContent.includes('Last change undone'));
   if(!await sandbox.evaluate(()=>!!generatorPrefs().refinementProfile.excluded['pack:wrinkle-release']))fail('Undo of packing erased an older preference exclusion');
   const savedBefore=await sandbox.evaluate(()=>({trip:lsGet('ta:trips/PACKING-TEST'),state:lsGet('ta:'+refinePath('PACKING-TEST'))}));
-  await sandbox.click("#rr-adjust");await sandbox.click('a:has-text("Trip basics")');await sandbox.waitForSelector('#rs-where');
+  await sandbox.click("#rr-adjust");await sandbox.click('a:has-text("Trip details")');await sandbox.waitForSelector('#rs-where');
   const nextEndLabel=await sandbox.evaluate(()=>{var d=pd(TRIPS['PACKING-TEST'].end);d.setDate(d.getDate()+1);return d.toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});});await sandbox.locator('.rp-sum button').nth(1).click();for(let n=0;n<3 && !(await sandbox.getByRole('button',{name:nextEndLabel,exact:true}).count());n++)await sandbox.getByRole('button',{name:'Next month',exact:true}).click();await sandbox.getByRole('button',{name:nextEndLabel,exact:true}).click();await sandbox.getByRole('button',{name:'OK',exact:true}).click();
   await sandbox.evaluate(()=>{window.testOriginalDoc=db.doc;db.doc=function(path){var doc=window.testOriginalDoc(path);if(path===refinePath('PACKING-TEST'))doc.set=function(){return Promise.reject(new Error('Injected second write failure'));};return doc;};document.querySelector('.rs-form').requestSubmit();});
   await sandbox.waitForFunction(()=>document.querySelector('.rs-form .gen-error').textContent.includes('Could not save'));

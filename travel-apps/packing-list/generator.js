@@ -8,7 +8,7 @@ function generatorLink(label, hash, primary){ var a = el("a",primary ? "btn prim
 function generatorHome(){
   if(PACK_TEST_MODE)return packingTestHome();
   var w = el("div","stack"), hero = el("section","panel gen-hero");
-  var nav = el("div","gen-nav"); nav.appendChild(generatorLink("Generate a packing list","#new",true)); nav.appendChild(generatorButton("My preferences",function(){ generatorPreferences(); }));
+  var nav = el("div","gen-nav"); nav.appendChild(generatorLink("Generate a packing list","#new",true)); nav.appendChild(generatorButton("Packing preferences",function(){ generatorPreferences(); }));
   nav.appendChild(generatorButton("Packing learning",packingLearningSheet));nav.appendChild(generatorButton("Test flow",packingTestMenu));
   hero.appendChild(nav); w.appendChild(hero);
   if (ORDER.length){ w.appendChild(el("h2","k","Previous trip setups")); ORDER.forEach(function(id){ var t = TRIPS[id], a = el("a","panel tripcard"); a.href = "#" + id;
@@ -17,7 +17,7 @@ function generatorHome(){
 }
 function generatorRulesPage(){
   var p = clone(generatorPrefs()), w = el("div","stack"), back = el("a","back","← Packing generator"); back.href = "#"; w.appendChild(back);
-  w.appendChild(el("p","muted","The rules that set quantities and item choices for every new list. Quantity formulas are fixed; item defaults are managed under My usual items."));
+  w.appendChild(el("p","muted","The rules that set quantities and item choices for every new list. Quantity formulas are fixed; item defaults are managed under Packing preferences."));
   var rules = el("section","panel stack"); rules.appendChild(el("h2","k","Current rules and quantities"));
   rules.appendChild(el("p",null,"Socks and underwear: 2 per travel day. T-shirts: 1 per day. Bottoms: days ÷ 2, rounded up. Contacts: full trip + 2 days, rounded up to a multiple of 5. Clothes worn on departure are included in clothing totals."));
   // Standalone app: describe the active refinement rules without rewriting saved profile data.
@@ -25,23 +25,27 @@ function generatorRulesPage(){
   rules.appendChild(el("p",null,"Laundry: first wash day + wash interval, with one spare clothing day. Pack extra uses the same buffer when laundry is planned; otherwise it adds one T-shirt, two underwear, two pairs of socks and one pair of bottoms. Carry-on flags capacity conflicts without moving or reducing items. The collapsible daypack is added only via I need a daypack in trip setup or Activities. Kindle, Hotspot, Belkin charging pad, Garmin + charger and extra phone case are optional selections in Trip extras during setup or Extras after generation."));
   rules.appendChild(el("p",null,"Use the coldest expected outdoor weather; warmer-weather needs can be added separately. Suit days: one reusable suit, fresh white dress shirts and socks, no undershirts; ties and alternating khakis default to one each for one suit day or two each for multiple days, confirmed in the suit step. Video workdays: fresh long-sleeve tops only. Dinner tops and suitable bottoms are confirmed separately; shared work/dinner shirts and compatible suit shirts count once on shared days. Laundry never reduces work, dinner or suit shirts. Relevant outfit choices must be confirmed before export."));
   Object.keys(PREF_LABELS).forEach(function(k){ var row = el("div","gen-rule"); row.appendChild(el("b",null,PREF_LABELS[k])); row.appendChild(el("span",null,currentRules[k] || p[k] || PACK_PREFS[k])); rules.appendChild(row); }); w.appendChild(rules);
-  var acts = el("div","gen-nav"); acts.appendChild(generatorButton("My usual items",function(){ generatorPreferences(); })); acts.appendChild(generatorButton("Refinement exclusions",refineProfileSheet)); w.appendChild(acts);
+  var acts = el("div","gen-nav"); acts.appendChild(generatorButton("Packing preferences",function(){ generatorPreferences(); })); w.appendChild(acts);
   return w;
 }
 function generatorPreferences(suggestedItem){
-  var p = clone(generatorPrefs()), body = openSheet("My packing preferences");
+  var p = clone(generatorPrefs()), body = openSheet("Packing preferences");
   body.appendChild(el("p","muted","These defaults are saved in this browser. Trip-specific choices come later. Uncheck usual extras you no longer want; core clothing and quantity rules stay in place."));
   var rules = generatorLink("Current rules and quantities →","#rules"); rules.style.display = "inline-block"; body.appendChild(rules);
   var savedGroups = Array.isArray(p.extras) ? p.extras : PACK_PREFS.extras, removed = Array.isArray(p.prefRemoved) ? p.prefRemoved.slice() : [], groups = [], idx = {};
   function gOf(title){ if (idx[title] == null){ idx[title] = groups.length; groups.push({title:title,items:[]}); } return groups[idx[title]]; }
   function hidden(item){ return refineId(item) === "daypack" || !!refineOptionalKey(item); }
   function defaultKey(title,label){var g=PACK_PREFS.extras.find(function(d){return (d.title===title || d.title==="Toiletries" && toiletryBagSection(label)===title) && d.items.indexOf(label)>=0;});return g ? g.title+"|"+label:null;}
-  function putItem(title,label,on){ var g = gOf(title); if (g.items.some(function(x){ return x.label === label; })) return; g.items.push({label:label,on:on}); }
-  if (Array.isArray(p.prefItems)){ p.prefItems.forEach(function(g){ gOf(g.title); (g.items || []).forEach(function(x){ putItem(g.title,x.label,!!x.on); }); }); }
+  function putItem(title,label,on,always){var g=gOf(title),item=g.items.find(function(x){return x.label===label;});if(item){if(always)item.always=true;return;}g.items.push({label:label,on:on,always:!!always});}
+  if (Array.isArray(p.prefItems)){ p.prefItems.forEach(function(g){ gOf(g.title); (g.items || []).forEach(function(x){ putItem(g.title,x.label,!!x.on,!!x.always); }); }); }
   else { savedGroups.forEach(function(g){ gOf(g.title); (g.items || []).forEach(function(item){ putItem(g.title,item,true); }); }); }
   PACK_PREFS.extras.forEach(function(g){ gOf(g.title); (g.items || []).forEach(function(item){ if (g.title==="Toiletries" && groups.some(function(existing){return existing.items.some(function(x){return x.label===item;});}))return;if (removed.indexOf(g.title + "|" + item) < 0) putItem(g.title,item,false); }); });
+  p.refinementProfile=p.refinementProfile || {};p.refinementProfile.excluded=p.refinementProfile.excluded || {};
+  function importAlways(labels){(labels || []).forEach(function(label){var group=groups.find(function(g){return g.items.some(function(x){return refineId(x.label)===refineId(label);});});var item=group && group.items.find(function(x){return refineId(x.label)===refineId(label);});if(item){item.always=true;item.on=true;}else putItem("Personal bag & day gear",label,true,true);});}
+  importAlways(p.generatorExtras);
+  if(typeof suggestedItem==="string" && suggestedItem.trim())importAlways([suggestedItem.trim()]);
   groups=splitToiletryGroups(groups);idx={};groups.forEach(function(g,index){idx[g.title]=index;});
-  var list = el("div");
+  var list = el("div"),excludedBox=el("details","panel");
   function textIn(value,label,cls){ var i = el("input",cls); i.type = "text"; i.value = value; i.setAttribute("aria-label",label); i.style.fontSize = "16px"; return i; }
   function iconBtn(text,label,fn){ var b = el("button","btn",text); b.type = "button"; b.setAttribute("aria-label",label); b.addEventListener("click",fn); return b; }
   function draw(){
@@ -53,36 +57,39 @@ function generatorPreferences(suggestedItem){
       head.appendChild(iconBtn("Delete section","Delete section " + g.title,function(){ g.items.forEach(function(x){ var key=defaultKey(g.title,x.label);if(key)removed.push(key); }); groups.splice(gi,1); draw(); }));
       list.appendChild(head);
       g.items.forEach(function(x,xi){
-        if (hidden(x.label)) return;
-        var row = el("div","gen-item"), c = el("input"); c.type = "checkbox"; c.checked = x.on; c.setAttribute("aria-label","Include " + x.label);
-        c.addEventListener("change",function(){ x.on = c.checked; });
-        var t = textIn(x.label,"Item name"); t.addEventListener("change",function(){ var v = t.value.trim(); if (!v){ t.value = x.label; return; } if (g.items.some(function(y,i){ return i !== xi && y.label === v; })){ status.textContent = "“" + v + "” is already in " + g.title + "."; t.value = x.label; return; } status.textContent = ""; x.label = v; });
-        row.appendChild(c); row.appendChild(t);
+        if (hidden(x.label) && !x.always) return;
+        var row = el("div","gen-item gen-pref-row"), c = el("input"); c.type = "checkbox"; c.checked = x.on && !p.refinementProfile.excluded[refineItem(x.label,g.title,"").id]; c.setAttribute("aria-label","Include " + x.label);
+        c.addEventListener("change",function(){x.on=c.checked;if(c.checked)delete p.refinementProfile.excluded[refineItem(x.label,g.title,"").id];if(exclusionNote)exclusionNote.hidden=!p.refinementProfile.excluded[refineItem(x.label,g.title,"").id];drawExcluded();});
+        var t = textIn(x.label,"Item name"); t.addEventListener("change",function(){ var v = t.value.trim(); if (!v){ t.value = x.label; return; } if (g.items.some(function(y,i){ return i !== xi && y.label === v; })){ status.textContent = "“" + v + "” is already in " + g.title + "."; t.value = x.label; return; } status.textContent="";var oldId=refineItem(x.label,g.title,"").id;if(p.refinementProfile.excluded[oldId]){delete p.refinementProfile.excluded[oldId];p.refinementProfile.excluded[refineItem(v,g.title,"").id]=v;}x.label=v;drawExcluded(); });
+        row.appendChild(c);row.appendChild(t);if(x.always || !defaultKey(g.title,x.label)){var always=el("input");always.type="checkbox";always.checked=!!x.always;always.setAttribute("aria-label","Always bring "+x.label);always.addEventListener("change",function(){x.always=always.checked;});var alwaysLabel=el("label","chipchk");alwaysLabel.appendChild(always);alwaysLabel.appendChild(el("span",null,"Always bring"));row.appendChild(alwaysLabel);}var exclusionNote=el("span","gen-note","Excluded by your default");exclusionNote.hidden=!p.refinementProfile.excluded[refineItem(x.label,g.title,"").id];row.appendChild(exclusionNote);
         row.appendChild(iconBtn("Delete","Delete " + x.label,function(){ var key=defaultKey(g.title,x.label);if(key)removed.push(key); g.items.splice(xi,1); draw(); }));
         list.appendChild(row);
       });
-      var add = el("div","gen-item gen-add"), ai = textIn("","Add item to " + g.title); ai.placeholder = "Add item to this section"; 
-      function doAdd(){ var v = ai.value.trim(); if (!v) return; if (g.items.some(function(y){ return y.label === v; })){ status.textContent = "“" + v + "” is already in " + g.title + "."; return; } status.textContent = ""; var k = removed.indexOf(defaultKey(g.title,v) || g.title + "|" + v); if (k >= 0) removed.splice(k,1); g.items.push({label:v,on:true}); draw(); }
-      ai.addEventListener("keydown",function(e){ if (e.key === "Enter"){ e.preventDefault(); doAdd(); } });
-      add.appendChild(el("span","gen-spacer")); add.appendChild(ai); add.appendChild(iconBtn("Add","Add item to " + g.title,doAdd)); list.appendChild(add);
     });
-    var nh = el("div","gen-item"), ni = textIn("","New section header"); ni.placeholder = "New section header";
+    var nh = el("div","gen-item"), ni = textIn("","New section header"); ni.placeholder = "Enter section name";
     function addHeader(){ var v = ni.value.trim(); if (!v) return; if (idx[v] != null || groups.some(function(x){ return x.title === v; })){ status.textContent = "A section named “" + v + "” already exists."; return; } status.textContent = ""; groups.push({title:v,items:[]}); draw(); }
     ni.addEventListener("keydown",function(e){ if (e.key === "Enter"){ e.preventDefault(); addHeader(); } });
-    nh.appendChild(ni); nh.appendChild(iconBtn("Add section","Add section header",addHeader)); list.appendChild(nh);
+    nh.appendChild(ni);nh.appendChild(iconBtn("Add section","Add section header",addHeader));list.appendChild(nh);drawExcluded();refreshSections();
   }
-  var status = el("p","muted"); status.setAttribute("role","status");
-  body.appendChild(el("p","gen-note","Check or uncheck to include an item in new lists. Edit a name or header in place, delete with the button, or add items and new sections. Quantity formulas above stay fixed."));
-  body.appendChild(list); draw();
-  var custom = el("textarea"); custom.id = "gp-custom"; custom.rows = 3; custom.placeholder = "One extra item per line"; custom.value = (p.generatorExtras || []).join("\n"); if(typeof suggestedItem==="string" && suggestedItem.trim()){var extras=custom.value.split(/\r?\n/).filter(Boolean);if(!extras.some(function(label){return refineId(label)===refineId(suggestedItem);}))extras.push(suggestedItem);custom.value=extras.join("\n");body.appendChild(el("p","gen-note","Suggested item added to the form below. Review it, then save to change your defaults."));}body.appendChild(fieldEl("Additional items to always bring",custom));
+  var status=el("p","muted");status.setAttribute("role","status");
+  body.appendChild(el("p","gen-note","Include usual items with the checkbox. Always bring protects an item during automatic generation. Required trip rules may still keep an item you exclude. Changes apply only when you save."));
+  var addBox=el("details","panel"),ai=inp("gp-addName","text","","Enter item name"),section=sel("gp-addSection",[],""),alwaysNew=inp("gp-addAlways","checkbox",null);addBox.appendChild(el("summary",null,"Add usual item"));addBox.appendChild(fieldEl("Item name",ai));addBox.appendChild(fieldEl("Section",section));addBox.appendChild(fieldEl("Always bring",alwaysNew));
+  function refreshSections(){if(!section)return;var selected=section.value;section.textContent="";groups.forEach(function(g){var option=el("option",null,g.title);option.value=g.title;section.appendChild(option);});section.value=groups.some(function(g){return g.title===selected;}) ? selected:groups.some(function(g){return g.title==="Personal bag & day gear";}) ? "Personal bag & day gear":groups[0] ? groups[0].title:"";}
+  function addUsual(){var label=ai.value.trim();if(!label){status.textContent="Enter an item name.";return;}if(!section.value){status.textContent="Add a section first.";return;}if(groups.some(function(g){return g.items.some(function(x){return refineId(x.label)===refineId(label);});})){status.textContent="This item already exists. Change its Include or Always bring choice instead.";return;}putItem(section.value,label,true,alwaysNew.checked);ai.value="";alwaysNew.checked=false;status.textContent="Item added to preferences. Save to apply.";draw();}
+  addBox.appendChild(generatorButton("Add item",addUsual));body.appendChild(addBox);body.appendChild(list);body.appendChild(excludedBox);
+  function drawExcluded(){excludedBox.textContent="";var excluded=p.refinementProfile.excluded;excludedBox.appendChild(el("summary",null,"Excluded defaults · "+Object.keys(excluded).length));Object.keys(excluded).forEach(function(id){var row=el("div","gen-actions");row.appendChild(el("span",null,excluded[id]));row.appendChild(generatorButton("Reset this default",function(){delete p.refinementProfile.excluded[id];draw();status.textContent="Exclusion reset in this form. Save to apply.";}));excludedBox.appendChild(row);});excludedBox.appendChild(el("p","gen-note","Profile defaults apply to future generation. Separate trip removals and manual edits stay intact."));}
+  // Keep old pending textarea drafts readable while the visible editor uses one add path.
+  var custom=el("textarea");custom.id="gp-custom";custom.hidden=true;body.appendChild(custom);draw();
+  if(typeof suggestedItem==="string")body.appendChild(el("p","gen-note","Suggested item added with Always bring selected. Review it, then save to change your defaults."));
   body.appendChild(generatorButton("Save my preferences",function(){
-    p.prefItems = groups.map(function(g){ return {title:g.title,items:g.items.filter(function(x){ return !hidden(x.label); }).map(function(x){ return {label:x.label,on:!!x.on}; })}; });
+    if(ai.value.trim()){status.textContent="Add the entered item before saving preferences.";addBox.open=true;return;}
+    p.prefItems = groups.map(function(g){ return {title:g.title,items:g.items.filter(function(x){ return !hidden(x.label) || x.always; }).map(function(x){ return {label:x.label,on:!!x.on,always:!!x.always}; })}; });
     p.prefRemoved = removed;
-    p.extras = groups.map(function(g){ return {title:g.title,items:g.items.filter(function(x){ return x.on && !hidden(x.label); }).map(function(x){ return x.label; })}; }).filter(function(g){ return g.items.length; });
-    p.generatorExtras = custom.value.split(/\r?\n/).map(function(s){ return s.trim(); }).filter(Boolean); p.generatorConfirmedAt = isoToday();
+    p.extras = groups.map(function(g){ return {title:g.title,items:g.items.filter(function(x){ return x.on && !x.always && !hidden(x.label); }).map(function(x){ return x.label; })}; }).filter(function(g){ return g.items.length; });
+    p.generatorExtras=groups.flatMap(function(g){return g.items.filter(function(x){return x.on && x.always;}).map(function(x){return x.label;});}); p.generatorConfirmedAt = isoToday();
     db.doc("meta/packing").set(p).then(function(){ preferenceDraft.clear();EXTRAS = p.extras; MAYBE = p.maybe; closeSheet(); render(); }).catch(function(){ status.textContent = "Preferences could not be saved. Storage may be full or blocked."; });
-  },true)); body.appendChild(status); body.appendChild(generatorButton("Inspect refinement exclusions",refineProfileSheet));
-  var preferenceDraft=packingDraftAttach(body,"preferences",JSON.stringify(generatorPrefs()),{saveClicks:true,capture:function(){return {groups:groups,removed:removed};},beforeRestore:function(data){if(data.custom){groups=clone(data.custom.groups);removed=data.custom.removed.slice();draw();}}});
+  },true)); body.appendChild(status);
+  var preferenceDraft=packingDraftAttach(body,"preferences",JSON.stringify(generatorPrefs()),{saveClicks:true,restoreEvents:false,allowCustomLegacy:true,capture:function(){return {groups:groups,removed:removed,excluded:clone(p.refinementProfile.excluded)};},beforeRestore:function(data){if(data.custom){groups=clone(data.custom.groups);removed=data.custom.removed.slice();if(data.custom.excluded)p.refinementProfile.excluded=clone(data.custom.excluded);else if(!data.fields["gp-custom"])importAlways(p.generatorExtras);}var old=data.fields["gp-custom"];if(old && old.value)importAlways(old.value.split(/\r?\n/).map(function(x){return x.trim();}).filter(Boolean));},onRestore:function(){custom.value="";draw();}});
 }
 function generatorSetup(t){
   var original = t, existing = !!t, s = t && t.generatorSetup || {}, f = el("form","panel form gen-form"), step = 0;

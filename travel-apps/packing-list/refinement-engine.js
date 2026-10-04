@@ -54,7 +54,7 @@ function refineDefaults(state,profile,c){
     var item = refineItem(label,g.title,"Your usual packing preferences",{optional:optional.test(qtyBase(label))});
     out.push(item);
   }); });
-  (profile.generatorExtras || []).forEach(function(label){ out.push(refineItem(label,"Personal bag & day gear","Your always-bring items",{required:true})); });
+  (profile.generatorExtras || []).forEach(function(label){var group=(profile.prefItems || []).find(function(g){return (g.items || []).some(function(x){return x.on && x.always && refineId(x.label)===refineId(label);});});out.push(refineItem(label,group ? group.title:"Personal bag & day gear","Your always-bring items",{required:true}));});
   return out;
 }
 function refineLayers(state,profile,c){
@@ -174,7 +174,7 @@ function refineEvaluate(state,profile,changed){
     var shoes = items.filter(function(x){ return /shoes|footwear/.test(x.id); }); if (shoes.length > 2) warnings.push({id:"shoes-baggage",text:"Hiking and formal events require extra footwear. Check bag space; your running shoes are worn in transit."});
   }
   if (c.unknown) warnings.push({id:"weather",text:"Weather is unconfirmed. Choose expected conditions; no forecast has been inferred from the destination."});
-  if(c.r.longFlight && (!c.inputs.intl || c.inputs.mode!=="fly"))warnings.push({id:"long-flight",text:"Long international flight comfort is selected, but this trip is not marked as international flying. Update Trip basics; those comfort items have not been added."});
+  if(c.r.longFlight && (!c.inputs.intl || c.inputs.mode!=="fly"))warnings.push({id:"long-flight",text:"Long international flight comfort is selected, but this trip is not marked as international flying. Update Trip details; those comfort items have not been added."});
   if (c.days > 10 && !c.r.laundry.available) warnings.push({id:"long-trip",text:"Long trip without laundry: quantities cover every day. Add a laundry plan or explicitly edit quantities; no silent quantity cap was applied."});
   if ((c.inputs.activities.workout || (c.inputs.activities.hike && !c.r.ruggedHike)) && !items.some(function(x){ return x.id === "wear:brooks-running-shoes"; })) warnings.push({id:"activity-shoes",text:"Workouts or ordinary hiking are selected, but your Brooks are missing."});
   if(c.inputs.activities.hike && c.r.ruggedHike && !items.some(function(x){return x.id === "pack:hiking-footwear";}))warnings.push({id:"hiking-footwear",text:"Rugged or wet trails are selected, but hiking footwear is missing."});
