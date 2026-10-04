@@ -38,18 +38,21 @@ const { chromium, webkit } = require('playwright'), assert = require('node:asser
             assert.equal(frame.inside, true, engine.name() + '/' + width + '/buttons outside panel');
             assert.ok(Math.abs(frame.x - before.x) < 1 && Math.abs(frame.y - before.y) < 2, engine.name() + '/' + width + '/opening moved page');
           }
-          const anchor = await page.locator('#forecast-tools').evaluate(dialog => ({ top: dialog.getBoundingClientRect().top, tabsTop: dialog.querySelector('.forecast-tools-tabs').getBoundingClientRect().top }));
+          const anchor = await page.locator('#forecast-tools').evaluate(dialog => ({ top: dialog.getBoundingClientRect().top, tabsTop: dialog.querySelector('.forecast-tools-tabs').getBoundingClientRect().top, buttons: Array.from(dialog.querySelectorAll('[data-tool-tab]'), b => { const r = b.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; }) }));
           for (const category of ['winter', 'compare', 'reports', 'maps', 'sources', 'timing']) {
             await page.click('#tool-tab-' + category);
-            const after = await page.locator('#forecast-tools').evaluate(dialog => ({ top: dialog.getBoundingClientRect().top, tabsTop: dialog.querySelector('.forecast-tools-tabs').getBoundingClientRect().top }));
+            const after = await page.locator('#forecast-tools').evaluate(dialog => ({ top: dialog.getBoundingClientRect().top, tabsTop: dialog.querySelector('.forecast-tools-tabs').getBoundingClientRect().top, buttons: Array.from(dialog.querySelectorAll('[data-tool-tab]'), b => { const r = b.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; }) }));
             assert.ok(Math.abs(anchor.top - after.top) < 1 && Math.abs(anchor.tabsTop - after.tabsTop) < 1, engine.name() + '/' + width + '/' + category + '/category controls moved');
+            after.buttons.forEach((button, i) => {
+              for (const key of ['x', 'y', 'width', 'height']) assert.ok(Math.abs(button[key] - anchor.buttons[i][key]) < 1, category + '/button ' + i + '/' + key + ' moved');
+            });
           }
           await page.evaluate(() => {
             const panel = document.querySelector('#tool-timing');
             panel.insertAdjacentHTML('beforeend', '<p>Late-arriving content</p>'.repeat(40));
             panel.scrollTop = panel.scrollHeight;
           });
-          const scrolled = await page.locator('#forecast-tools').evaluate(dialog => ({ top: dialog.getBoundingClientRect().top, tabsTop: dialog.querySelector('.forecast-tools-tabs').getBoundingClientRect().top }));
+          const scrolled = await page.locator('#forecast-tools').evaluate(dialog => ({ top: dialog.getBoundingClientRect().top, tabsTop: dialog.querySelector('.forecast-tools-tabs').getBoundingClientRect().top, buttons: Array.from(dialog.querySelectorAll('[data-tool-tab]'), b => { const r = b.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; }) }));
           assert.ok(Math.abs(anchor.top - scrolled.top) < 1 && Math.abs(anchor.tabsTop - scrolled.tabsTop) < 1, 'Late content/scroll moved category controls');
           await page.click('#tool-tab-' + prior);
           await page.keyboard.press('Escape');
