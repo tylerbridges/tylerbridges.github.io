@@ -153,7 +153,8 @@
       var p = val(o.barometricPressure) || val(o.seaLevelPressure);
       var rh = val(o.relativeHumidity);
       var vis = val(o.visibility);
-      return { ms: Date.parse(o.timestamp), desc: o.textDescription || "", t: F(val(o.temperature)),
+      var r = {
+        ms: Date.parse(o.timestamp), desc: o.textDescription || "", t: F(val(o.temperature)),
         td: F(val(o.dewpoint)), rh: rh == null ? null : Math.round(rh), ws: MPH(val(o.windSpeed)),
         wd: compass(val(o.windDirection)), wdd: val(o.windDirection), wg: MPH(val(o.windGust)),
         vis: vis == null ? null : r1(vis / 1609.344, vis < 16000 ? 2 : 0),
@@ -161,6 +162,15 @@
         wc: F(val(o.windChill)), hi: F(val(o.heatIndex)),
         p1: val(o.precipitationLastHour) == null ? null : r1(IN(val(o.precipitationLastHour)), 2),
         icon: iconCodes(o.icon), metar: !!o.rawMessage };
+      // wind straight from the station's own report when there is one (e.g. "05015G20KT" = NE 15 kt gusting 20):
+      //   the API's processed values can lag or round differently from the METAR the station actually sent
+      var m = /\b(\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?KT\b/.exec(o.rawMessage || "");
+      if (m) {
+        var KT = function (k) { return Math.round(k * 1.150779); };
+        r.ws = KT(+m[2]); r.wg = m[3] ? KT(+m[3]) : null;
+        if (m[1] !== "VRB") { r.wdd = +m[1]; r.wd = r.ws ? compass(+m[1]) : null; } else { r.wdd = null; r.wd = "Variable"; }
+      }
+      return r;
     }
     var latest = null;
     // prefer the latest routine METAR (tenths-precision) when under 90 min old, like weather.gov

@@ -158,7 +158,7 @@
     if (nowUV == null && uv && uv.hourly && uv.hourly.length && !isDay(Date.now())) nowUV = 0;
     if (nowUV != null) rows.push(["UV index", nowUV + " · " + uvCat(nowUV) + (uv && uv.alert ? " · UV alert" : "")]);
     rows.push(["Humidity", c.rh != null ? c.rh + "%" : "–"],
-      ["Wind / Gusts", (c.ws == null ? "–" : c.ws) + " / " + (gust == null ? "–" : gust) + " mph"],
+      ["Wind / Gusts", c.ws == null ? "–" : c.ws === 0 ? "Calm" + (gust ? " / " + gust + " mph" : "") : (c.wd ? c.wd + " " : "") + c.ws + " / " + (gust == null || gust <= c.ws ? "–" : gust) + " mph"],
       ["Visibility", c.vis != null ? (c.vis >= 10 ? "10.00" : c.vis.toFixed(2)) + " mi" : "–"]);
     // some stations report slowly; say when the reading on screen is more than 90 minutes old
     if (c.ms && Date.now() - c.ms > 90 * 60000) { var oh = Math.round((Date.now() - c.ms) / 3600000 * 10) / 10; rows.push(["Observed", tm(c.ms) + " · " + (oh >= 24 ? Math.round(oh / 24) + " d" : oh + " h") + " ago"]); }
@@ -1469,7 +1469,7 @@
   }
   function useLoc(l) {
     loc = { lat: +l.lat, lon: +l.lon, label: l.label || null };
-    recents = [loc].concat(recents.filter(function (r) { return r && !same(r, loc); })).slice(0, 6);
+    recents = [loc].concat(recents.filter(function (r) { return r && !same(r, loc); })).slice(0, 3);
     store("wx-loc", loc); store("wx-recents", recents); setUrl();
     $("plabel").textContent = loc.label || "Loading…"; fitTop();
     return refresh(false);
@@ -1535,6 +1535,7 @@
     }
     var rec = recents.filter(function (r) { return r && !isFav(r); });
     if (!isFav(HOME) && !rec.some(function (r) { return same(r, HOME); })) rec.push(HOME);
+    rec = rec.slice(0, 3); // three recent places at most
     if (favWrap) { favWrap.hidden = !favs.length; $("lsfav").innerHTML = favs.map(row).join(""); }
     $("lsrec").innerHTML = rec.map(row).join("");
     if ($("lsreclbl")) $("lsreclbl").hidden = !rec.length;
