@@ -45,6 +45,8 @@ function paintPack(){
   var ctr = el("div","controls bar");
   [["all","All"],["left","Still to pack"],["done","Packed"]].forEach(function(f){ var b = el("button",null,f[1]); b.type = "button"; b.id = "pf-" + f[0]; b.setAttribute("aria-pressed", String(packUi.filter === f[0])); b.addEventListener("click", function(){ packUi.filter = f[0]; lsSet("tif-pfilter", f[0]); paintPack(); }); ctr.appendChild(b); });
   ctr.appendChild(el("span","spacer"));
+  // Standalone app: export the full saved list, regardless of the current display filter.
+  if (pk.ready && secs.length){ var ex = el("button",null,"Export"); ex.type = "button"; ex.id = "p-export"; ex.addEventListener("click", function(){ packExportSheet(t); }); ctr.appendChild(ex); }
   var ua = null, nChecked = Object.keys(pk.items).filter(function(k){ return pk.items[k].checked; });
   if (nChecked.length && !packUi.editing){ ua = el("button",null,"Uncheck all"); ua.type = "button"; var uArmed = false;
     ua.addEventListener("click", function(){ if (!uArmed){ uArmed = true; ua.textContent = "Uncheck " + nChecked.length + "?"; ua.style.color = "var(--stop)"; ua.style.borderColor = "var(--stop)"; return; }
