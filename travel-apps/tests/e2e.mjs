@@ -14,17 +14,17 @@ let apiCalls=0;p.on('request',q=>{if(/api\.(anthropic|openai)\.com/.test(q.url()
 p.on("pageerror", e => errs.push(e.message)); p.on("console", m => { if (m.type() === "error" && !/fonts\.g/.test(m.text())) errs.push(m.text()); });
 try {
   await p.goto(B + "packing-list/"); await p.click('button:has-text("My preferences")');
-  await p.locator('.gen-pref-item').filter({hasText:/^Snacks$/}).locator('input').uncheck(); await p.fill('#gp-custom','Medicine pouch');
+  await p.getByLabel('Include Snacks',{exact:true}).uncheck(); await p.fill('#gp-custom','Medicine pouch');
   await p.click('button:has-text("Save my preferences")'); await p.waitForSelector('.sheet-bg',{state:'detached'});
   await p.click('button:has-text("My preferences")');
-  if (await p.locator('.gen-pref-item').filter({hasText:/^Snacks$/}).locator('input').isChecked()) fail('preference exclusion not saved');
+  if (await p.getByLabel('Include Snacks',{exact:true}).isChecked()) fail('preference exclusion not saved');
   await p.click('button:has-text("Close")'); await p.click("text=Generate a packing list");
   async function mobileLayout(){ for (const width of [360,390,430]){ for (const colorScheme of ['light','dark']){
     await p.setViewportSize({width,height:844}); await p.emulateMedia({colorScheme});
     if (await p.evaluate(()=>document.documentElement.scrollWidth > innerWidth)) fail(`setup overflow at ${width} ${colorScheme}`);
   }}}
   await mobileLayout();
-  await p.fill("#rs-where", "Phoenix, AZ"); await p.fill("#rs-start", "2026-10-08"); await p.fill("#rs-end", "2026-10-12");
+  await p.fill("#rs-where", "Phoenix, AZ"); await p.locator(".rp-sum button").first().click(); for (let i = 0; i < 24; i++){ const m = await p.locator(".rp-head b").textContent(); if (m === "October 2026") break; await p.locator(".rp-head button").nth(new Date(m + " 1") < new Date(2026, 9, 1) ? 1 : 0).click(); } await p.locator('.rp-grid button[aria-label*="Oct 8"]').click(); await p.locator('.rp-grid button[aria-label*="Oct 12"]').click(); if (!/5 days/.test(await p.locator(".rp-hint").textContent())) fail("date range picker did not set dates");
   await p.check("#rs-workout"); await p.selectOption("#rs-climate","cool");
   await p.click('button:has-text("Generate my list")'); await p.waitForSelector("#rr-export");
   const labels = () => p.$$eval('.refine-item strong', n => n.map(x => x.textContent));

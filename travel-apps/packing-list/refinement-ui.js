@@ -1,29 +1,76 @@
 "use strict";
 // Standalone app: changing assumptions recalculates rules; row edits become explicit persistent overrides.
+function rangePicker(startIn,endIn){
+  var box = el("div","rp"), sum = el("div","rp-sum"), head = el("div","rp-head"), grid = el("div","rp-grid"), hint = el("p","rp-hint"), cal = el("div","rp-cal"), foot = el("div","rp-foot"), ok = el("button","btn","OK");
+  var sD = el("button"), eD = el("button"); sD.type = eD.type = "button"; sD.appendChild(el("span",null,"Departure")); eD.appendChild(el("span",null,"Return")); var sB = el("b"), eB = el("b"); sD.appendChild(sB); eD.appendChild(eB); sum.appendChild(sD); sum.appendChild(eD);
+  var prev = el("button",null,"‹"), next = el("button",null,"›"), title = el("b"); prev.type = next.type = "button"; prev.setAttribute("aria-label","Previous month"); next.setAttribute("aria-label","Next month");
+  head.appendChild(prev); head.appendChild(title); head.appendChild(next);
+  ok.type = "button"; foot.appendChild(hint); foot.appendChild(ok); cal.appendChild(head); cal.appendChild(grid); cal.appendChild(foot);
+  box.appendChild(sum); box.appendChild(cal); var open = false;
+  function setOpen(v){ open = v; cal.hidden = !v; box.classList.toggle("open",v); sD.setAttribute("aria-expanded",String(v)); eD.setAttribute("aria-expanded",String(v)); sync(); }
+  var mode = ""; sD.addEventListener("click",function(){ mode = "s"; setOpen(true); }); eD.addEventListener("click",function(){ mode = S ? "e" : "s"; setOpen(true); }); ok.addEventListener("click",function(){ setOpen(false); });
+  box.openCal = function(){ setOpen(true); };
+  var MON = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  function iso(d){ return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0"); }
+  var S = startIn.value || "", E = endIn.value || "", base = pd(S) || new Date(), view = new Date(base.getFullYear(), base.getMonth(), 1), todayIso = iso(new Date());
+  function label(v){ var d = pd(v); return d ? d.toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"}) : "—"; }
+  function sync(){ startIn.value = S; endIn.value = E; sB.textContent = label(S); eB.textContent = label(E); var act = mode || (!S ? "s" : (!E ? "e" : "")); sD.className = open && act === "s" ? "on" : ""; eD.className = open && act === "e" ? "on" : "";
+    if (act === "s") hint.textContent = "Tap your departure date.";
+    else if (act === "e") hint.textContent = "Tap your return date (or the same day for a day trip).";
+    else { var n = Math.round((pd(E) - pd(S)) / 86400000) + 1; hint.textContent = n + (n === 1 ? " day" : " days") + " · " + (n - 1) + (n === 2 ? " night" : " nights") + ". Tap a date box to change it, or tap departure on the calendar to start over."; } }
+  function pick(v){
+    var m = mode; mode = "";
+    if (m === "s"){ S = v; if (E && E < v) E = ""; }
+    else if (m === "e" && S){ if (v < S){ S = v; E = ""; } else E = v; }
+    else if (S && E){ if (v === S){ S = ""; E = ""; } else if (v === E){ E = ""; } else if (v < S){ S = v; } else { E = v; } }
+    else if (!S) S = v;
+    else if (v < S) S = v;
+    else E = v;
+    if (S && E && (pd(E) - pd(S)) / 86400000 + 1 > 60){ E = ""; hint.textContent = "Trips can be up to 60 days."; draw(); startIn.value = S; endIn.value = E; return; }
+    draw();
+  }
+  function draw(){
+    title.textContent = MON[view.getMonth()] + " " + view.getFullYear(); grid.textContent = "";
+    ["S","M","T","W","T","F","S"].forEach(function(d){ grid.appendChild(el("div","dow",d)); });
+    var first = view.getDay(), days = new Date(view.getFullYear(), view.getMonth()+1, 0).getDate();
+    for (var i = 0; i < first; i++) grid.appendChild(el("div"));
+    for (var d = 1; d <= days; d++){ (function(v){ var b = el("button",null,String(+v.slice(8))); b.type = "button"; b.setAttribute("aria-label",label(v));
+      var cls = []; if (v === S) cls.push("s"); if (v === E || (v === S && !E)) cls.push("e"); if (S && E && v > S && v < E) cls.push("in"); if (v === todayIso) cls.push("today"); b.className = cls.join(" ");
+      if (v === S || v === E) b.setAttribute("aria-pressed","true");
+      b.addEventListener("click",function(){ pick(v); }); grid.appendChild(b); })(iso(new Date(view.getFullYear(), view.getMonth(), d))); }
+    sync();
+  }
+  prev.addEventListener("click",function(){ view = new Date(view.getFullYear(), view.getMonth()-1, 1); draw(); });
+  next.addEventListener("click",function(){ view = new Date(view.getFullYear(), view.getMonth()+1, 1); draw(); });
+  draw(); setOpen(false); return box;
+}
 function refineSetup(t){
-  var existing = !!t, old = t, saved = existing ? refineLoad(t) : null, inputs = saved ? saved.inputs : {}, f = el("form","panel form gen-form"), attemptedId=null;
-  f.appendChild(el("h2","k",existing ? "Trip basics" : "Generate your first list")); f.appendChild(el("p","muted","Start with the essentials. Refine laundry, weather, quantities and activities on the list afterward."));
-  var where = inp("rs-where","text",t ? t.where : "","Destination"), start = inp("rs-start","date",t ? t.start : ""), end = inp("rs-end","date",t ? t.end : ""); [where,start,end].forEach(function(x){ x.required = true; });
-  f.appendChild(fieldEl("Destination",where)); var dates = el("div","two"); dates.appendChild(fieldEl("Departure",start)); dates.appendChild(fieldEl("Return",end)); f.appendChild(dates);
+  var existing = !!t, old = t, saved = existing ? refineLoad(t) : null, inputs = saved ? saved.inputs : {}, f = el("form","panel form gen-form rs-form"), attemptedId=null;
+  f.appendChild(el("h2","k",existing ? "Trip basics" : "New trip"));
+  var where = el("textarea","grow"); where.id = "rs-where"; where.rows = 1; where.placeholder = "City, state or country"; where.value = t ? (t.where || "") : ""; where.setAttribute("autocomplete","off"); where.addEventListener("keydown",function(e){ if (e.key === "Enter"){ e.preventDefault(); } }); function growWhere(){ where.value = where.value.replace(/\n/g," "); where.style.height = "auto"; where.style.height = where.scrollHeight + 2 + "px"; } where.addEventListener("input",growWhere); requestAnimationFrame(growWhere); var start = inp("rs-start","hidden",t ? t.start : ""), end = inp("rs-end","hidden",t ? t.end : ""); where.required = true;
+  function reqMark(l){ var a = el("span","req","*"); a.setAttribute("aria-hidden","true"); l.appendChild(a); l.appendChild(el("span","sr-only"," (required)")); return l; } var whereField = fieldEl("Destination",where); reqMark(whereField.querySelector("label")); f.appendChild(whereField); var datesField = el("div","field"); datesField.appendChild(reqMark(el("label",null,"Dates"))); var picker = rangePicker(start,end); datesField.appendChild(picker); f.appendChild(datesField);
   var type = sel("rs-type",[["leisure","Leisure"],["work","Work"],["event","Formal event"],["mixed","Mixed"]],inputs.tripType || "leisure");
-  var bag = sel("rs-bag",[["carryon","Carry-on + personal bag"],["checked","Checked bag + personal bag"]],inputs.bag || "carryon");
+  var bag = sel("rs-bag",[["carryon","Carry-on"],["checked","Checked bag"]],inputs.bag || "carryon");
   var mode = sel("rs-mode",[["fly","Flying"],["drive","Driving"],["other","Train or other"]],inputs.mode || "fly");
-  f.appendChild(fieldEl("Trip type",type)); f.appendChild(fieldEl("Baggage",bag));
-  var activities = {}, toggles = el("div","refine-toggles"); [["hike","Hiking"],["workout","Workouts"],["water","Swimming"],["fish","Fishing"]].forEach(function(x){ var l = el("label","chipchk"), c = el("input"); c.type = "checkbox"; c.id = "rs-"+x[0]; c.checked = !!(inputs.activities && inputs.activities[x[0]]); l.appendChild(c); l.appendChild(el("span",null,x[1])); toggles.appendChild(l); activities[x[0]] = c; }); f.appendChild(toggles);
-  var daypack=inp("rs-daypack","checkbox",null);daypack.checked=!!(saved && saved.refinements.daypack);f.appendChild(fieldEl("I need a daypack",daypack));
-  var rugged=inp("rs-rugged","checkbox",null);rugged.checked=!!(saved && saved.refinements.ruggedHike);var ruggedField=fieldEl("Rugged or wet trails",rugged);f.appendChild(ruggedField);
+  var tb = el("div","two row-gap"); tb.appendChild(fieldEl("Trip type",type)); tb.appendChild(fieldEl("Baggage",bag)); f.appendChild(tb);
+  var actField = el("div","field"); actField.appendChild(el("label",null,"Activities"));
+  var activities = {}, toggles = el("div","refine-toggles"); [["hike","Hiking"],["workout","Workouts"],["water","Swimming"],["fish","Fishing"]].forEach(function(x){ var l = el("label","chipchk"), c = el("input"); c.type = "checkbox"; c.id = "rs-"+x[0]; c.checked = !!(inputs.activities && inputs.activities[x[0]]); l.appendChild(c); l.appendChild(el("span",null,x[1])); toggles.appendChild(l); activities[x[0]] = c; }); actField.appendChild(toggles);
+  var rugged=el("input");rugged.type="checkbox";rugged.id="rs-rugged";rugged.checked=!!(saved && saved.refinements.ruggedHike);var ruggedField=el("label","chipchk");ruggedField.appendChild(rugged);ruggedField.appendChild(el("span",null,"Rugged or wet trails"));ruggedField.style.alignSelf="flex-start";actField.appendChild(ruggedField);
+  f.appendChild(actField);
   function hikingVisibility(){ruggedField.style.display=activities.hike.checked ? "":"none";}activities.hike.addEventListener("change",hikingVisibility);hikingVisibility();
-  var weather=sel("rs-climate",[["unknown","Unconfirmed — refine later"],["mild","Mild (60–85°F)"],["cool","Cool (40–60°F)"],["cold","Cold (below 40°F)"],["hot","Hot (above 85°F)"]],saved ? saved.refinements.climate : "unknown");f.appendChild(fieldEl("Expected weather (optional)",weather));
-  var rain=inp("rs-rain","checkbox",null);rain.checked=!!(saved && saved.refinements.rain);f.appendChild(fieldEl("Rain expected (optional)",rain));
-  f.appendChild(el("p","gen-note","Workouts assumes most days and uses your regular T-shirts and shorts. Weather can stay unconfirmed."));
-  var extras=el("details"),extraChecks={};extras.appendChild(el("summary",null,"Trip extras (optional)"));
-  REFINE_EXTRAS.forEach(function(choice){var input=inp("rs-extra-"+choice.key,"checkbox",null);input.checked=!!(saved && saved.refinements.extraItems[choice.key]);extras.appendChild(fieldEl(choice.label,input));extraChecks[choice.key]=input;});f.appendChild(extras);
-  var more = el("details"); more.appendChild(el("summary",null,"Travel details (optional)")); more.appendChild(fieldEl("Travel mode",mode));
-  var intl = inp("rs-intl","checkbox",null); intl.checked = !!inputs.intl; more.appendChild(fieldEl("International trip",intl));
-  var name = inp("rs-name","text",t ? t.name : "","Leave blank to use destination and dates"); more.appendChild(fieldEl("Trip name",name)); f.appendChild(more);
+  var opt = el("section","gen-opt"); var optHead = el("div","rs-group"); optHead.style.gap = "2px"; optHead.appendChild(el("h3",null,"Optional")); optHead.appendChild(el("p","gen-note","Set these now or later on the list.")); opt.appendChild(optHead);
+  var weather=sel("rs-climate",[["unknown","Not sure yet"],["mild","Mild (60–85°F)"],["cool","Cool (40–60°F)"],["cold","Cold (below 40°F)"],["hot","Hot (above 85°F)"]],saved ? saved.refinements.climate : "unknown");
+  var wm = el("div","two"); wm.appendChild(fieldEl("Weather",weather)); wm.appendChild(fieldEl("Travel mode",mode)); opt.appendChild(wm);
+  function chip(id,label,on){ var l = el("label","chipchk"), c = el("input"); c.type = "checkbox"; c.id = id; c.checked = on; l.appendChild(c); l.appendChild(el("span",null,label)); return {label:l,input:c}; }
+  var flags = el("div","refine-toggles"), rainC = chip("rs-rain","Rain expected",!!(saved && saved.refinements.rain)), dayC = chip("rs-daypack","Daypack",!!(saved && saved.refinements.daypack)), intlC = chip("rs-intl","International",!!inputs.intl);
+  [rainC,dayC,intlC].forEach(function(c){ flags.appendChild(c.label); }); opt.appendChild(flags);
+  var rain = rainC.input, daypack = dayC.input, intl = intlC.input;
+  var exGroup = el("div","rs-group"); exGroup.appendChild(el("p","sub","Trip extras")); var ex = el("div","refine-toggles"), extraChecks={};
+  REFINE_EXTRAS.forEach(function(choice){ var c = chip("rs-extra-"+choice.key,choice.label,!!(saved && saved.refinements.extraItems[choice.key])); ex.appendChild(c.label); extraChecks[choice.key]=c.input; }); exGroup.appendChild(ex); opt.appendChild(exGroup);
+  f.appendChild(opt);
   var msg = el("p","gen-error"); msg.setAttribute("role","status"); f.appendChild(msg); var actions = el("div","gen-actions"), go = el("button","btn primary",existing ? "Update trip & list" : "Generate my list"); go.type = "submit"; actions.appendChild(go); actions.appendChild(generatorLink("Cancel",existing ? "#"+t.id : "#")); f.appendChild(actions);
-  f.addEventListener("submit",function(e){ e.preventDefault(); var span;try{span=refineDays(start.value,end.value);}catch(err){msg.textContent=err.message;return;}
-    var record = Object.assign({},old || {},{name:name.value.trim() || where.value.trim()+" · "+fmt(start.value),where:where.value.trim(),start:start.value,end:end.value}); record.id = existing ? t.id : attemptedId || newTripId(record.name,record.where,record.start);attemptedId=record.id;
+  f.addEventListener("submit",function(e){ e.preventDefault(); if (!start.value || !end.value){ msg.textContent = "Pick a departure and return date."; picker.openCal(); return; } var span;try{span=refineDays(start.value,end.value);}catch(err){msg.textContent=err.message;return;}
+    var record = Object.assign({},old || {},{name:(function(){ var auto = where.value.trim()+" · "+fmt(start.value); if (!existing) return auto; var oldAuto = (t.where||"")+" · "+(t.start ? fmt(t.start) : ""); return (!t.name || t.name === oldAuto) ? auto : t.name; })(),where:where.value.trim(),start:start.value,end:end.value}); record.id = existing ? t.id : attemptedId || newTripId(record.name,record.where,record.start);attemptedId=record.id;
     var state = saved || refineNewState(record,{tripType:type.value}), before = refineSnapshot(state); state.inputs = {where:record.where,start:record.start,end:record.end,tripType:type.value,bag:bag.value,mode:mode.value,intl:intl.checked,activities:{}};
     Object.keys(activities).forEach(function(k){ state.inputs.activities[k] = activities[k].checked; });
     Object.keys(extraChecks).forEach(function(key){state.refinements.extraItems[key]=extraChecks[key].checked;});

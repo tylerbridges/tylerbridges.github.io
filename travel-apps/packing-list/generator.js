@@ -7,31 +7,73 @@ function generatorButton(label, action, primary){ var b = el("button",primary ? 
 function generatorLink(label, hash, primary){ var a = el("a",primary ? "btn primary" : "btn",label); a.href = hash; a.style.textDecoration = "none"; return a; }
 function generatorHome(){
   var w = el("div","stack"), hero = el("section","panel gen-hero");
-  hero.appendChild(el("h2",null,"Your trip. Your packing rules."));
-  hero.appendChild(el("p","muted","Set up the trip, review your list, then export a native checklist to Apple Notes."));
-  var nav = el("div","gen-nav"); nav.appendChild(generatorLink("Generate a packing list","#new",true));
-  nav.appendChild(generatorButton("My preferences",function(){ generatorPreferences(); })); hero.appendChild(nav); w.appendChild(hero);
-  if (!generatorPrefs().generatorConfirmedAt){ var intro = el("section","panel"); intro.appendChild(el("h3",null,"Your existing preferences are ready")); intro.appendChild(el("p","muted","Carry-on + personal bag, your usual items, and all existing quantity rules are the defaults. Review them once or go straight to a trip.")); intro.appendChild(generatorButton("Review my defaults",function(){ generatorPreferences(); })); w.appendChild(intro); }
+  var nav = el("div","gen-nav"); nav.appendChild(generatorLink("Generate a packing list","#new",true)); nav.appendChild(generatorButton("My preferences",function(){ generatorPreferences(); }));
+  hero.appendChild(nav); w.appendChild(hero);
   if (ORDER.length){ w.appendChild(el("h2","k","Previous trip setups")); ORDER.forEach(function(id){ var t = TRIPS[id], a = el("a","panel tripcard"); a.href = "#" + id;
     a.appendChild(el("h3",null,t.name)); a.appendChild(el("p","muted",[t.where,t.start ? fmt(t.start) + " – " + fmt(t.end || t.start) : "Dates needed"].filter(Boolean).join(" · "))); w.appendChild(a); }); }
+  return w;
+}
+function generatorRulesPage(){
+  var p = clone(generatorPrefs()), w = el("div","stack"), back = el("a","back","← Packing generator"); back.href = "#"; w.appendChild(back);
+  w.appendChild(el("p","muted","The rules that set quantities and item choices for every new list. Quantity formulas are fixed; item defaults are managed under My usual items."));
+  var rules = el("section","panel stack"); rules.appendChild(el("h2","k","Current rules and quantities"));
+  rules.appendChild(el("p",null,"Socks and underwear: 2 per travel day. T-shirts: 1 per day. Bottoms: days ÷ 2, rounded up. Contacts: full trip + 2 days, rounded up to a multiple of 5. Clothes worn on departure are included in clothing totals."));
+  // Standalone app: describe the active refinement rules without rewriting saved profile data.
+  var currentRules={shoes:"Brooks for ordinary hikes and workouts; hiking footwear for rugged/wet trails; dress shoes for formal events",jacket:"Hoodie and puffer for cool/cold weather, even when you run hot; rain adds separate weather protection",cooler:"Joggers replace half the shorts in cool/cold weather; workouts keep enough shorts for two days per pair",workouts:"Workouts most days use regular T-shirts and Lulu shorts; no separate workout outfit"};
+  rules.appendChild(el("p",null,"Laundry: first wash day + wash interval, with one spare clothing day. Pack extra adds one T-shirt, two underwear, two pairs of socks and one pair of bottoms. Carry-on flags capacity conflicts without moving or reducing items. The collapsible daypack is added only via I need a daypack in trip setup or Activities. Kindle, Hotspot, Belkin charging pad, Garmin + charger and extra phone case are optional selections in Trip extras during setup or Extras after generation."));
+  Object.keys(PREF_LABELS).forEach(function(k){ var row = el("div","gen-rule"); row.appendChild(el("b",null,PREF_LABELS[k])); row.appendChild(el("span",null,currentRules[k] || p[k] || PACK_PREFS[k])); rules.appendChild(row); }); w.appendChild(rules);
+  var acts = el("div","gen-nav"); acts.appendChild(generatorButton("My usual items",function(){ generatorPreferences(); })); acts.appendChild(generatorButton("Refinement exclusions",refineProfileSheet)); w.appendChild(acts);
   return w;
 }
 function generatorPreferences(){
   var p = clone(generatorPrefs()), body = openSheet("My packing preferences");
   body.appendChild(el("p","muted","These defaults are saved in this browser. Trip-specific choices come later. Uncheck usual extras you no longer want; core clothing and quantity rules stay in place."));
-  var rules = el("details","panel"); rules.appendChild(el("summary",null,"Current rules and quantities"));
-  rules.appendChild(el("p",null,"Socks and underwear: 2 per travel day. T-shirts: 1 per day. Bottoms: days ÷ 2, rounded up. Contacts: full trip + 2 days, rounded up to a multiple of 5. Clothes worn on departure are included in clothing totals."));
-  // Standalone app: describe the active refinement rules without rewriting saved profile data.
-  var currentRules={shoes:"Brooks for ordinary hikes and workouts; hiking footwear for rugged/wet trails; dress shoes for formal events",jacket:"Hoodie and puffer for cool/cold weather, even when you run hot; rain adds separate weather protection",cooler:"Joggers replace half the shorts in cool/cold weather; workouts keep enough shorts for two days per pair",workouts:"Workouts most days use regular T-shirts and Lulu shorts; no separate workout outfit"};
-  rules.appendChild(el("p",null,"Laundry: first wash day + wash interval, with one spare clothing day. Pack extra adds one T-shirt, two underwear, two pairs of socks and one pair of bottoms. Carry-on flags capacity conflicts without moving or reducing items. The collapsible daypack is added only via I need a daypack in trip setup or Activities. Kindle, Hotspot, Belkin charging pad, Garmin + charger and extra phone case are optional selections in Trip extras during setup or Extras after generation."));
-  Object.keys(PREF_LABELS).forEach(function(k){ var row = el("div","gen-rule"); row.appendChild(el("b",null,PREF_LABELS[k])); row.appendChild(el("span",null,currentRules[k] || p[k] || PACK_PREFS[k])); rules.appendChild(row); }); body.appendChild(rules);
-  var checks = [], savedGroups = Array.isArray(p.extras) ? p.extras : PACK_PREFS.extras, groups = clone(PACK_PREFS.extras), selected = {};
-  savedGroups.forEach(function(g){ (g.items || []).forEach(function(item){ selected[g.title + "|" + item] = true; }); var target = groups.filter(function(x){ return x.title === g.title; })[0]; if (!target){ target = {title:g.title,items:[]}; groups.push(target); } (g.items || []).forEach(function(item){ if (target.items.indexOf(item) < 0) target.items.push(item); }); });
-  groups.forEach(function(g){ body.appendChild(el("h3","k",g.title)); (g.items || []).forEach(function(item){ if(refineId(item)==="daypack" || refineOptionalKey(item))return;var l = el("label","gen-pref-item"), c = el("input"); c.type = "checkbox"; c.checked = !!selected[g.title + "|" + item]; l.appendChild(c); l.appendChild(el("span",null,item)); body.appendChild(l); checks.push({title:g.title,item:item,input:c}); }); });
-  var custom = el("textarea"); custom.id = "gp-custom"; custom.rows = 3; custom.placeholder = "One extra item per line"; custom.value = (p.generatorExtras || []).join("\n"); body.appendChild(fieldEl("Additional items to always bring",custom));
+  var rules = generatorLink("Current rules and quantities →","#rules"); rules.style.display = "inline-block"; body.appendChild(rules);
+  var savedGroups = Array.isArray(p.extras) ? p.extras : PACK_PREFS.extras, removed = Array.isArray(p.prefRemoved) ? p.prefRemoved.slice() : [], groups = [], idx = {};
+  function gOf(title){ if (idx[title] == null){ idx[title] = groups.length; groups.push({title:title,items:[]}); } return groups[idx[title]]; }
+  function hidden(item){ return refineId(item) === "daypack" || !!refineOptionalKey(item); }
+  function putItem(title,label,on){ var g = gOf(title); if (g.items.some(function(x){ return x.label === label; })) return; g.items.push({label:label,on:on}); }
+  if (Array.isArray(p.prefItems)){ p.prefItems.forEach(function(g){ gOf(g.title); (g.items || []).forEach(function(x){ putItem(g.title,x.label,!!x.on); }); }); }
+  else { savedGroups.forEach(function(g){ gOf(g.title); (g.items || []).forEach(function(item){ putItem(g.title,item,true); }); }); }
+  PACK_PREFS.extras.forEach(function(g){ gOf(g.title); (g.items || []).forEach(function(item){ if (removed.indexOf(g.title + "|" + item) < 0) putItem(g.title,item,false); }); });
+  var list = el("div");
+  function textIn(value,label,cls){ var i = el("input",cls); i.type = "text"; i.value = value; i.setAttribute("aria-label",label); i.style.fontSize = "16px"; return i; }
+  function iconBtn(text,label,fn){ var b = el("button","btn",text); b.type = "button"; b.setAttribute("aria-label",label); b.addEventListener("click",fn); return b; }
+  function draw(){
+    list.textContent = "";
+    groups.forEach(function(g,gi){
+      var head = el("div","gen-item"), ht = textIn(g.title,"Section header"); ht.style.fontWeight = "600";
+      ht.addEventListener("change",function(){ var v = ht.value.trim(); if (!v){ ht.value = g.title; return; } if (groups.some(function(x,i){ return i !== gi && x.title === v; })){ status.textContent = "A section named “" + v + "” already exists."; ht.value = g.title; return; } status.textContent = ""; g.title = v; });
+      head.appendChild(ht);
+      head.appendChild(iconBtn("Delete section","Delete section " + g.title,function(){ g.items.forEach(function(x){ if (PACK_PREFS.extras.some(function(d){ return d.title === g.title && d.items.indexOf(x.label) >= 0; })) removed.push(g.title + "|" + x.label); }); groups.splice(gi,1); draw(); }));
+      list.appendChild(head);
+      g.items.forEach(function(x,xi){
+        if (hidden(x.label)) return;
+        var row = el("div","gen-item"), c = el("input"); c.type = "checkbox"; c.checked = x.on; c.setAttribute("aria-label","Include " + x.label);
+        c.addEventListener("change",function(){ x.on = c.checked; });
+        var t = textIn(x.label,"Item name"); t.addEventListener("change",function(){ var v = t.value.trim(); if (!v){ t.value = x.label; return; } if (g.items.some(function(y,i){ return i !== xi && y.label === v; })){ status.textContent = "“" + v + "” is already in " + g.title + "."; t.value = x.label; return; } status.textContent = ""; x.label = v; });
+        row.appendChild(c); row.appendChild(t);
+        row.appendChild(iconBtn("Delete","Delete " + x.label,function(){ if (PACK_PREFS.extras.some(function(d){ return d.title === g.title && d.items.indexOf(x.label) >= 0; })) removed.push(g.title + "|" + x.label); g.items.splice(xi,1); draw(); }));
+        list.appendChild(row);
+      });
+      var add = el("div","gen-item gen-add"), ai = textIn("","Add item to " + g.title); ai.placeholder = "Add item to this section"; 
+      function doAdd(){ var v = ai.value.trim(); if (!v) return; if (g.items.some(function(y){ return y.label === v; })){ status.textContent = "“" + v + "” is already in " + g.title + "."; return; } status.textContent = ""; var k = removed.indexOf(g.title + "|" + v); if (k >= 0) removed.splice(k,1); g.items.push({label:v,on:true}); draw(); }
+      ai.addEventListener("keydown",function(e){ if (e.key === "Enter"){ e.preventDefault(); doAdd(); } });
+      add.appendChild(el("span","gen-spacer")); add.appendChild(ai); add.appendChild(iconBtn("Add","Add item to " + g.title,doAdd)); list.appendChild(add);
+    });
+    var nh = el("div","gen-item"), ni = textIn("","New section header"); ni.placeholder = "New section header";
+    function addHeader(){ var v = ni.value.trim(); if (!v) return; if (idx[v] != null || groups.some(function(x){ return x.title === v; })){ status.textContent = "A section named “" + v + "” already exists."; return; } status.textContent = ""; groups.push({title:v,items:[]}); draw(); }
+    ni.addEventListener("keydown",function(e){ if (e.key === "Enter"){ e.preventDefault(); addHeader(); } });
+    nh.appendChild(ni); nh.appendChild(iconBtn("Add section","Add section header",addHeader)); list.appendChild(nh);
+  }
   var status = el("p","muted"); status.setAttribute("role","status");
+  body.appendChild(el("p","gen-note","Check or uncheck to include an item in new lists. Edit a name or header in place, delete with the button, or add items and new sections. Quantity formulas above stay fixed."));
+  body.appendChild(list); draw();
+  var custom = el("textarea"); custom.id = "gp-custom"; custom.rows = 3; custom.placeholder = "One extra item per line"; custom.value = (p.generatorExtras || []).join("\n"); body.appendChild(fieldEl("Additional items to always bring",custom));
   body.appendChild(generatorButton("Save my preferences",function(){
-    p.extras = groups.map(function(g){ return {title:g.title,items:checks.filter(function(x){ return x.title === g.title && x.input.checked; }).map(function(x){ return x.item; })}; });
+    p.prefItems = groups.map(function(g){ return {title:g.title,items:g.items.filter(function(x){ return !hidden(x.label); }).map(function(x){ return {label:x.label,on:!!x.on}; })}; });
+    p.prefRemoved = removed;
+    p.extras = groups.map(function(g){ return {title:g.title,items:g.items.filter(function(x){ return x.on && !hidden(x.label); }).map(function(x){ return x.label; })}; }).filter(function(g){ return g.items.length; });
     p.generatorExtras = custom.value.split(/\r?\n/).map(function(s){ return s.trim(); }).filter(Boolean); p.generatorConfirmedAt = isoToday();
     db.doc("meta/packing").set(p).then(function(){ EXTRAS = p.extras; MAYBE = p.maybe; closeSheet(); render(); }).catch(function(){ status.textContent = "Preferences could not be saved. Storage may be full or blocked."; });
   },true)); body.appendChild(status); body.appendChild(generatorButton("Inspect refinement exclusions",refineProfileSheet));

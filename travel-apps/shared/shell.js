@@ -17,8 +17,8 @@ function render(){
   if (!READY) return;
   var r = route(), y = window.scrollY;
   view.textContent = "";
-  document.getElementById("h1").textContent = r.t ? r.t.name : APP.title;
-  view.appendChild(r.t ? (r.tab === "edit" ? (APP.tripForm || tripForm)(r.t) : (APP.tripPage || tripPage)(m(r.t), r.focus)) : r.page === "new" ? (APP.tripForm || tripForm)(null) : (APP.homeView || homeView)());
+  document.getElementById("h1").textContent = r.t ? r.t.name : (r.page === "rules" && window.generatorRulesPage ? "Rules and quantities" : APP.title);
+  view.appendChild(r.t ? (r.tab === "edit" ? (APP.tripForm || tripForm)(r.t) : (APP.tripPage || tripPage)(m(r.t), r.focus)) : r.page === "new" ? (APP.tripForm || tripForm)(null) : r.page === "rules" && window.generatorRulesPage ? generatorRulesPage() : (APP.homeView || homeView)());
   window.scrollTo(0, y);
 }
 window.addEventListener("hashchange", function(){ wantFocus = true; render(); window.scrollTo(0,0); });
