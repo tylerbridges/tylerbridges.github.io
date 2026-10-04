@@ -28,7 +28,7 @@ function generatorRulesPage(){
   var acts = el("div","gen-nav"); acts.appendChild(generatorButton("My usual items",function(){ generatorPreferences(); })); acts.appendChild(generatorButton("Refinement exclusions",refineProfileSheet)); w.appendChild(acts);
   return w;
 }
-function generatorPreferences(){
+function generatorPreferences(suggestedItem){
   var p = clone(generatorPrefs()), body = openSheet("My packing preferences");
   body.appendChild(el("p","muted","These defaults are saved in this browser. Trip-specific choices come later. Uncheck usual extras you no longer want; core clothing and quantity rules stay in place."));
   var rules = generatorLink("Current rules and quantities →","#rules"); rules.style.display = "inline-block"; body.appendChild(rules);
@@ -74,7 +74,7 @@ function generatorPreferences(){
   var status = el("p","muted"); status.setAttribute("role","status");
   body.appendChild(el("p","gen-note","Check or uncheck to include an item in new lists. Edit a name or header in place, delete with the button, or add items and new sections. Quantity formulas above stay fixed."));
   body.appendChild(list); draw();
-  var custom = el("textarea"); custom.id = "gp-custom"; custom.rows = 3; custom.placeholder = "One extra item per line"; custom.value = (p.generatorExtras || []).join("\n"); body.appendChild(fieldEl("Additional items to always bring",custom));
+  var custom = el("textarea"); custom.id = "gp-custom"; custom.rows = 3; custom.placeholder = "One extra item per line"; custom.value = (p.generatorExtras || []).join("\n"); if(typeof suggestedItem==="string" && suggestedItem.trim()){var extras=custom.value.split(/\r?\n/).filter(Boolean);if(!extras.some(function(label){return refineId(label)===refineId(suggestedItem);}))extras.push(suggestedItem);custom.value=extras.join("\n");body.appendChild(el("p","gen-note","Suggested item added to the form below. Review it, then save to change your defaults."));}body.appendChild(fieldEl("Additional items to always bring",custom));
   body.appendChild(generatorButton("Save my preferences",function(){
     p.prefItems = groups.map(function(g){ return {title:g.title,items:g.items.filter(function(x){ return !hidden(x.label); }).map(function(x){ return {label:x.label,on:!!x.on}; })}; });
     p.prefRemoved = removed;

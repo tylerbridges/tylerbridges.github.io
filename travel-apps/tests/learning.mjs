@@ -131,6 +131,14 @@ assert.equal(patterns.find(x=>x.id===itemId).kind,'exclude');assert.equal(patter
 assert.equal(patterns.find(x=>x.id==='pack:contacts'),undefined,'Automatic learning never proposes removing critical items');
 assert.equal(patterns.find(x=>x.id==='pack:tshirts').kind,'review','Clothing adjustments are review suggestions, not exclusions');
 assert(patterns.some(x=>x.kind==='addition' && x.label==='Camera'));
+const cameraPattern=patterns.find(x=>x.kind==='addition' && x.label==='Camera');
+for(const adapted of [{...profile,generatorExtras:['Camera']},{...profile,extras:[{title:'Personal bag & day gear',items:['Camera']}]}])assert(!c.packingLearningEditRecommendations(observed,adapted).some(x=>x.kind==='addition' && x.label==='Camera'),'Adopted items resolve addition suggestions');
+await c.packingLearningDismiss(cameraPattern);
+assert(!c.packingLearningEditRecommendations(c.packingLearningLoad(),profile).some(x=>x.key===cameraPattern.key),'Dismissal hides the chosen pattern');
+assert.equal(Object.keys(c.packingLearningLoad().editTrips).length,5,'Dismissal preserves evidence');
+let restored=c.packingLearningLoad();delete restored.dismissedEdits[c.packingLearningPatternKey(cameraPattern)];await c.db.doc('meta/packingLearning').set(restored);
+assert(c.packingLearningEditRecommendations(c.packingLearningLoad(),profile).some(x=>x.key===cameraPattern.key),'Restoring brings back eligible evidence');
+
 assert(!c.generatorPrefs().refinementProfile?.excluded?.[itemId],'Observation does not silently change defaults');
 await c.packingLearningObserve(auto[0].t,auto[0].state,auto[0].result);assert.equal(Object.keys(c.packingLearningLoad().editTrips).length,5,'Repeated edits still count once per trip');
 delete auto[0].state.overrides.removed[itemId];auto[0].result=c.refineEvaluate(auto[0].state,profile,[]);await c.packingLearningObserve(auto[0].t,auto[0].state,auto[0].result);assert(!c.packingLearningEditRecommendations(c.packingLearningLoad(),profile).some(x=>x.id===itemId),'Undo must withdraw removal evidence');
