@@ -148,7 +148,7 @@
     var gg = doc.grid, gi = gg ? Math.floor((Date.now() - gg.start) / H) : -1;
     var gust = c.wg || (gg && gi >= 0 && gi < gg.n && gg.s.wg[gi] != null ? gg.s.wg[gi] : null);
     var rows = [];
-    if (hiT != null || loT != null) rows.push(["High / Low", '<span class="hiT">' + (hiT != null ? hiT + "°F" : "–") + '</span> / <span class="loT">' + (loT != null ? loT + "°F" : "–") + "</span>", 1]);
+    // today's high / low now sit with the date above the card (like every other day), not in this list
     var p0 = p[0]; if (p0) rows.push(["Precip chance", (p0.popTrend ? p0.popTrend[0] + "% → " + p0.popTrend[1] + "%" : (p0.pop || 0) + "%") + " " + p0.name.toLowerCase().replace(/^this /, "")]);
     // EPA's daily UV forecast is for one calendar day: label it with the day when it isn't today (late evening it's already tomorrow's)
     var uv = doc.uv, uvD = uv && uv.date ? new Date(uv.date.replace(/\//g, " ")) : null, todayD = new Date(fmt(Date.now(), { year: "numeric", month: "short", day: "numeric" }));
@@ -165,7 +165,9 @@
         if (c.wc != null && c.t != null && c.wc < c.t) rows.push(["Wind chill", c.wc + "°F"]);
     if (c.hi != null && c.t != null && c.hi > c.t) rows.push(["Heat index", c.hi + "°F"]);
     var d0 = groupDays(p)[0];
-    $("nowtitle").textContent = fmt(d0 ? d0.s : Date.now(), { weekday: "long", month: "short", day: "numeric" });
+    // today's date and high / low above the card, styled like the other days' titles
+    $("nowtitle").innerHTML = esc(fmt(d0 ? d0.s : Date.now(), { weekday: "long", month: "short", day: "numeric" })) +
+      (hiT != null || loT != null ? '<span class="dhl3 num"><span class="hiT">' + (hiT != null ? hiT + "°F" : "–") + '</span> / <span class="loT">' + (loT != null ? loT + "°F" : "–") + "</span></span>" : "");
     $("nowcard").innerHTML =
       // one line, all at the title's size: icon, condition, then temperature
       '<div class="now-line"><span class="now-ico">' + iconHtml(c.icon, isDay(c.ms)) + '</span><span class="now-desc">' + esc(c.desc || "—") + '</span><span class="now-t num">' + (c.t == null ? "–" : c.t) + "°F</span></div>" + hazHtml() +
