@@ -206,3 +206,6 @@ h2.k,.gen-opt h3,.psec-head h3,details.panel>summary{font-size:var(--t-foot);let
 .outfit-preview p{margin:6px 0;}
 
 .test-sheet .sheet-body>*{flex-shrink:0;}
+
+/* Standalone app: conditional controls must honor the native hidden state. */
+[hidden]{display:none!important;}
