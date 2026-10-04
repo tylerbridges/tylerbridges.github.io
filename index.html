@@ -1021,6 +1021,31 @@ html.scrolled .top #fresh{display:inline-flex;max-height:0;opacity:0}
 .forecast-workspace .model-data #msrc{display:block;padding:4px 0;font-size:12px}
 .model-data p{margin:4px 0;line-height:1.45}
 #now{margin-bottom:4px}
+
+/* Forecast outlook: map-first controls and compact disclosures. */
+.model-window-lock{padding:8px 12px;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink2)}
+.model-window-lock[hidden]{display:none}.model-window-lock span{flex:1}
+.outlook-card{padding:8px 12px;border-top:1px solid var(--grid)}
+.outlook-card>summary{font-size:14px;font-weight:700;cursor:pointer;min-height:32px;align-content:center}
+.outlook-card p{font-size:12px;line-height:1.45;color:var(--ink2);margin:8px 0}
+.odds-day{margin-top:8px}.odds-day>b{font-size:12px}
+.odds-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;margin-top:5px}
+.odds-grid button{font:inherit;background:var(--sunk);color:var(--ink);border:0;border-radius:12px;padding:8px 3px;cursor:pointer;min-width:0}
+.odds-grid button b,.odds-grid button span{display:block;font-size:11px;line-height:1.4}
+.odds-grid button b{font-size:12px}
+.compare-controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:8px 0;font-size:12px}
+.compare-controls select{display:block;width:100%;font-size:16px;min-height:36px;margin-top:3px;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:5px;box-sizing:border-box}
+.compare-controls [hidden]{display:none}
+.compare-row{display:flex;justify-content:space-between;align-items:center;gap:6px;padding:8px 0;border-top:1px solid var(--grid);font-size:12px}
+.compare-row small{display:block;color:var(--muted);margin-top:3px}
+.compare-row button{font:inherit;background:var(--sunk);color:var(--ink);border:0;border-radius:10px;padding:8px;cursor:pointer;flex:none}
+.weather-timeline{display:flex;gap:6px;overflow-x:auto;padding:4px 0;scrollbar-width:thin}
+.weather-timeline button{flex:0 0 190px;text-align:left;font:inherit;font-size:12px;line-height:1.4;padding:10px;background:var(--sunk);color:var(--ink);border:0;border-radius:12px;cursor:pointer}
+.weather-timeline span,.history-report small{display:block;color:var(--ink2);font-size:12px;line-height:1.45;margin-top:4px}
+.history-report{padding:10px 0;border-top:1px solid var(--grid);font-size:13px}
+.weather-timeline button:focus-visible,.compare-row button:focus-visible,.odds-grid button:focus-visible{outline:2px solid var(--accent)}
+.outlook-hazard{border-left:3px solid var(--accent);padding-left:8px}
+@media(min-width:900px){.outlook-card{padding-inline:18px}.odds-grid{max-width:640px}}
 </style>
 </head>
 <body>
@@ -1102,10 +1127,14 @@ html.scrolled .top #fresh{display:inline-flex;max-height:0;opacity:0}
       <div class="model-nav">
       <div class="map-regions" id="model-regions" role="group" aria-label="Model map extent"></div>
       </div>
+      <div class="model-window-lock" id="model-window-lock" hidden><span></span><button type="button" class="chip" id="model-window-clear">Return to timeline</button></div>
+      <details class="outlook-card" id="model-compare"><summary>Compare models &amp; run trends</summary><div id="weather-compare"></div></details>
       <details class="model-data"><summary>Forecast details</summary><div class="msrc" id="msrc"></div><p id="mnote"></p></details>
     </div>
       </div>
       <p class="forecast-context" id="forecast-context">Official regional precipitation amounts · Tap a county for details</p>
+    <details class="outlook-card" id="weather-outlook" open><summary>Weather outlook</summary><div id="weather-timing"></div><details id="winter-outlook"><summary>Winter probability maps</summary><div id="winter-odds"></div></details></details>
+    <details class="outlook-card" id="weather-history"><summary>Saved forecasts &amp; observed amounts</summary><div id="weather-verification"></div></details>
     <details class="forecast-extra" id="forecast-extra"><summary>More NWS maps &amp; outlooks</summary>
     <div class="mcats" id="mcats"></div>
     <div class="card mview mimgcard">
@@ -1158,13 +1187,15 @@ html.scrolled .top #fresh{display:inline-flex;max-height:0;opacity:0}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=137"></script>
+<script src="wx-normalize.js?v=139"></script>
 <script src="wx-live.js?v=136"></script>
 <script src="wx-scenarios.js?v=136"></script>
 <script src="wx-vmap.js?v=136"></script>
 <script src="wx-radar.js?v=136"></script>
-<script src="wx-models.js?v=137"></script>
-<script src="wx-official.js?v=136"></script>
-<script src="app.js?v=137"></script>
+<script src="wx-models.js?v=139"></script>
+<script src="wx-official.js?v=139"></script>
+<script src="wx-archive.js?v=139"></script>
+<script src="wx-outlook.js?v=139"></script>
+<script src="app.js?v=139"></script>
 </body>
 </html>

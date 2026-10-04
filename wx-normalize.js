@@ -75,7 +75,7 @@
     var start = Math.max(Math.floor(now / H) * H - 6 * H, Math.ceil(gridStart / H) * H);
     var tb = L.temperature;
     var end = tb.length ? tb[tb.length - 1].s + tb[tb.length - 1].h * H : start;
-    var s = { t: [], td: [], wc: [], hi: [], rh: [], sky: [], pop: [], ws: [], wd: [], wg: [], thp: [] };
+    var s = { t: [], td: [], wc: [], hi: [], rh: [], sky: [], pop: [], ws: [], wd: [], wg: [], thp: [], wxKnown: [] };
     WXKEYS.forEach(function (k) { s[k] = []; });
     for (var t = start; t < end; t += H) {
       var tf = F(at("temperature", t));
@@ -91,6 +91,7 @@
       var wd = at("windDirection", t); s.wd.push(wd == null ? null : Math.round(wd));
       s.wg.push(MPH(at("windGust", t)));
       s.thp.push(at("probabilityOfThunder", t));
+      s.wxKnown.push(at("weather", t) != null);
       var w = {}, wl = {};
       (at("weather", t) || []).forEach(function (x) {
         var ty = TYPE[x.weather], lv = COV[x.coverage];
@@ -101,7 +102,7 @@
     var nH = s.t.length;
     function amt(k) {
       return L[k].filter(function (b) { return b.s + b.h * H > start && b.s < end; })
-        .map(function (b) { return [b.s, b.h, r1(IN(b.v), 2)]; });
+        .map(function (b) { return [b.s, b.h, b.v == null ? null : r1(IN(b.v), 2)]; });
     }
     var grid = { start: start, n: nH, s: s, qpf: amt("quantitativePrecipitation"),
       snow: amt("snowfallAmount"), ice: amt("iceAccumulation"), updated: Date.parse(gd.updateTime) };
