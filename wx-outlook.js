@@ -96,7 +96,7 @@
     });
     if (options.onTool) options.onTool(name);
     if (name === "compare") updateCompare();
-    dialog.scrollTop = 0;
+    var panel = document.getElementById("tool-" + name); if (panel) panel.scrollTop = 0;
   }
   function openTools(name, opener) {
     var dialog = document.getElementById("forecast-tools"); toolsOpener = opener;

@@ -6,7 +6,7 @@ const { chromium } = require('playwright'), assert = require('node:assert/strict
     for (let i = 0; i < 60; i++) {
       const r = await fetch(base + '?deploy-check=' + Date.now(), { cache: 'no-store' });
       const html = await r.text();
-      if (r.ok && html.includes('wx-outlook.js?v=142') && html.includes('app.js?v=142')) { ready = true; break; }
+      if (r.ok && html.includes('wx-outlook.js?v=143') && html.includes('app.js?v=143')) { ready = true; break; }
       await new Promise(resolve => setTimeout(resolve, 10000));
     }
     assert.ok(ready, 'Live page must serve the new version');
