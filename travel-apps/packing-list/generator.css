@@ -17,3 +17,13 @@
 .gen-rule b{flex:0 0 100px;}
 .gen-pref-item{display:flex;align-items:center;gap:10px;padding:6px 0;}
 .gen-error{color:var(--stop);}
+.refine-toggles{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0;}
+.refine-toggles button{white-space:normal;text-align:left;max-width:100%;}
+.refine-item{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:10px;padding:12px 0;border-top:1px solid var(--line-2);}
+.refine-item-copy{flex:1 1 180px;min-width:0;overflow-wrap:anywhere;}
+.refine-item .gen-actions{flex:0 1 auto;}
+.refine-item .gen-actions button{font-size:13px;padding:5px 9px;}
+.refine-badge{display:block;font-size:12px;color:var(--accent);}
+.refine-warning{border:1px solid var(--warn);}
+.refine-changes:not(:empty){background:var(--accent-soft);padding:14px;border-radius:var(--radius);}
+.refine-changes button{margin-top:10px;}

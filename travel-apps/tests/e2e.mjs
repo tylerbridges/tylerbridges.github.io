@@ -10,6 +10,7 @@ const srv = http.createServer(async (q, r) => { let p = decodeURIComponent(q.url
 await new Promise(res => srv.listen(0, res)); const B = `http://localhost:${srv.address().port}/`;
 const fail = (m) => { console.error("FAIL:", m); process.exitCode = 1; };
 const b = await pw.chromium.launch({executablePath:process.env.CHROMIUM_PATH || undefined}); const p = await b.newPage({viewport:{width:390, height:844}}); const errs = [];
+let apiCalls=0;p.on('request',q=>{if(/api\.(anthropic|openai)\.com/.test(q.url()))apiCalls++;});
 p.on("pageerror", e => errs.push(e.message)); p.on("console", m => { if (m.type() === "error" && !/fonts\.g/.test(m.text())) errs.push(m.text()); });
 try {
   await p.goto(B + "packing-list/"); await p.click('button:has-text("My preferences")');
@@ -23,31 +24,54 @@ try {
     if (await p.evaluate(()=>document.documentElement.scrollWidth > innerWidth)) fail(`setup overflow at ${width} ${colorScheme}`);
   }}}
   await mobileLayout();
-  await p.fill("#gs-name", "Phoenix"); await p.fill("#gs-where", "Phoenix, AZ"); await p.fill("#gs-start", "2026-10-08"); await p.fill("#gs-end", "2026-10-12");
-  await p.click('button:has-text("Continue")'); await mobileLayout(); await p.selectOption("#gs-work","work"); await p.click('button:has-text("Continue")'); await mobileLayout();
-  await p.click('button:has-text("Generate my list")'); await p.waitForSelector("#gr-export");
-  const items = await p.$$eval(".gen-item input", n => n.map(x => x.value));
-  if (!items.includes("Socks ×9") || !items.includes("Contacts ×10")) fail("packing quantities: " + items.slice(0, 12).join(", "));
-  if (items.includes('Kindle') || !items.includes('Medicine pouch')) fail('saved preferences not used for generation');
-  if (!/Grab wallet/.test(await p.textContent("#view")) || !/Work computer packed\?/.test(await p.textContent("#view"))) fail("Before leaving checks");
-  // Remove an item, then verify its dependent departure check disappears from the exported file.
-  await p.locator('.gen-item').filter({has:p.locator('input')}).evaluateAll(rows => {
-    const row = rows.find(r => r.querySelector('input').value === 'Work computer'); row.querySelector('button').click();
-  });
-  await p.reload(); await p.waitForSelector('#gr-export');
-  if ((await p.$$eval('.gen-item input', n => n.map(x => x.value))).includes('Work computer')) fail('review draft lost on reload');
-  await p.click("#gr-export"); await p.waitForSelector("#pe-enex");
-  const downloadPromise = p.waitForEvent("download"); await p.click("#pe-enex"); const download = await downloadPromise;
-  const exported = await readFile(await download.path(),"utf8");
-  if (!exported.includes('<en-todo checked="false"/>') || exported.includes("Work computer packed?")) fail("native checklist export or departure dependencies");
-  if (exported.includes("<h1>")) fail("duplicate note title");
-  await p.click('button:has-text("Close")'); await p.reload(); await p.waitForSelector("#gr-export");
-  if ((await p.$$eval('.gen-item input', n => n.map(x => x.value))).includes('Work computer')) fail("review edit did not persist");
+  await p.fill("#rs-where", "Phoenix, AZ"); await p.fill("#rs-start", "2026-10-08"); await p.fill("#rs-end", "2026-10-12");
+  await p.click('button:has-text("Generate my list")'); await p.waitForSelector("#rr-export");
+  const labels = () => p.$$eval('.refine-item strong', n => n.map(x => x.textContent));
+  const initial = await labels();
+  if (!initial.includes("Socks ×9") || !initial.includes("Contacts ×10")) fail("initial quantities");
+  if (initial.includes('Kindle') || !initial.includes('Medicine pouch')) fail('saved preferences not used');
+  await p.click('button:has-text("Activities:")'); await p.selectOption('#rf-work','work'); await p.click('button:has-text("Apply & recalculate")'); await p.waitForSelector('.sheet-bg',{state:'detached'});
+  if (!(await labels()).includes('Work computer charger')) fail('work power dependency');
+  await p.evaluate(()=>{window.testWorkSection=[...document.querySelectorAll('section.panel')].find(n=>n.querySelector('h3')?.textContent==='Work');});
+  await p.locator('[data-item-id="pack:socks"]').getByRole('button',{name:'Edit',exact:true}).click(); await p.fill('#ri-quantity','7'); await p.click('button:has-text("Save override")'); await p.waitForSelector('.sheet-bg',{state:'detached'});
+  await p.click('button:has-text("Laundry:")'); await p.selectOption('#rf-laundry','yes'); await p.fill('#rf-first','2'); await p.fill('#rf-interval','2'); await p.click('button:has-text("Apply & recalculate")'); await p.waitForSelector('.sheet-bg',{state:'detached'});
+  if (!(await labels()).includes('Socks ×7') || !(await labels()).includes('T-shirts ×2') || !(await labels()).includes('Contacts ×10')) fail('laundry recalculation erased override or changed contacts');
+  if(!await p.evaluate(()=>window.testWorkSection===[...document.querySelectorAll('section.panel')].find(n=>n.querySelector('h3')?.textContent==='Work')))fail('unaffected work section was replaced');
+  await p.reload(); await p.waitForSelector('#rr-export'); if (!(await labels()).includes('Socks ×7')) fail('override lost after reload');
+  await p.locator('[data-item-id="pack:socks"]').getByRole('button',{name:'Return to automatic',exact:true}).click(); await p.waitForFunction(()=>document.querySelector('[data-item-id="pack:socks"] strong').textContent==='Socks ×5');
+  await p.locator('[data-item-id="pack:hotspot"]').getByRole('button',{name:'Remove',exact:true}).click(); await p.click('button:has-text("Usually don’t pack this")'); await p.waitForSelector('.sheet-bg',{state:'detached'});
+  if ((await labels()).includes('Hotspot')) fail('default exclusion not applied');
+  await p.click('button:has-text("Defaults & exclusions")'); if (!/Hotspot/.test(await p.textContent('.sheet-body'))) fail('default exclusion not inspectable');
+  await p.click('button:has-text("Close")');
+  await p.locator('.refine-changes').getByRole('button',{name:'Undo',exact:true}).click(); await p.waitForFunction(()=>!!document.querySelector('[data-item-id="pack:hotspot"]'));
+  const prefs = await p.evaluate(()=>JSON.parse(localStorage.getItem('ta:meta/packing'))); if (prefs.refinementProfile?.excluded?.['pack:hotspot']) fail('Undo failed to restore profile default');
+  await p.evaluate(()=>{window.originalStorageWrite=Storage.prototype.setItem;Storage.prototype.setItem=function(key,value){if(key.endsWith('/pack_meta/refinement'))throw new DOMException('Test storage quota','QuotaExceededError');return window.originalStorageWrite.call(this,key,value);};});
+  await p.locator('[data-item-id="pack:socks"]').getByRole('button',{name:'Edit',exact:true}).click();await p.fill('#ri-quantity','99');await p.click('button:has-text("Save override")');await p.waitForSelector('.refine-error');
+  if(!(await labels()).includes('Socks ×5'))fail('failed storage save changed the visible list');await p.click('button:has-text("Close")');
+  await p.locator('[data-item-id="pack:hotspot"]').getByRole('button',{name:'Remove',exact:true}).click();await p.click('button:has-text("Usually don’t pack this")');
+  await p.waitForFunction(()=>document.querySelector('#view .gen-error')?.textContent.includes('rolled back'));
+  if(await p.evaluate(()=>!!JSON.parse(localStorage.getItem('ta:meta/packing')).refinementProfile?.excluded?.['pack:hotspot']))fail('default was not rolled back after a failed trip save');
+  await p.click('button:has-text("Close")');await p.evaluate(()=>{Storage.prototype.setItem=window.originalStorageWrite;});
+  await p.locator('[data-item-id="pack:work-computer"]').getByRole('button',{name:'Remove',exact:true}).click(); await p.click('button:has-text("Remove for this trip")'); await p.waitForSelector('.sheet-bg',{state:'detached'});
+  await p.reload(); await p.waitForSelector('#rr-export'); if ((await labels()).includes('Work computer')) fail('trip removal lost on reload');
+  if (!/removed manually but is required/.test(await p.textContent('#view'))) fail('missing dependency warning');
+  await p.click('#rr-export'); await p.waitForSelector('#pe-enex');
+  const downloadPromise = p.waitForEvent('download'); await p.click('#pe-enex'); const download=await downloadPromise; const exported=await readFile(await download.path(),'utf8');
+  if (!exported.includes('<en-todo checked="false"/>') || exported.includes('Work computer packed?') || !exported.includes('Socks ×5')) fail('native Notes export did not reflect refinements');
+  if (exported.includes('<h1>')) fail('duplicate Notes title');
+  await p.click('button:has-text("Close")');
   for (const width of [360,390,430]){ for (const colorScheme of ['light','dark']){
     await p.setViewportSize({width,height:844}); await p.emulateMedia({colorScheme});
-    if (await p.evaluate(()=>document.documentElement.scrollWidth > innerWidth)) fail(`packing review overflow at ${width} ${colorScheme}`);
-    if (await p.$eval('.gen-item input',e=>parseFloat(getComputedStyle(e).fontSize)) < 16) fail("small mobile input text");
+    if (await p.evaluate(()=>document.documentElement.scrollWidth > innerWidth)) fail(`refinement review overflow at ${width} ${colorScheme}`);
   }}
+  const legacyPage=await b.newPage({viewport:{width:390,height:844}});await legacyPage.goto(B+'packing-list/');
+  await legacyPage.evaluate(()=>{localStorage.setItem('ta:trips/OLD',JSON.stringify({name:'Old trip',where:'Phoenix',start:'2026-10-08',end:'2026-10-12'}));localStorage.setItem('ta:trip/OLD/pack_meta/draft',JSON.stringify({groups:[{title:'Clothing',items:['Socks ×3','Special shirt ×2']}]}));location.hash='OLD';});
+  await legacyPage.reload();await legacyPage.waitForSelector('#rr-export');
+  if(!/Socks ×3/.test(await legacyPage.textContent('#view')))fail('legacy draft not preserved');
+  await legacyPage.click('button:has-text("Laundry:")');await legacyPage.click('button:has-text("Enable automatic refinement")');await legacyPage.waitForSelector('.sheet-bg',{state:'detached'});
+  if(await legacyPage.locator('[data-item-id="pack:socks"]').count()!==1)fail('legacy migration duplicated socks');
+  await legacyPage.locator('[data-item-id="pack:socks"]').getByRole('button',{name:'Return to automatic',exact:true}).click();await legacyPage.waitForFunction(()=>document.querySelector('[data-item-id="pack:socks"] strong').textContent==='Socks ×9');
+  if(!/Special shirt ×2/.test(await legacyPage.textContent('#view')))fail('legacy custom item lost');await legacyPage.close();
   await p.goto(B + "itinerary-generator/"); await p.click("a.tripcard");
   await p.click("text=+ Flight"); await p.fill("#fl-day", "2026-10-08"); await p.fill("#fl-no", "UA 1234"); await p.fill("#fl-to", "PHX"); await p.fill("#fl-dep", "15:05"); await p.fill("#fl-arr", "17:40");
   await p.click('button:has-text("Add flight")'); await p.waitForTimeout(1000);
@@ -58,5 +82,6 @@ try {
   if ((await p.$$("section.day")).length !== 5) fail("expected 5 days");
 } catch (e) { fail(e.message); }
 if (errs.length) fail("page errors: " + errs.join(" | "));
+if(apiCalls)fail('routine refinement made an AI API call');
 await b.close(); srv.close();
 if (!process.exitCode) console.log("OK: packing list and itinerary generator pass");

@@ -31,7 +31,7 @@ function generatorPreferences(){
     p.extras = groups.map(function(g){ return {title:g.title,items:checks.filter(function(x){ return x.title === g.title && x.input.checked; }).map(function(x){ return x.item; })}; });
     p.generatorExtras = custom.value.split(/\r?\n/).map(function(s){ return s.trim(); }).filter(Boolean); p.generatorConfirmedAt = isoToday();
     db.doc("meta/packing").set(p).then(function(){ EXTRAS = p.extras; MAYBE = p.maybe; closeSheet(); render(); }).catch(function(){ status.textContent = "Preferences could not be saved. Storage may be full or blocked."; });
-  },true)); body.appendChild(status);
+  },true)); body.appendChild(status); body.appendChild(generatorButton("Inspect refinement exclusions",refineProfileSheet));
 }
 function generatorSetup(t){
   var original = t, existing = !!t, s = t && t.generatorSetup || {}, f = el("form","panel form gen-form"), step = 0;

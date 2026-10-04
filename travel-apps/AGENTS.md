@@ -12,6 +12,8 @@ No build step, no dependencies, no framework. Plain ES5-style browser JS loaded 
 
 ## Rules
 - Packing List is now a generator: setup → rule-based generation → review → native Notes export. Notes owns packing/check-off; do not reintroduce in-app packing meters or packed/unpacked filters into the main flow. `generator.js` and `generator.css` own this standalone flow; preserve the extracted `packing.js` functions for compatibility. The itinerary app retains its existing flow through optional `APP` hooks in the shared shell.
+- The active packing MVP uses `refinement-engine.js` (pure rule groups with dependency declarations), `refinement-state.js` (versioned inputs, assumptions, overrides and a preserved baseline), and `refinement-ui.js` (compact setup and semantic refinements). Keep item identity separate from label and quantity. Refinements rerun affected rules; explicit overrides survive. Legacy items remain pinned until explicitly returned to automatic. Preserve the older generator functions for compatibility.
+- `trip/<ID>/pack_meta/refinement` is the structured source for new lists; the existing section/item documents remain the export adapter. Keep profile exclusions in `meta/packing.refinementProfile`, inspectable and resettable. Do not silently learn or remove critical/required items. The MVP has explicit exclusions, not repeated-behavior inference or live forecasts.
 - Preserve existing `meta/packing` preferences and trip records. Dates are required for new generation. A separate `trip/<ID>/pack_meta/draft` holds review edits; exported lists retain the established `pack_sections` / `pack_items` shapes. Keep user-selected weather distinct from live forecasts, and keep deterministic rules independent of API keys.
 - ENEX native Notes checklists were confirmed by Tyler's device screenshot. Keep the title in the ENEX title field only, section headings in the body, and one `en-todo` element per item.
 - The repo is the source of truth; read the current files before editing.
@@ -27,5 +29,6 @@ No build step, no dependencies, no framework. Plain ES5-style browser JS loaded 
 ## Checks before pushing
 - `node tools/check.mjs` passes (syntax of every JS file, every script/stylesheet referenced by the HTML exists).
 - `node tests/generator.mjs` passes (quantity rules, preferences, conditional gear, departure dependencies and Notes export).
+- `node tests/refinements.mjs` passes (selective regeneration, interactions, overrides, critical protection and legacy migration).
 - Optional, if Playwright is available: `node tests/e2e.mjs` (serves the folder and runs both apps end to end).
 - Commit task-scoped files only, push to the default branch, then confirm the GitHub Pages build and that the live pages load.
