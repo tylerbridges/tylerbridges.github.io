@@ -626,6 +626,7 @@
     if (n & 2) drawField();
     if (n & 4) drawOver();
     if (n & 8) drawTop();
+    inspect();
   }
   function slots(zt, dp) {
     var n = Math.pow(2, zt), s = scaleZ(drawn.z), out = [];
@@ -827,6 +828,7 @@
     var box = el.closest(".mview") || el.parentNode;
     ui = {
       st: mk("div", "mmstat", el), ro: mk("div", "mmro", el), reg: mk("div", "mmreg", el), hdr: mk("div", "mhdr num", el),
+      cross: mk("div", "mcross", el), iro: mk("div", "minsro num", el),
       model: box.querySelector("#mmodel"), param: box.querySelector("#mparam"), run: box.querySelector("#mrun"),
       locate: box.querySelector("#mlocate"), home: box.querySelector("#mhome"), locationStatus: box.querySelector("#mlocation-status"),
       play: box.querySelector("#mplay"), prev: box.querySelector("#mprev"), next: box.querySelector("#mnext"), range: box.querySelector("#mrange"), time: box.querySelector("#mtime"),
@@ -843,6 +845,10 @@
     ui.run.addEventListener("change", function () { userRun = true; setRun(+this.value); });
     // locate / back-to-place work as on Radar: locate flies to the device and stays locked on it as it moves; while
     //   locked the pin (back to the forecast location) replaces it; dragging unlocks (both show)
+    // inspector (as in RadarScope): a fixed crosshair in the middle of the map; pan the map under it and the value at that
+    //   spot shows right above it, updating as you move, change hour or product
+    ui.insp = box.querySelector("#minspect"); ui.cross.hidden = ui.iro.hidden = true;
+    if (ui.insp) ui.insp.addEventListener("click", function () { insp = !insp; try { localStorage.setItem("wx-minsp", insp ? "1" : ""); } catch (e) {} inspUi(); });
     ui.locate.addEventListener("click", locate);
     ui.home.addEventListener("click", toForecast);
     ui.play.addEventListener("click", function () { play(!playing); });
@@ -1010,6 +1016,7 @@
     var k = Math.pow(2, view.z - drawn.z), sv = scaleZ(view.z), tx = (drawn.x - view.x) * sv, ty = (drawn.y - view.y) * sv;
     stage.style.transform = "translate(" + tx.toFixed(1) + "px," + ty.toFixed(1) + "px) scale(" + k.toFixed(4) + ")";
     if (Math.abs(tx) > M * 0.8 || Math.abs(ty) > M * 0.8 || k < 0.8 || k > 1.6) settle();
+    inspect();
   }
   var settleT = 0;
   function settle() { clearTimeout(settleT); settleT = setTimeout(function () { paint(31); if (!boxOk(BOX)) loadAround(); }, 0); }
@@ -1071,7 +1078,7 @@
       if (!moved && e.type === "pointerup") {
         var now = Date.now();
         if (now - lastTap < 300) { var w = at(sx, sy); fly(view.x + (w.x - view.x) * 0.5, view.y + (w.y - view.y) * 0.5, view.z + 1); lastTap = 0; return; }
-        lastTap = now; var w2 = at(sx, sy); showRO(latOf(w2.y), lonOf(w2.x), sx, sy);
+        lastTap = now; if (insp) return; var w2 = at(sx, sy); showRO(latOf(w2.y), lonOf(w2.x), sx, sy);
       }
       if (moved) settle();
       g0 = null;
@@ -1088,6 +1095,12 @@
     var d = n > 1 ? Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y) : 0, r = el.getBoundingClientRect();
     return { n: n, cx: cx, cy: cy, d: d, z: view.z, w: at(cx - r.left, cy - r.top) };
   }
+  var insp = (function () { try { return !!localStorage.getItem("wx-minsp"); } catch (e) { return false; } })();
+  function inspUi() { if (!ui.cross) return; ui.cross.hidden = !insp; if (ui.insp) { ui.insp.classList.toggle("on", insp); ui.insp.setAttribute("aria-pressed", String(insp)); } if (insp) ui.ro.hidden = true; inspect(); }
+  function inspect() {
+    if (!ui.iro) return; if (!insp || !on) { ui.iro.hidden = true; return; }
+    var v = valueAt(latOf(view.y), lonOf(view.x)); ui.iro.textContent = v == null ? "No data here" : v; ui.iro.hidden = false;
+  }
   function showRO(lat, lon, sx, sy) {
     var v = valueAt(lat, lon); if (v == null) { ui.ro.hidden = true; return; }
     ui.ro.textContent = v; ui.ro.hidden = false;
@@ -1103,7 +1116,7 @@
       loc = { lat: l.lat, lon: l.lon };
       if (moved2) { view = { x: wx(loc.lon), y: wy(loc.lat), z: view.z && drawn ? view.z : 5.7 }; drawn = null; BOX = null; resetFrames(); }
       if (!modelOk(cur.model)) cur.model = "gfs";
-      on = true; if (gpsMode !== "off") startWatch(); locUi(); size(); uiModels(); uiParams(); uiQuick(); legend(); uiTime();
+      on = true; if (gpsMode !== "off") startWatch(); locUi(); inspUi(); size(); uiModels(); uiParams(); uiQuick(); legend(); uiTime();
       if (!cur.run) switchModel(cur.model); else if (moved2) showHour();
       else if (Date.now() - lastRefresh > 10 * 60000) refresh();
       clearInterval(refreshT); refreshT = setInterval(function () { if (on && !document.hidden) refresh(); }, 10 * 60000);

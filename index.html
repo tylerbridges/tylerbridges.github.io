@@ -947,6 +947,18 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
 /* the NWS map's colour key: same fixed-height one-line key as the model maps */
 .oqkey{box-sizing:border-box;height:38px;padding:6px 12px 4px;display:flex;align-items:center;overflow:hidden}
 .oqkey > *{flex:1;min-width:0}
+/* inspector: a crosshair fixed in the middle of the map with the value at that spot just above it (RadarScope-style) */
+.mcross{position:absolute;left:50%;top:50%;width:34px;height:34px;margin:-17px 0 0 -17px;z-index:2;pointer-events:none;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1.5px rgba(0,0,0,.55),inset 0 0 0 1.5px rgba(0,0,0,.55)}
+.mcross::before,.mcross::after{content:"";position:absolute;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.5)}
+.mcross::before{left:50%;top:-9px;bottom:-9px;width:2px;margin-left:-1px}
+.mcross::after{top:50%;left:-9px;right:-9px;height:2px;margin-top:-1px}
+.mcross[hidden],.minsro[hidden]{display:none}
+.minsro{position:absolute;left:50%;top:50%;transform:translate(-50%,calc(-100% - 30px));z-index:3;max-width:calc(100% - 20px);padding:5px 11px;border-radius:999px;font:700 13px var(--sans);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;background:color-mix(in srgb,var(--surface) 90%,transparent);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border:1px solid color-mix(in srgb,var(--line) 70%,transparent);box-shadow:0 3px 12px rgba(0,0,0,.25)}
+.rloc.mins.on,.rloc.oqins.on{background:var(--accent);color:#fff}
+.rloc.mins.on svg,.rloc.oqins.on svg{animation:none}
+.rloc.mins.on svg,.rloc.oqins.on svg{stroke:#fff}
+.rloc.mins.on svg .f,.rloc.oqins.on svg .f{fill:#fff}
+.oqmap .oqins{position:absolute;right:8px;bottom:8px;z-index:3;width:32px;height:32px}
 .oqkey .mlbar{height:8px}.oqkey .mlticks{height:13px;font-size:9.5px}
 .oqkey .mltypes{gap:2px 12px;align-content:center}.oqkey .mlrow{font-size:11px}.oqkey .mlrow i{width:22px;height:9px}
 /* compact model controls (Oct 4): no hour-step row, no source line, no sub-label under the time; smaller buttons.
@@ -1031,6 +1043,7 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
         <div id="mmap"></div>
       <div class="model-location rbtns">
         <button type="button" class="rloc" id="mlocate" aria-label="Go to my current location"><svg viewBox="0 0 24 24"><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2" class="f"/></svg></button>
+        <button type="button" class="rloc mins" id="minspect" aria-label="Inspect a point" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/><circle cx="12" cy="12" r="2.2" class="f"/></svg></button>
         <button type="button" class="rloc rhome" id="mhome" hidden aria-label="Back to the forecast location"><svg viewBox="0 0 24 24"><path d="M12 21.5s-6.5-6.2-6.5-11.2a6.5 6.5 0 0 1 13 0c0 5-6.5 11.2-6.5 11.2Z"/><circle cx="12" cy="10.3" r="2.3" class="f"/></svg></button>
       </div>
         <span id="mlocation-status" class="mlocmsg" role="status"></span>
@@ -1107,13 +1120,13 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
   </div>
 </div>
 
-<script src="wx-normalize.js?v=127"></script>
-<script src="wx-live.js?v=127"></script>
-<script src="wx-scenarios.js?v=127"></script>
-<script src="wx-vmap.js?v=127"></script>
-<script src="wx-radar.js?v=127"></script>
-<script src="wx-models.js?v=127"></script>
-<script src="wx-official.js?v=127"></script>
-<script src="app.js?v=127"></script>
+<script src="wx-normalize.js?v=129"></script>
+<script src="wx-live.js?v=129"></script>
+<script src="wx-scenarios.js?v=129"></script>
+<script src="wx-vmap.js?v=129"></script>
+<script src="wx-radar.js?v=129"></script>
+<script src="wx-models.js?v=129"></script>
+<script src="wx-official.js?v=129"></script>
+<script src="app.js?v=129"></script>
 </body>
 </html>

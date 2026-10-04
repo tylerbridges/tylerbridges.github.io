@@ -219,6 +219,17 @@
       setRow("Map colors", "theme", [["auto", "Auto"], ["light", "Light"], ["dark", "Dark"]]) +
       (SET.nums ? setRow("Dry counties", "zeros", [[false, "Blank"], [true, "Show 0"]]) : "");
   }
+  var INSI = '<svg viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/><circle cx="12" cy="12" r="2.2" class="f"/></svg>';
+  var cross = null, iro = null, insBtn = null, insp = (function () { try { return !!localStorage.getItem("wx-oqinsp"); } catch (e) { return false; } })();
+  function inspUi() { if (!cross) return; cross.hidden = !insp; insBtn.classList.toggle("on", insp); insBtn.setAttribute("aria-pressed", String(insp)); if (insp) ro.hidden = true; inspect(); }
+  // the WPC band at that exact point (not the county average), then the county name
+  function pointVal(lat, lon) {
+    if (!data) return null;
+    var b = cell(lon, lat), c = countyAt(lat, lon), nm = c ? " · " + c.name + ", " + c.st : "";
+    if (data.qpf) return (b ? num(QL[b - 1]) + (QL[b] != null ? "–" + num(QL[b]) : "+") + " in" : "Under 0.01 in") + nm;
+    return (b ? CATLONG[Math.min(3, b)] : "Under 10%") + " chance" + nm;
+  }
+  function inspect() { if (!iro) return; if (!insp || !on || !W) { iro.hidden = true; return; } var v = pointVal(latOf(view.y), lonOf(view.x)); iro.textContent = v == null ? "Loading…" : v; iro.hidden = false; }
   function mk(t, c, p) { var e = document.createElement(t); e.className = c; p.appendChild(e); return e; }
   function setup() {
     el = document.createElement("div"); el.className = "mm oqmap";
@@ -226,6 +237,11 @@
     cv = mk("canvas", "mml", stage); cx = cv.getContext("2d");
     stat = mk("div", "mmstat", el); ro = mk("div", "mmro", el); reg = mk("div", "mmreg", el);
     stat.hidden = true; ro.hidden = true;
+    // inspector (as in RadarScope): fixed crosshair in the middle; the forecast at that exact spot shows above it as you pan
+    cross = mk("div", "mcross", el); iro = mk("div", "minsro num", el); cross.hidden = iro.hidden = true;
+    insBtn = mk("button", "rloc oqins", el); insBtn.type = "button"; insBtn.setAttribute("aria-label", "Inspect a point"); insBtn.innerHTML = INSI;
+    insBtn.addEventListener("click", function () { insp = !insp; try { localStorage.setItem("wx-oqinsp", insp ? "1" : ""); } catch (e) {} inspUi(); });
+    inspUi();
     gear = mk("button", "oqgear", el); gear.type = "button"; gear.innerHTML = GEAR; gear.setAttribute("aria-label", "Map settings");
     setEl = mk("div", "oqset", el); setEl.hidden = true;
     gear.addEventListener("click", function () { setEl.hidden = !setEl.hidden; if (!setEl.hidden) setUI(); });
@@ -252,7 +268,7 @@
   function frame() {
     raf = 0; if (!on || !W) return;
     drawn = { x: view.x, y: view.y, z: view.z }; stage.style.transform = "";
-    draw();
+    draw(); inspect();
   }
   function toScr(lat, lon) { var s = scaleZ(drawn.z); return { x: (wx(lon) - drawn.x) * s + SW / 2, y: (wy(lat) - drawn.y) * s + SH / 2 }; }
   function viewLL() { var s = scaleZ(drawn.z); return [lonOf(drawn.x - SW / 2 / s), latOf(drawn.y + SH / 2 / s), lonOf(drawn.x + SW / 2 / s), latOf(drawn.y - SH / 2 / s)]; }
@@ -349,6 +365,7 @@
     var k = Math.pow(2, view.z - drawn.z), tx = (drawn.x - view.x) * s, ty = (drawn.y - view.y) * s;
     stage.style.transform = "translate(" + tx.toFixed(1) + "px," + ty.toFixed(1) + "px) scale(" + k.toFixed(4) + ")";
     if (Math.abs(tx) > M * 0.8 || Math.abs(ty) > M * 0.8 || k < 0.8 || k > 1.6) settle();
+    inspect();
   }
   function settle() { clearTimeout(settleT); settleT = setTimeout(function () { paint(); needCounties().catch(function () {}); }, 0); }
   function fly(x, y, z) {
