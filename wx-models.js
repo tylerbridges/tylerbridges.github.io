@@ -243,6 +243,10 @@
   // a product's calculation: window products (6-/24-hr totals) reuse a total product
   function calcOf(p, model) { return p.base ? PBY[typeof p.base === "function" ? p.base(model) : p.base] : p; }
   // which products a model has (NBM only carries surface precip/snow/ice and temperature here)
+  // the All maps menu lists only these (Tyler's pick, Oct 4); the rest stay defined for the data check (WXModels._probe).
+  //   One "Total snowfall": NBM's own snow ratios on NBM, 10:1 elsewhere.
+  var MENU = ["ptype", "qpf", "p6", "p24", "sn10", "nsn", "s6", "s24", "frz", "i6", "t2", "w10", "gust", "tcc"]; // menu order
+  function inMenu(id) { return MENU.indexOf(id) >= 0; }
   function has(p, model) { return model === "nbm" ? !!p.nbm : !p.only || p.only.indexOf(model) >= 0; }
   var P = [
     { id: "ptype", g: "Precipitation", name: "Precip type & reflectivity", types: true,
@@ -254,14 +258,14 @@
         return Promise.all([F.all([C("REFC", EA), C("CRAIN", "surface"), C("CSNOW", "surface"), C("CFRZR", "surface"), C("CICEP", "surface")], [1, 2, 3, 4]).then(ptypeOut), F.get(C(["PRMSL", "MSLMA"], "mean sea level"))])
           .then(function (r) { r[0].c = scale(r[1], 0.01); return r[0]; });
       } },
-    { id: "sn10", g: "Winter", name: "Total snowfall (10:1)", sc: "snow", accum: true,
+    { id: "sn10", g: "Winter", name: "Total snowfall", sc: "snow", accum: true,
       calc: function (F) {
         return F.total("sn10", function (a, b) {
           if (F.model === "gfs") return Promise.all([F.get(C("APCP", "surface", [a, b, "acc"])), F.get(C("CSNOW", "surface", [a, b, "ave"]))]).then(function (r) { return mul(r[0], r[1], 10 * MM2IN); });
           return F.get(C("WEASD", "surface", [a, b, "acc"])).then(function (x) { return scale(x, 10 * MM2IN); });
         }).then(function (v) { return { v: v }; });
       } },
-    { id: "nsn", g: "Winter", name: "Total snowfall (NBM snow ratios)", sc: "snow", accum: true, nbm: true, only: [], hrs: { nbm: function (h) { return h <= 48; } },
+    { id: "nsn", g: "Winter", name: "Total snowfall", sc: "snow", accum: true, nbm: true, only: [], hrs: { nbm: function (h) { return h <= 48; } },
       calc: function (F) { return F.total("nsn", function (a, b) { return F.get(C("ASNOW", "surface", [a, b, "acc"])).then(function (x) { return scale(x, 39.3701); }); }).then(function (v) { return { v: v }; }); } },
     { id: "snv", g: "Winter", name: "Total snowfall (variable density)", sc: "snow", accum: true, only: ["hrrr", "rap"],
       calc: function (F) { return F.total("snv", function (a, b) { return F.get(C("ASNOW", "surface", [a, b, "acc"])).then(function (x) { return scale(x, 39.3701); }); }).then(function (v) { return { v: v }; }); } },
@@ -470,7 +474,8 @@
   var st = (function () { try { return JSON.parse(localStorage.getItem("wx-model") || "null"); } catch (e) { return null; } })() || {};
   var winter = [10, 11, 0, 1, 2, 3].indexOf(new Date().getMonth()) >= 0;
   var cur = { model: st.model || "hrrr", param: st.param || (winter ? "sn10" : "qpf"), run: null, k: 0 }, userRun = false;
-  if (!PBY[cur.param] || !has(PBY[cur.param], cur.model)) cur.param = "qpf";
+  if (cur.param === "snv") cur.param = cur.model === "nbm" ? "nsn" : "sn10";
+  if (!PBY[cur.param] || !has(PBY[cur.param], cur.model) || !inMenu(cur.param)) cur.param = "qpf";
   var runs = {}, frames = {}, gen = 0, playing = false, playT = 0, readout = null;
   function save() { try { localStorage.setItem("wx-model", JSON.stringify({ model: cur.model, param: cur.param })); } catch (e) {} }
   function dark() { var t = document.documentElement.dataset.theme; return t ? t === "dark" : !!(root.matchMedia && root.matchMedia("(prefers-color-scheme: dark)").matches); }
@@ -860,7 +865,7 @@
   }
   function uiParams() {
     var gs = [], html = "";
-    P.forEach(function (p) { if (!has(p, cur.model)) return; if (!gs.length || gs[gs.length - 1].g !== p.g) gs.push({ g: p.g, l: [] }); gs[gs.length - 1].l.push(p); });
+    P.slice().sort(function (a, b) { return MENU.indexOf(a.id) - MENU.indexOf(b.id); }).forEach(function (p) { if (!has(p, cur.model) || !inMenu(p.id)) return; var gg = gs.filter(function (x) { return x.g === p.g; })[0]; if (!gg) gs.push(gg = { g: p.g, l: [] }); gg.l.push(p); });
     gs.forEach(function (g) { html += '<optgroup label="' + g.g + '">' + g.l.map(function (p) { return '<option value="' + p.id + '"' + (p.id === cur.param ? " selected" : "") + ">" + p.name + "</option>"; }).join("") + "</optgroup>"; });
     ui.param.innerHTML = html;
   }
