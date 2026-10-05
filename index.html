@@ -928,9 +928,14 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
 /* scrolled down: a small centred bar with just the names (no icons); tapping a name opens it and restores the full bar */
 .tabdock.mini #nav{max-width:290px;height:36px;padding:3px}
 html.scrolled .top #fresh{display:none}
-html.scrolled .top #rbtn{width:36px;height:36px}
-html.scrolled .top #rbtn svg{width:18px;height:18px}
-html.scrolled .top{padding-top:6px;padding-bottom:6px}
+html.scrolled .top #rbtn{width:24px;height:24px}
+html.scrolled .top #rbtn svg{width:14px;height:14px}
+html.scrolled .top{padding-top:1px;padding-bottom:1px}
+html.scrolled .top-row{row-gap:0}
+/* Override fitTop's inline title size while compact; restore its fitted size on scroll up. */
+html.scrolled .top .place{min-height:24px;justify-content:center}
+html.scrolled .top .place b{font-size:16px!important}
+html.scrolled .top .place .pchev{width:12px;height:12px}
 .tabdock.mini #nav .chip{font-size:12px;border-radius:18px}
 .tabdock.mini #nav .chip svg{width:0;height:0;opacity:0}
 .tabdock.mini .navpill{top:3px;bottom:3px;border-radius:18px}
@@ -944,7 +949,7 @@ html.scrolled .top{padding-top:6px;padding-bottom:6px}
 .tabdock #nav .chip svg{transition:width .28s cubic-bezier(.2,.8,.2,1),height .28s cubic-bezier(.2,.8,.2,1),opacity .18s ease}
 .top{transition:padding .28s cubic-bezier(.2,.8,.2,1)}
 .top-row .fresh{max-height:22px;overflow:hidden;transition:max-height .28s cubic-bezier(.2,.8,.2,1),opacity .18s ease}
-html.scrolled .top #fresh{display:inline-flex;max-height:0;opacity:0}
+html.scrolled .top #fresh{display:inline-flex;max-height:0;opacity:0;visibility:hidden;pointer-events:none}
 .top-row .rbtn{transition:width .28s cubic-bezier(.2,.8,.2,1),height .28s cubic-bezier(.2,.8,.2,1)}
 .top-row .rbtn svg{transition:width .28s ease,height .28s ease}
 @media (prefers-reduced-motion: reduce){.tabdock #nav,.tabdock #nav .navpill,.tabdock #nav .chip,.tabdock #nav .chip svg,.top,.top-row .fresh,.top-row .rbtn{transition:none!important}}
@@ -1231,6 +1236,6 @@ html.scrolled .top #fresh{display:inline-flex;max-height:0;opacity:0}
 <script src="wx-official.js?v=144"></script>
 <script src="wx-archive.js?v=144"></script>
 <script src="wx-outlook.js?v=144"></script>
-<script src="app.js?v=144"></script>
+<script src="app.js?v=145"></script>
 </body>
 </html>
