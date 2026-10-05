@@ -11,8 +11,9 @@ function generatorHome(){
   var nav = el("div","gen-nav"); nav.appendChild(generatorLink("Generate a packing list","#new",true)); nav.appendChild(generatorButton("Packing preferences",function(){ generatorPreferences(); }));
   nav.appendChild(generatorButton("Packing learning",packingLearningSheet));nav.appendChild(generatorButton("Test flow",packingTestMenu));
   hero.appendChild(nav); w.appendChild(hero);
-  if (ORDER.length){ w.appendChild(el("h2","k","Previous trip setups")); ORDER.forEach(function(id){ var t = TRIPS[id], a = el("a","panel tripcard"); a.href = "#" + id;
-    a.appendChild(el("h3",null,t.name)); a.appendChild(el("p","muted",[t.where,t.start ? fmt(t.start) + " – " + fmt(t.end || t.start) : "Dates needed"].filter(Boolean).join(" · "))); w.appendChild(a); }); }
+  if(GEN_DELETED_LIST){var notice=el("div","panel gen-actions");notice.setAttribute("role","status");notice.appendChild(el("span",null,"Packing list deleted."));notice.appendChild(generatorButton("Undo",function(event){event.currentTarget.disabled=true;generatorRestoreList().then(render).catch(function(){event.currentTarget.disabled=false;notice.appendChild(el("p","gen-error","Could not restore the list. Storage is full or blocked; try again."));});}));w.appendChild(notice);}
+  var visible=ORDER.filter(function(id){return !TRIPS[id].packingDeleted;});
+  if(visible.length){w.appendChild(el("h2","k","Previous trip setups"));visible.forEach(function(id){w.appendChild(generatorListRow(TRIPS[id]));});}
   return w;
 }
 function generatorRulesPage(){
@@ -222,4 +223,39 @@ function generatorSaveDraft(t,groups,setup){
     Object.keys(backup).forEach(function(path){ if (path.indexOf("trip/" + t.id + "/pack_") === 0) localStorage.setItem("ta:" + path,JSON.stringify(backup[path])); });
     pk.sections = {}; pk.items = {}; Object.keys(backup).forEach(function(path){ var id = path.slice(path.lastIndexOf("/") + 1); if (path.indexOf("trip/" + t.id + "/pack_sections/") === 0) pk.sections[id] = backup[path]; if (path.indexOf("trip/" + t.id + "/pack_items/") === 0) pk.items[id] = backup[path]; }); throw err;
   });
+}
+
+// Standalone app: list deletion owns packing documents only; itinerary/bookings stay intact.
+var GEN_DELETED_LIST=null,GEN_OPEN_ROW=null;
+function generatorPackingKeys(id){
+  var prefix=(window.PACK_TEST_PREFIX||"")+"ta:",base=prefix+"trip/"+id+"/",draft=prefix+"meta/packingFormDrafts/",keys=[];
+  for(var i=0;i<localStorage.length;i++){var key=localStorage.key(i),owned=["pack_sections/","pack_items/","pack_meta/"].some(function(part){return key.indexOf(base+part)===0;});
+    if(key.indexOf(draft)===0){var scope=decodeURIComponent(key.slice(draft.length));owned=owned || ["setup:","trip-details:","feedback:","add:"].some(function(part){return scope===part+id;}) || ["refine:","edit:"].some(function(part){return scope.indexOf(part+id+":")===0;});}if(owned)keys.push(key);
+  }return keys;
+}
+function generatorRestoreRaw(values){Object.keys(values).forEach(function(key){if(values[key]===null)localStorage.removeItem(key);else localStorage.setItem(key,values[key]);if(localStorage.getItem(key)!==values[key])throw new Error("Storage blocked");});}
+function generatorDeleteList(t){
+  var prefix=(window.PACK_TEST_PREFIX||"")+"ta:",header=prefix+"trips/"+t.id,values={},original=localStorage.getItem(header);
+  try{var trip=JSON.parse(original);if(!trip)throw new Error("Trip missing");generatorPackingKeys(t.id).forEach(function(key){values[key]=localStorage.getItem(key);});
+    Object.keys(values).forEach(function(key){localStorage.removeItem(key);if(localStorage.getItem(key)!==null)throw new Error("Storage blocked");});trip.packingDeleted=true;
+    return db.doc("trips/"+t.id).set(trip).then(function(){GEN_DELETED_LIST={id:t.id,values:values,flag:JSON.parse(original).packingDeleted};RAW[t.id]=trip;rebuild();if(PACK[t.id]){PACK[t.id].sections={};PACK[t.id].items={};}return true;}).catch(function(e){generatorRestoreRaw(values);throw e;});
+  }catch(e){try{generatorRestoreRaw(values);}catch(rollback){}return Promise.reject(e);}
+}
+function generatorRestoreList(){
+  var saved=GEN_DELETED_LIST;if(!saved)return Promise.resolve();var prefix=(window.PACK_TEST_PREFIX||"")+"ta:",before={};
+  try{var trip=JSON.parse(localStorage.getItem(prefix+"trips/"+saved.id));if(!trip)throw new Error("Trip missing");Object.keys(saved.values).forEach(function(key){before[key]=localStorage.getItem(key);});generatorRestoreRaw(saved.values);if(saved.flag===undefined)delete trip.packingDeleted;else trip.packingDeleted=saved.flag;
+    return db.doc("trips/"+saved.id).set(trip).then(function(){Store.importAll(Object.keys(saved.values).reduce(function(o,key){o[key.slice(prefix.length)]=JSON.parse(saved.values[key]);return o;},{}));RAW[saved.id]=trip;rebuild();GEN_DELETED_LIST=null;}).catch(function(e){generatorRestoreRaw(before);throw e;});
+  }catch(e){try{generatorRestoreRaw(before);}catch(rollback){}return Promise.reject(e);}
+}
+function generatorListRow(t){
+  var row=el("div","packing-list-row"),front=el("div","panel packing-list-front"),a=el("a","tripcard"),error=el("p","gen-error"),opened=false,drag=null,suppressUntil=0;
+  a.href="#"+t.id;a.draggable=false;a.appendChild(el("h3",null,t.name));a.appendChild(el("p","muted",[t.where,t.start?fmt(t.start)+" – "+fmt(t.end||t.start):"Dates needed"].filter(Boolean).join(" · ")));
+  var remove=generatorButton("Delete",function(){remove.disabled=true;generatorDeleteList(t).then(render).catch(function(){remove.disabled=false;error.textContent="Could not delete. Storage is full or blocked; try again.";});});remove.className="packing-list-delete";remove.setAttribute("aria-label","Delete packing list "+t.name);
+  var more=generatorButton("⋯",function(){reveal(!opened);});more.className="packing-list-actions";more.setAttribute("aria-label","List actions for "+t.name);
+  function reveal(value){if(value && GEN_OPEN_ROW && GEN_OPEN_ROW!==reveal)GEN_OPEN_ROW(false);opened=value;GEN_OPEN_ROW=value?reveal:null;row.classList.toggle("revealed",value);front.style.transform="";remove.hidden=!value;more.setAttribute("aria-expanded",String(value));}
+  reveal(false);front.appendChild(a);front.appendChild(more);row.appendChild(remove);row.appendChild(front);row.appendChild(error);
+  front.addEventListener("pointerdown",function(e){if(!e.isPrimary || e.button!==0)return;drag={id:e.pointerId,x:e.clientX,y:e.clientY,offset:opened?-88:0,horizontal:false};});
+  front.addEventListener("pointermove",function(e){if(!drag || drag.id!==e.pointerId)return;var dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(!drag.horizontal){if(Math.abs(dy)>12 && Math.abs(dy)>Math.abs(dx)){drag=null;return;}if(Math.abs(dx)<12 || Math.abs(dx)<Math.abs(dy)*1.2)return;drag.horizontal=true;front.setPointerCapture(e.pointerId);row.classList.add("dragging");}front.style.transform="translateX("+Math.max(-88,Math.min(0,drag.offset+dx))+"px)";});
+  function end(e){if(!drag || drag.id!==e.pointerId)return;var d=drag;drag=null;row.classList.remove("dragging");if(d.horizontal){suppressUntil=Date.now()+400;reveal(e.type==="pointercancel"?opened:d.offset+e.clientX-d.x<-35);}}
+  front.addEventListener("pointerup",end);front.addEventListener("pointercancel",end);front.addEventListener("click",function(e){if(Date.now()<suppressUntil){e.preventDefault();e.stopImmediatePropagation();}else if(opened && e.target.closest("a")){e.preventDefault();reveal(false);}},true);row.addEventListener("keydown",function(e){if(e.key==="Escape"){reveal(false);more.focus();}});return row;
 }
