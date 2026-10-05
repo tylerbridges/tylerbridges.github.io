@@ -7,7 +7,7 @@
   function notice(){
     if(pending)return;pending=true;
     // Forms autosave on input; storage errors or an active operation must remain visible.
-    if(!document.querySelector("form,.sheet-bg,textarea") && !document.querySelector("button:disabled")){reload();return;}
+    if(!document.querySelector("form,.sheet-bg,textarea,.undotoast") && !document.querySelector("button:disabled")){reload();return;}
     var box=el("aside","panel gen-actions");box.id="packing-update";box.setAttribute("role","status");box.appendChild(el("span",null,"An app update is ready. Your unfinished changes stay on this device."));
     var button=generatorButton("Load update",function(){if(/Draft could not be saved/.test(document.body.textContent)){box.firstChild.textContent="Your draft could not be saved. Keep this page open until storage is available.";return;}reload();});box.appendChild(button);document.querySelector(".wrap").insertBefore(box,document.querySelector("#view"));
   }

@@ -14,7 +14,10 @@ function packingLearningObserve(t,state,result){
     items[item.id]={id:item.id,label:item.label,context:packingLearningContext(state,item),safe:packingLearningSafe(item),change:change};
   });
   result.items.filter(function(item){return state.overrides.added[item.id] && !item.legacy;}).forEach(function(item){var id=refineId(item.label);added[id]={label:item.label,quantity:item.quantity,section:item.section};});
-  ledger.editTrips=ledger.editTrips || {};ledger.editTrips[t.id]={name:t.name || t.where,end:state.inputs.end,items:items,added:added,context:packingLearningContext(state,{rule:"added item"}),assumptions:{inputs:clone(state.inputs),refinements:clone(state.refinements)},at:Date.now()};
+  ledger.editTrips=ledger.editTrips || {};var entry={name:t.name || t.where,end:state.inputs.end,items:items,added:added,context:packingLearningContext(state,{rule:"added item"}),assumptions:{inputs:clone(state.inputs),refinements:clone(state.refinements)},at:Date.now()},prev=ledger.editTrips[t.id];
+  // Viewing an unchanged list must not rewrite the whole learning ledger.
+  if(prev && JSON.stringify(Object.assign({},prev,{at:0}))===JSON.stringify(Object.assign({},entry,{at:0})))return Promise.resolve();
+  ledger.editTrips[t.id]=entry;
   return db.doc(PACK_LEARNING_PATH).set(ledger);
 }
 function packingLearningEditRecommendations(ledger,profile){

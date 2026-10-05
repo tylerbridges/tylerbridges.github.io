@@ -51,6 +51,6 @@ function packExportSheet(t, options){
   keep.addEventListener("change",refresh);refresh();layout();if(options.warningNode)body.appendChild(options.warningNode);body.appendChild(primary);body.appendChild(help);body.appendChild(status);
   var retry=generatorButton("Retry saving",prepare);retry.hidden=true;body.appendChild(retry);
   if(options.reviewNode)body.appendChild(options.reviewNode);body.appendChild(more);
-  function prepare(){ready=false;retry.hidden=true;status.textContent="Saving your confirmed list…";Object.keys(buttons).forEach(function(k){buttons[k].disabled=true;});Promise.resolve().then(options.prepare).then(function(){ready=true;status.textContent="Ready to export.";Object.keys(buttons).forEach(function(k){buttons[k].disabled=false;});}).catch(function(){status.textContent="Could not save for export. Check browser storage and retry.";retry.hidden=false;});}
+  function prepare(){ready=false;retry.hidden=true;status.textContent="Saving your confirmed list…";Object.keys(buttons).forEach(function(k){buttons[k].disabled=true;});Promise.resolve().then(options.prepare).then(function(r){if(r==="stale")return;ready=true;status.textContent="Ready to export.";Object.keys(buttons).forEach(function(k){buttons[k].disabled=false;});}).catch(function(){status.textContent="Could not save for export. Check browser storage and retry.";retry.hidden=false;});}
   if(options.prepare)prepare();return body;
 }

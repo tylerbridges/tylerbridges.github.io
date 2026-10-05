@@ -149,7 +149,7 @@ function refineReview(t){
     var data={title:(t.name || t.where || "Trip")+" — Packing List",detail:[t.where,t.start ? t.start+(t.end && t.end!==t.start ? " – "+t.end:""):""].filter(Boolean).join(" · "),groups:groups.map(function(g){return {title:g.title,items:g.items.map(function(label){return {label:label,checked:false};})};})};
     packExportSheet(t,{container:body,data:data,canExport:function(){return !busy && revision===exportRevision && !refinePendingDecisions(state).length;},onExport:function(){return state.legacy ? Promise.resolve():packingLearningCapture(t,state,result);},prepare:function(){
       // Serialize adapter saves so an older preparation cannot overwrite the latest list.
-      exportPreparation=exportPreparation.catch(function(){}).then(function(){if(revision!==exportRevision || !body.isConnected)return;return generatorSaveDraft(t,groups,{bag:state.inputs.bag});});return exportPreparation;
+      exportPreparation=exportPreparation.catch(function(){}).then(function(){if(revision!==exportRevision || !body.isConnected)return "stale";return generatorSaveDraft(t,groups,{bag:state.inputs.bag});});return exportPreparation;
     }});
   }
   function advance(flow){var pending=refinePendingDecisions(state),next=pending[0];

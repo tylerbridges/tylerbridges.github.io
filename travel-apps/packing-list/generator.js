@@ -208,6 +208,14 @@ function generatorReview(t){
   }); return w;
 }
 function generatorSaveDraft(t,groups,setup){
+  // Standalone app: re-rendering an unchanged list must not rewrite its export copy.
+  var pk0 = packData(t.id), luggage = setup ? setup.bag : "carryon", total = groups.reduce(function(n,g){ return n + g.items.length; },0);
+  return db.doc("trip/" + t.id + "/pack_meta/original").get().then(function(snap){ var o = snap && snap.exists !== false && snap.data ? snap.data() : null;
+    if (o && pk0.ready && JSON.stringify(o.groups) === JSON.stringify(groups) && o.context && o.context.luggage === luggage && Object.keys(pk0.sections).length === groups.length && Object.keys(pk0.items).length === total) return;
+    return generatorWriteDraft(t,groups,setup);
+  });
+}
+function generatorWriteDraft(t,groups,setup){
   var pk = packData(t.id), sections = {}, items = {}, prefix = "gen-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2,8), backup = Store.exportAll();
   groups.forEach(function(g,index){ var sid = prefix + "-s" + index; sections[sid] = {title:g.title,depart:!!g.depart,order:g.depart ? 9999 : (index + 1) * 10,note:""};
     g.items.forEach(function(label,i){ items[prefix + "-i" + index + "-" + i] = {label:label,section:sid,order:(i + 1) * 10,checked:false,at:Date.now()}; }); });
