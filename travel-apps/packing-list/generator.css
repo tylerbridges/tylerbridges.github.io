@@ -237,9 +237,13 @@ h2.k,.gen-opt h3,.psec-head h3,details.panel>summary{font-size:var(--t-foot);let
 .packing-list-row.revealed .packing-list-front{transform:translateX(-88px)}
 .packing-list-row.dragging .packing-list-front{transition:none}
 .packing-list-actions{flex:0 0 44px;min-height:44px;border:0;border-radius:22px;background:transparent;color:inherit;font-size:26px;cursor:pointer}
-.packing-list-delete{position:absolute;right:0;top:0;width:88px;height:100%;min-height:44px;border:0;background:#b42332;color:#fff;font:inherit;font-weight:600;cursor:pointer}
+.packing-list-delete{touch-action:manipulation;position:absolute;right:0;top:0;width:88px;height:100%;min-height:44px;border:0;background:#b42332;color:#fff;font:inherit;font-weight:600;cursor:pointer}
 .packing-list-row .gen-error:empty{display:none}
 .packing-list-row .gen-error:not(:empty){position:relative;margin:0;padding:12px;background:var(--surface)}
 .packing-danger.btn{color:#b42332}
 @media(prefers-color-scheme:dark){.packing-danger.btn{color:#ff858b}}
 @media(prefers-reduced-motion:reduce){.packing-list-front.panel{transition:none}}
+
+.packing-list-row.revealed .packing-list-delete{z-index:2}
+.packing-delete-toast.undotoast{left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 12px);max-width:calc(100vw - 24px);padding:6px 10px 6px 14px;gap:10px;font-size:14px;white-space:nowrap;border-radius:999px}
+.packing-delete-toast.undotoast button{border:0;min-height:44px;padding:8px 12px}
