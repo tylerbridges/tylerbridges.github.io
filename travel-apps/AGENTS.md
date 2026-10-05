@@ -61,3 +61,5 @@ No build step, no dependencies, no framework. Plain ES5-style browser JS loaded 
 - Optional browser check: node tests/delete-list-ui.mjs covers swipe/keyboard/in-list deletion, Undo, shared data and namespace isolation, storage rollback, pending-export races, direct-link guards, intentional regeneration and mobile layout.
 
 - Swipe Delete must activate on the first completed touch tap even when the browser suppresses its compatibility click. Ignore drag/canceled touches, guard duplicate activations, and retain native mouse/keyboard clicks. Keep revealed Delete above the sliding foreground during animation.
+
+- Spacing scale (generator.css spacing pass): 16 px page gutter, card/sheet padding and card-to-card gap; 12 px between groups inside a card or sheet; 8 px between related controls/buttons; 6 px label to control. Lone checkbox fields render as one 44 px row (box, then label). Keep new UI on this scale.

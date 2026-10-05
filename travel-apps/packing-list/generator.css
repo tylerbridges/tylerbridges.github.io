@@ -247,3 +247,34 @@ h2.k,.gen-opt h3,.psec-head h3,details.panel>summary{font-size:var(--t-foot);let
 .packing-list-row.revealed .packing-list-delete{z-index:2}
 .packing-delete-toast.undotoast{left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 12px);max-width:calc(100vw - 24px);padding:6px 10px 6px 14px;gap:10px;font-size:14px;white-space:nowrap;border-radius:999px}
 .packing-delete-toast.undotoast button{border:0;min-height:44px;padding:8px 12px}
+
+/* Standalone app: spacing pass (Oct 5 2026). One scale everywhere — 16 page gutter, card padding and card-to-card;
+   12 between groups inside a card or sheet; 8 between related controls; 6 label to control. */
+.panel{padding:16px;}
+.rs-form{padding:16px;}
+#view,.stack,.gen-review{gap:16px;}
+.field,.rs-form .field{gap:6px;}
+.gen-review>:empty,.gen-review>div:not([class]):empty{display:none;}
+.refine-export{margin-top:0;}
+.gen-review>h2.k{margin:8px 0 -8px;}
+.panel>h2.k,.panel>h3{margin:0 0 8px;}
+.panel:not(.rs-form)>*+.gen-actions{margin-top:12px;}
+.panel:not(.rs-form)>.gen-opt{margin-top:12px;padding-top:12px;}
+.refine-chips{display:flex;flex-direction:column;align-items:flex-start;gap:8px;}
+.refine-chips>.trip-plan-grid{align-self:stretch;margin:4px 0;}
+.refine-chips+.gen-actions{margin-top:8px!important;}
+.trip-plan-grid{gap:8px;}
+.trip-plan-card{padding:12px;gap:6px;}
+.refine-required,.refine-changes:not(:empty){padding:16px;}
+.test-preview{padding:12px;}
+/* Sheets: same 16 inset as cards, 16 under the title, 12 between fields */
+.sheet{padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px));gap:16px;}
+.sheet-body{gap:12px;}
+.sheet .gen-form{gap:12px;}
+.sheet .gen-form .field{margin:0;}
+.sheet-head .linkbtn{min-height:44px;padding:0 4px;margin:-12px -4px -12px 0;}
+/* A lone checkbox field reads as one tappable row (box, then its label) instead of a label over a stray box */
+.gen-form .field:has(>input[type=checkbox]){flex-direction:row-reverse;justify-content:flex-end;align-items:center;gap:12px;min-height:44px;}
+.gen-form .field:has(>input[type=checkbox])>label{font-size:var(--t-body);font-weight:500;color:var(--ink);cursor:pointer;}
+.gen-form .field:has(>input[type=checkbox])>input{margin:0;}
+.refine-item-copy{min-height:44px;display:flex;flex-direction:column;justify-content:center;}
