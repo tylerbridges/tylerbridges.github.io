@@ -13,7 +13,10 @@ function generatorHome(){
   hero.appendChild(nav); w.appendChild(hero);
 
   var visible=ORDER.filter(function(id){return !TRIPS[id].packingDeleted;});
-  if(visible.length){w.appendChild(el("h2","k","Previous trip setups"));visible.forEach(function(id){w.appendChild(generatorListRow(TRIPS[id]));});}
+  // Standalone app: upcoming/current trips first; trips that have ended collapse under Past trips (open when nothing is upcoming).
+  var now=isoToday(),past=visible.filter(function(id){var t=TRIPS[id];return !!(t.end || t.start) && (t.end || t.start)<now;}),upcoming=visible.filter(function(id){return past.indexOf(id)<0;});
+  if(upcoming.length){w.appendChild(el("h2","k","Upcoming trips"));upcoming.forEach(function(id){w.appendChild(generatorListRow(TRIPS[id]));});}
+  if(past.length){var old=el("details","packing-past");old.open=!upcoming.length;old.appendChild(el("summary",null,"Past trips ("+past.length+")"));var list=el("div","packing-past-list");past.slice().reverse().forEach(function(id){list.appendChild(generatorListRow(TRIPS[id]));});old.appendChild(list);w.appendChild(old);}
   return w;
 }
 function generatorRulesPage(){
