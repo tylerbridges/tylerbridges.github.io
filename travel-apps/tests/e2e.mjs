@@ -45,7 +45,7 @@ try {
   if(await p.locator('.refine-item summary').count())fail('row explanations returned');
   await p.click('button:has-text("Packing rules")');if(!(await p.textContent('.sheet-body')).includes('Workouts most days'))fail('workout rules not inspectable');await p.click('button:has-text("Close")');
 
-  for(const [name,ids] of [['Packing',['rf-packing']],['Extras',['rf-extra-kindle','rf-extra-hotspot','rf-extra-chargingPad','rf-extra-garmin','rf-extra-phoneCase']],['Weather',['rf-climate','rf-thermal','rf-rain','rf-warmWeather']],['Activities',['rf-hike','rf-workout','rf-water','rf-fish','rf-daypack','rf-rugged']],['Outfits & work',['rf-work','rf-workDays','rf-formal','rf-dinners']],['Laundry',['rf-laundry','rf-first','rf-interval']]]){
+  for(const [name,ids] of [['Packing',['rf-packing']],['Extras',['rf-extra-kindle','rf-extra-hotspot','rf-extra-chargingPad','rf-extra-garmin','rf-extra-phoneCase','rf-extra-speaker','rf-extra-floppyHat']],['Weather',['rf-climate','rf-thermal','rf-rain','rf-warmWeather']],['Activities',['rf-hike','rf-workout','rf-water','rf-fish','rf-daypack','rf-rugged','rf-brooksToo']],['Outfits & work',['rf-work','rf-workDays','rf-formal','rf-dinners']],['Laundry',['rf-laundry','rf-first','rf-interval']]]){
     if(name==='Outfits & work'){await p.getByRole('button',{name,exact:true}).click();await p.getByRole('button',{name:'Days & work equipment',exact:true}).click();}else await p.click(`button[aria-label="${name==='Extras' ? 'Trip extras':name}"]`);
     const actual=await p.locator('.sheet-body input, .sheet-body select').evaluateAll(nodes=>nodes.map(n=>n.id));
     if(JSON.stringify(actual)!==JSON.stringify(ids))fail(`${name} editor contains unrelated fields`);

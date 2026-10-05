@@ -7,10 +7,12 @@ var REFINE_EXTRAS=[
   {key:"hotspot",label:"Hotspot",items:["Hotspot"]},
   {key:"chargingPad",label:"Belkin charging pad",items:["Belkin charging pad"]},
   {key:"garmin",label:"Garmin + charger",items:["Garmin","Garmin charger"]},
-  {key:"phoneCase",label:"Extra phone case",items:["Extra phone case"]}
+  {key:"phoneCase",label:"Extra phone case",items:["Extra phone case"]},
+  {key:"speaker",label:"Bluetooth speaker",items:["Bluetooth speaker"]},
+  {key:"floppyHat",label:"Floppy hat",items:["Floppy hat"],section:"Clothing"}
 ];
 function refineOptionalKey(label){var id=refineId(label),found=REFINE_EXTRAS.find(function(choice){return choice.items.some(function(item){return refineId(item)===id;});});return found ? found.key : null;}
-function refineExtras(state){var out=[];REFINE_EXTRAS.forEach(function(choice){if(state.refinements.extraItems[choice.key])choice.items.forEach(function(label){out.push(refineItem(label,"Personal bag & day gear","Selected trip extra: "+choice.label,{required:true}));});});return out;}
+function refineExtras(state){var out=[];REFINE_EXTRAS.forEach(function(choice){if(state.refinements.extraItems[choice.key])choice.items.forEach(function(label){out.push(refineItem(label,choice.section || "Personal bag & day gear","Selected trip extra: "+choice.label,{required:true}));});});return out;}
 function refineDays(start,end){
   if(!/^\d{4}-\d{2}-\d{2}$/.test(start || "") || !/^\d{4}-\d{2}-\d{2}$/.test(end || ""))throw new Error("Set valid trip dates before generating.");
   var a=Date.parse(start+"T00:00:00Z"),b=Date.parse(end+"T00:00:00Z");
@@ -48,7 +50,7 @@ function refineClothing(state,profile,c){
 }
 function refineDefaults(state,profile,c){
   var out = [];
-  var optional = /^(kindle|snacks|extra phone case|hotspot|belkin charging pad|wrinkle release|lint roller)$/i;
+  var optional = /^(kindle|snacks|extra phone case|hotspot|belkin charging pad|bluetooth speaker|floppy hat|wrinkle release|lint roller)$/i;
   (profile.extras || PACK_PREFS.extras).forEach(function(g){ (g.items || []).forEach(function(label){
     if (qtyKey(label) || refineId(label) === "daypack" || refineOptionalKey(label)) return;
     var item = refineItem(label,g.title,"Your usual packing preferences",{optional:optional.test(qtyBase(label))});
@@ -70,10 +72,14 @@ function refineLayers(state,profile,c){
 function refineActivities(state,profile,c){
   var a = c.inputs.activities, out = [], maybe = profile.maybe || PACK_PREFS.maybe;
   ["hike","water","fish"].forEach(function(tag){ if (!a[tag]) return;
-    maybe.filter(function(g){ return g.tag === tag; }).forEach(function(g){ g.items.forEach(function(label){ if(tag === "hike" && refineId(label) === "hiking-footwear" && !c.r.ruggedHike)return;out.push(refineItem(label,g.title,"Required for " + tag,{required:true})); }); });
+    maybe.filter(function(g){ return g.tag === tag; }).forEach(function(g){ g.items.forEach(function(label){ if(tag === "hike" && refineId(label) === "hiking-footwear" && !c.r.ruggedHike)return;if(tag === "water" && refineId(label) === "sandals")return;out.push(refineItem(label,g.title,"Required for " + tag,{required:true})); }); });
   });
+  // Standalone app: sandals come with every swimming trip, even for saved profiles whose maybe groups predate them; not required, so profile exclusions still apply.
+  if (a.water) out.push(refineItem("Sandals","Clothing","Swimming: sandals for the pool or beach"));
   if (a.hike){
     out.push(refineItem(c.r.ruggedHike ? "Hiking boots / trail shoes" : "Brooks running shoes",c.r.ruggedHike ? "Clothing" : "Wear to travel",c.r.ruggedHike ? "Rugged or wet trails require hiking footwear" : "Your Brooks cover ordinary hikes",{required:true}));
+    // Standalone app: Also bring Brooks keeps the usual running shoes alongside rugged-trail footwear (same id as the workout pair, so no duplicate).
+    if (c.r.ruggedHike && c.r.brooksToo) out.push(refineItem("Brooks running shoes","Wear to travel","You selected Also bring Brooks with rugged-trail footwear",{required:true}));
     [["Water bottle","Personal bag & day gear"],["Hat","Wear to travel"]].forEach(function(x){ out.push(refineItem(x[0],x[1],"Hiking dependency",{required:true})); });
     if (c.unknown) out.push(refineItem("Rain jacket","Clothing","Hiking weather is unconfirmed; conservative weather protection",{required:true}));
     if (c.cool || c.cold) out.push(refineItem("Light packable puffer jacket","Clothing","Hiking insulation",{required:true}));
@@ -139,7 +145,7 @@ var REFINE_RULES = {
   extras:{deps:["extraItems"],run:refineExtras},
   defaults:{deps:["profile"],run:refineDefaults},
   layers:{deps:["climate","thermal","rain"],run:refineLayers},
-  activities:{deps:["activities","climate","thermal","rain","dates","laundry","packingMode","intl","mode","longFlight","ruggedHike","daypack","profile"],run:refineActivities},
+  activities:{deps:["activities","climate","thermal","rain","dates","laundry","packingMode","intl","mode","longFlight","ruggedHike","brooksToo","daypack","profile"],run:refineActivities},
   events:{deps:["formalDays","dinners","workDays","work","dinnerTop","dinnerOtherTop","dinnerBottoms","dinnerOtherBottoms","dinnerOtherBelt","tie","alternateKhakis","shareSuitShirts","shirtOverlap","suitOverlap","dates","climate","thermal"],run:refineEvents},
   work:{deps:["work","profile"],run:refineWork},
   consumables:{deps:["dates"],run:refineConsumables}
@@ -176,7 +182,7 @@ function refineEvaluate(state,profile,changed){
   if (c.unknown) warnings.push({id:"weather",text:"Weather is unconfirmed. Choose expected conditions; no forecast has been inferred from the destination."});
   if(c.r.longFlight && (!c.inputs.intl || c.inputs.mode!=="fly"))warnings.push({id:"long-flight",text:"Long international flight comfort is selected, but this trip is not marked as international flying. Update Trip details; those comfort items have not been added."});
   if (c.days > 10 && !c.r.laundry.available) warnings.push({id:"long-trip",text:"Long trip without laundry: quantities cover every day. Add a laundry plan or explicitly edit quantities; no silent quantity cap was applied."});
-  if ((c.inputs.activities.workout || (c.inputs.activities.hike && !c.r.ruggedHike)) && !items.some(function(x){ return x.id === "wear:brooks-running-shoes"; })) warnings.push({id:"activity-shoes",text:"Workouts or ordinary hiking are selected, but your Brooks are missing."});
+  if ((c.inputs.activities.workout || (c.inputs.activities.hike && (!c.r.ruggedHike || c.r.brooksToo))) && !items.some(function(x){ return x.id === "wear:brooks-running-shoes"; })) warnings.push({id:"activity-shoes",text:"Workouts, ordinary hiking or Also bring Brooks are selected, but your Brooks are missing."});
   if(c.inputs.activities.hike && c.r.ruggedHike && !items.some(function(x){return x.id === "pack:hiking-footwear";}))warnings.push({id:"hiking-footwear",text:"Rugged or wet trails are selected, but hiking footwear is missing."});
   if (c.r.work !== "none" && !items.some(function(x){ return x.id === "pack:work-computer-charger"; })) warnings.push({id:"work-power",text:"Work is selected, but laptop power is missing."});
   if (c.inputs.activities.hike && !items.some(function(x){ return /rain-jacket|rain-protection/.test(x.id); }) && (c.r.rain || c.unknown)) warnings.push({id:"hiking-rain",text:"Hiking weather protection is missing for wet or unconfirmed conditions."});

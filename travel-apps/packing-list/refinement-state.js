@@ -4,7 +4,7 @@ function refinePath(id){ return "trip/" + id + "/pack_meta/refinement"; }
 function refineNewState(t,setup){
   setup = setup || {}; var activities = {}; ["hike","workout","water","fish"].forEach(function(k){ activities[k] = !!setup[k] || (k === "workout" && !!setup.run); });
   return {version:2,inputs:{where:t.where,start:t.start,end:t.end,mode:setup.mode || "fly",tripType:setup.tripType || "leisure",bag:setup.bag || "carryon",intl:!!setup.intl,activities:activities},
-    refinements:{climate:setup.climate || "unknown",rain:!!setup.rain,thermal:"neutral",packingMode:"standard",laundry:{available:setup.laundry === "cycle",firstWash:setup.interval || 4,interval:setup.interval || 4},formalDays:setup.formal || 0,dinners:setup.dinners || 0,work:setup.work || "none",workDays:setup.workDays == null ? (setup.work && setup.work!=="none" ? null : 0) : setup.workDays,dinnerTop:null,dinnerOtherTop:"",dinnerBottoms:null,dinnerOtherBottoms:"",dinnerOtherBelt:true,tie:true,alternateKhakis:true,shareSuitShirts:false,shirtOverlap:null,suitOverlap:null,warmWeather:false,extraItems:clone(setup.extraItems || {}),daypack:!!setup.daypack,ruggedHike:!!setup.ruggedHike,longFlight:!!setup.longintl},
+    refinements:{climate:setup.climate || "unknown",rain:!!setup.rain,thermal:"neutral",packingMode:"standard",laundry:{available:setup.laundry === "cycle",firstWash:setup.interval || 4,interval:setup.interval || 4},formalDays:setup.formal || 0,dinners:setup.dinners || 0,work:setup.work || "none",workDays:setup.workDays == null ? (setup.work && setup.work!=="none" ? null : 0) : setup.workDays,dinnerTop:null,dinnerOtherTop:"",dinnerBottoms:null,dinnerOtherBottoms:"",dinnerOtherBelt:true,tie:true,alternateKhakis:true,shareSuitShirts:false,shirtOverlap:null,suitOverlap:null,warmWeather:false,extraItems:clone(setup.extraItems || {}),daypack:!!setup.daypack,ruggedHike:!!setup.ruggedHike,brooksToo:!!setup.brooksToo,longFlight:!!setup.longintl},
     overrides:{removed:{},edited:{},added:{}},reviewed:{},decisionReviews:{},ruleResults:{},history:[],baseline:null};
 }
 // Standalone app: normalize old assumptions without changing preferences or explicit item overrides.
@@ -20,6 +20,7 @@ function refineNormalizeState(state){
   if(!state.refinements.extraItems)state.refinements.extraItems={};
   if(state.refinements.daypack == null)state.refinements.daypack=false;
   if(state.refinements.ruggedHike == null)state.refinements.ruggedHike=false;
+  if(state.refinements.brooksToo == null)state.refinements.brooksToo=false;
   return state;
 }
 // Standalone app: decisions depend on their context, so changing counts/weather reopens relevant questions.

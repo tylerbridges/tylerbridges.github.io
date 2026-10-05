@@ -103,7 +103,8 @@ var PACK_PREFS = {
   },
   {
    "items": [
-    "Swimsuit"
+    "Swimsuit",
+    "Sandals"
    ],
    "tag": "water",
    "title": "Clothing",
