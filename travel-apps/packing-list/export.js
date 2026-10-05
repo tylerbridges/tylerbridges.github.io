@@ -31,7 +31,7 @@ function packExportDownload(t, content, extension, type){
 }
 function packExportSheet(t, options){
   options=options || {};
-  var body=openSheet(options.reviewNode ? "Review & export" : "Export packing list");if(options.reviewNode)body.id="rr-outfitSummary";
+  var body=options.container || openSheet(options.reviewNode ? "Review & export" : "Export packing list");if(options.reviewNode)body.id="rr-outfitSummary";
   body.appendChild(el("p","muted","Includes every section and item. Exports are separate copies; changes in Notes do not sync back."));
   var keep=el("input");keep.type="checkbox";keep.id="pe-checked";
   var status=el("p","muted");status.setAttribute("role","status");
@@ -44,7 +44,7 @@ function packExportSheet(t, options){
   var help=el("p","gen-note");
   function recordExport(){if(options.onExport)Promise.resolve().then(options.onExport).catch(function(){status.textContent+=" Packing feedback snapshot could not be saved; retry export to capture it.";});}
   function layout(){["enex","copy","md"].forEach(function(k){var b=buttons[k];b.className=k==="enex" ? "btn primary":"btn";(k==="enex" ? primary:moreActions).appendChild(b);});help.textContent="Mac import: download, then use Notes → File → Import to Notes. ENEX does not import directly into iPhone Notes; use formatted copy there.";}
-  function button(format,label,cb){var b=generatorButton(label,function(){if(ready)cb();});b.id="pe-"+format;b.disabled=!ready;buttons[format]=b;}
+  function button(format,label,cb){var b=generatorButton(label,function(){if(ready && (!options.canExport || options.canExport()))cb();});b.id="pe-"+format;b.disabled=!ready;buttons[format]=b;}
   button("enex","Apple Notes import (Mac .enex)",function(){packExportDownload(t,packExportEnex(data()),"enex","application/octet-stream");status.textContent="File downloaded. On a Mac, use Notes → File → Import to Notes.";recordExport();});
   button("md","Markdown (.md)",function(){packExportDownload(t,packExportMarkdown(data()),"md","text/markdown;charset=utf-8");status.textContent="Markdown file downloaded.";recordExport();});
   button("copy",ios ? "Copy for Apple Notes":"Copy formatted list",function(){var d=data(),pr;try{if(navigator.clipboard && navigator.clipboard.write && typeof ClipboardItem!=="undefined")pr=navigator.clipboard.write([new ClipboardItem({"text/html":new Blob([packExportHtml(d,false)],{type:"text/html"}),"text/plain":new Blob([preview.value],{type:"text/plain"})})]);else if(navigator.clipboard && navigator.clipboard.writeText)pr=navigator.clipboard.writeText(preview.value);else throw new Error("Clipboard unavailable");}catch(e){pr=Promise.reject(e);}pr.then(function(){status.textContent="Copied. Paste into Notes; checkbox symbols may need conversion with Notes’ checklist button.";recordExport();}).catch(function(){more.open=true;preview.focus();preview.select();preview.setSelectionRange(0,preview.value.length);status.textContent="Automatic copy is unavailable. Copy the selected preview below.";});});

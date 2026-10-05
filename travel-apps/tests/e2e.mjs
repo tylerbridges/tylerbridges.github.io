@@ -88,11 +88,11 @@ try {
   await p.locator('[data-item-id="pack:work-computer"]').getByRole('button',{name:'Remove',exact:true}).click(); await p.click('button:has-text("Remove for this trip")'); await p.waitForSelector('.sheet-bg',{state:'detached'});
   await p.reload(); await p.waitForSelector('#rr-export'); if ((await labels()).includes('Work computer')) fail('trip removal lost on reload');
   if (!/removed manually but is required/.test(await p.textContent('#view'))) fail('missing dependency warning');
-  await p.click('#rr-export');await p.waitForSelector('#rr-outfitSummary');await p.waitForSelector('#pe-enex');
+  await p.waitForSelector('#rr-outfitSummary');await p.waitForSelector('#pe-enex');
   const downloadPromise = p.waitForEvent('download'); await p.click('#pe-enex'); const download=await downloadPromise; const exported=await readFile(await download.path(),'utf8');
   if (!exported.includes('<en-todo checked="false"/>') || exported.includes('Work computer packed?') || !exported.includes('Socks ×5')) fail('native Notes export did not reflect refinements');
   if (exported.includes('<h1>')) fail('duplicate Notes title');
-  await p.click('button:has-text("Close")');
+  if(await p.locator('.sheet-bg').count())fail('one-click export opened another page');
   for (const width of [360,390,430]){ for (const colorScheme of ['light','dark']){
     await p.setViewportSize({width,height:844}); await p.emulateMedia({colorScheme});
     if (await p.evaluate(()=>document.documentElement.scrollWidth > innerWidth)) fail(`refinement review overflow at ${width} ${colorScheme}`);
@@ -108,17 +108,17 @@ try {
   // Export guides unresolved work/dinner/suit decisions instead of silently using preliminary quantities.
   const q=await testPage({viewport:{width:390,height:844}});q.on('pageerror',e=>errs.push(e.message));await q.goto(B+'packing-list/');
   await q.evaluate(()=>{var t={id:'WARDROBE',name:'Work and suit trip',where:'Phoenix',start:'2026-10-08',end:'2026-10-14'};localStorage.setItem('ta:trips/'+t.id,JSON.stringify(t));var s=refineNewState(t,{work:'laptop',formal:2,dinners:3});localStorage.setItem('ta:'+refinePath(t.id),JSON.stringify(s));location.hash=t.id;});await q.reload();await q.waitForSelector('#rr-export');
-  await q.click('#rr-export');await q.waitForSelector('#rf-workDays');if(await q.locator('#pe-enex').count())fail('export bypassed required decisions');await q.fill('#rf-workDays','6');await q.click('button:has-text("Apply & next")');
+  await q.click('#rr-confirm');await q.waitForSelector('#rf-workDays');if(await q.locator('#pe-enex').count())fail('export bypassed required decisions');await q.fill('#rf-workDays','6');await q.click('button:has-text("Apply & next")');
   await q.waitForSelector('#rf-dinnerTop');if(await q.locator('button:has-text("Skip")').count())fail('required dinner decision can be skipped');await q.selectOption('#rf-dinnerTop','buttonup');await q.selectOption('#rf-dinnerBottoms','khakis');await q.click('button:has-text("Apply & next")');
   await q.waitForSelector('#rf-alternateKhakis');await q.check('#rf-alternateKhakis');if(!await q.locator('#rf-tie').isChecked())fail('usual professional ties missing');await q.click('button:has-text("Apply & next")');
   await q.waitForSelector('#rf-shirtOverlapAuto');if(!await q.locator('#rf-shirtOverlapAuto').isChecked())fail('overlap should default to maximum');await q.click('button:has-text("Apply & next")');await q.waitForSelector('#rr-outfitSummary');await q.waitForSelector('#pe-enex');
-  const outfitDownload=q.waitForEvent('download');await q.click('#pe-enex');const outfit=await readFile(await (await outfitDownload).path(),'utf8');if(!outfit.includes('Button-up long sleeve shirt ×6') || !outfit.includes('White dress shirts ×2') || outfit.includes('Undershirt'))fail('incorrect wardrobe export');await q.click('button:has-text("Close")');
+  const outfitDownload=q.waitForEvent('download');await q.click('#pe-enex');const outfit=await readFile(await (await outfitDownload).path(),'utf8');if(!outfit.includes('Button-up long sleeve shirt ×6') || !outfit.includes('White dress shirts ×2') || outfit.includes('Undershirt'))fail('incorrect wardrobe export');
   if(await q.locator('[data-item-id="pack:khakis"]').count()!==1 || await q.locator('[data-item-id="pack:belt"]').count()!==1)fail('khakis or belt duplicated across suit/dinners');
   await q.click('button[aria-label="Laundry"]');await q.selectOption('#rf-laundry','yes');await q.fill('#rf-first','2');await q.fill('#rf-interval','2');await q.click('button:has-text("Apply & recalculate")');await q.waitForSelector('.sheet-bg',{state:'detached'});
   if(await q.locator('[data-item-id="pack:button-up-long-sleeve-shirt"] strong').textContent()!=='Button-up long sleeve shirt ×6')fail('laundry reduced work shirts');
   await q.click('button[aria-label="Packing"]');await q.selectOption('#rf-packing','extra');await q.click('button:has-text("Apply & recalculate")');await q.waitForSelector('.sheet-bg',{state:'detached'});if(await q.locator('[data-item-id="pack:socks"] strong').textContent()!=='Socks ×5')fail('laundry and extra buffers stacked');
-  await q.getByRole('button',{name:'Outfits & work',exact:true}).click();await q.getByRole('button',{name:'Days & work equipment',exact:true}).click();await q.fill('#rf-dinners','4');await q.click('button:has-text("Apply & recalculate")');await q.waitForSelector('#rf-dinnerTop');await q.selectOption('#rf-dinnerTop','polo');await q.click('button:has-text("Apply & next")');await q.click('button:has-text("Review full list")');await q.waitForSelector('.sheet-bg',{state:'detached'});if(await q.locator('[data-item-id="pack:polo-shirts"] strong').textContent()!=='Polo shirts ×4')fail('dinner style did not recalculate');
-  await q.reload();await q.waitForSelector('#rr-export');await q.click('#rr-export');await q.waitForSelector('#pe-enex');await q.click('button:has-text("Close")');
+  await q.getByRole('button',{name:'Outfits & work',exact:true}).click();await q.getByRole('button',{name:'Days & work equipment',exact:true}).click();await q.fill('#rf-dinners','4');await q.click('button:has-text("Apply & recalculate")');await q.waitForSelector('#rf-dinnerTop');await q.selectOption('#rf-dinnerTop','polo');await q.click('button:has-text("Apply & next")');await q.waitForSelector('.sheet-bg',{state:'detached'});if(await q.locator('[data-item-id="pack:polo-shirts"] strong').textContent()!=='Polo shirts ×4')fail('dinner style did not recalculate');
+  await q.reload();await q.waitForSelector('#rr-export');await q.waitForSelector('#pe-enex');
   for(const width of [360,390,430]){for(const colorScheme of ['light','dark']){await q.setViewportSize({width,height:844});await q.emulateMedia({colorScheme});if(await q.evaluate(()=>document.documentElement.scrollWidth>innerWidth))fail('wardrobe mobile overflow');}}await q.close();
   // Embedded test mode reuses one scenario and isolates every write from live data.
   const sandbox=await testPage({viewport:{width:390,height:844}});sandbox.on('pageerror',e=>errs.push(e.message));

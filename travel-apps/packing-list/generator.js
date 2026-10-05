@@ -207,7 +207,7 @@ function generatorReview(t){
   }); return w;
 }
 function generatorSaveDraft(t,groups,setup){
-  var pk = packData(t.id), sections = {}, items = {}, prefix = "gen-" + Date.now().toString(36), backup = Store.exportAll();
+  var pk = packData(t.id), sections = {}, items = {}, prefix = "gen-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2,8), backup = Store.exportAll();
   groups.forEach(function(g,index){ var sid = prefix + "-s" + index; sections[sid] = {title:g.title,depart:!!g.depart,order:g.depart ? 9999 : (index + 1) * 10,note:""};
     g.items.forEach(function(label,i){ items[prefix + "-i" + index + "-" + i] = {label:label,section:sid,order:(i + 1) * 10,checked:false,at:Date.now()}; }); });
   var writes = []; Object.keys(sections).forEach(function(id){ writes.push(db.doc("trip/" + t.id + "/pack_sections/" + id).set(sections[id])); }); Object.keys(items).forEach(function(id){ writes.push(db.doc("trip/" + t.id + "/pack_items/" + id).set(items[id])); });
