@@ -25,9 +25,14 @@ function refineNormalizeState(state){
 // Standalone app: decisions depend on their context, so changing counts/weather reopens relevant questions.
 function refineDecisionKey(state,focus){var r=state.refinements;
   var values={Work:[state.inputs.start,state.inputs.end,state.inputs.tripType,r.work,r.workDays],Events:[state.inputs.start,state.inputs.end,state.inputs.tripType,r.formalDays,r.dinners],"Dinner outfit":[r.dinners,r.climate,r.thermal,r.dinnerTop,r.dinnerBottoms],"Suit outfit":["professional-rotation-v2",r.formalDays,r.tie,r.alternateKhakis,r.shareSuitShirts],"Shirt sharing":[r.work,r.workDays,r.dinners,r.dinnerTop,r.formalDays,r.shareSuitShirts,r.shirtOverlap,r.suitOverlap]};
+  // Standalone app: long trips without laundry need an explicit laundry answer; trip length and laundry inputs reopen it.
+  if(focus==="Laundry"){var days=null;try{days=refineDays(state.inputs.start,state.inputs.end);}catch(e){}values[focus]=["long-trip-laundry-v1",days,!!r.laundry.available,r.laundry.firstWash,r.laundry.interval];}
   if(focus==="Dinner outfit"){if(r.dinnerTop==="other")values[focus].push(["other-top",r.dinnerOtherTop]);if(r.dinnerBottoms==="other")values[focus].push(["other-bottoms",r.dinnerOtherBottoms,r.dinnerOtherBelt]);}
   return values[focus] ? JSON.stringify(values[focus]):null;
 }
+var REFINE_LONG_TRIP_DAYS=8;
+// Standalone app: same day count the engine uses for full-trip clothing quantities.
+function refineLongTripNoLaundry(state){if(state.legacy || state.refinements.laundry.available)return false;try{return refineDays(state.inputs.start,state.inputs.end)>=REFINE_LONG_TRIP_DAYS;}catch(e){return false;}}
 function refinePendingDecisions(state){
   if(state.legacy)return [];var r=state.refinements,w=refineWardrobe(state),pending=[];
   function needs(focus){return (state.decisionReviews || {})[focus]!==refineDecisionKey(state,focus);}
@@ -36,6 +41,7 @@ function refinePendingDecisions(state){
   if(r.dinners>0 && (!r.dinnerTop || !r.dinnerBottoms || (r.dinnerTop==="other" && !String(r.dinnerOtherTop || "").trim()) || (r.dinnerBottoms==="other" && !String(r.dinnerOtherBottoms || "").trim()) || needs("Dinner outfit")))pending.push("Dinner outfit");
   if(r.formalDays>0 && needs("Suit outfit"))pending.push("Suit outfit");
   if(w.canShare && needs("Shirt sharing"))pending.push("Shirt sharing");
+  if(refineLongTripNoLaundry(state) && needs("Laundry"))pending.push("Laundry");
   return pending;
 }
 function refineLoad(t){
