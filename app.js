@@ -192,7 +192,7 @@
     if (nowUV == null && uv && uv.hourly && uv.hourly.length && !isDay(Date.now())) nowUV = 0;
     if (nowUV != null) rows.push(["UV index", nowUV + " · " + uvCat(nowUV) + (uv && uv.alert ? " · UV alert" : "")]);
     rows.push(["Humidity", c.rh != null ? c.rh + "%" : "–"],
-      [gustForecast && gust != null ? "Wind / forecast gusts" : "Wind / gusts", (c.ws == null ? "–" : c.ws === 0 ? "Calm" : (c.wd ? c.wd + " " : "") + c.ws) + " / " + (gust == null ? "–" : gust) + " mph"],
+      ["Wind/Gusts", (c.ws == null ? "–" : c.ws === 0 ? "Calm" : c.ws) + " / " + (gust == null ? "–" : gust) + " mph"],
       ["Visibility", c.vis != null ? (c.vis >= 10 ? "10.00" : c.vis.toFixed(2)) + " mi" : "–"]);
     if (c.wc != null && c.t != null && c.wc < c.t) rows.push(["Wind chill", c.wc + "°F"]);
     if (c.hi != null && c.t != null && c.hi > c.t) rows.push(["Heat index", c.hi + "°F"]);
