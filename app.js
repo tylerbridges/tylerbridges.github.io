@@ -175,8 +175,12 @@
     // today's high: the daytime forecast period if today's is still ahead, else the highest reading observed today; low: tonight's forecast low
     // same high/low as the first day card in the forecast
     var p = doc.periods || [], g0 = groupDays(p)[0], hl0 = g0 ? dayHL(p, g0) : [null, null], hiT = hl0[0], loT = hl0[1];
-    // Current wind and gusts both come from the observation.
-    var gust = c.wg;
+    // Stations often omit gusts. Use only this hour's forecast as a labelled fallback.
+    var gust = c.wg, gustForecast = gust == null, grid = doc.grid;
+    if (gustForecast && grid && grid.s && grid.s.wg) {
+      var gustHour = Math.floor((Date.now() - grid.start) / H);
+      if (gustHour >= 0 && gustHour < grid.s.wg.length) gust = grid.s.wg[gustHour];
+    }
     var rows = [];
     if (hiT != null || loT != null) rows.push(["High / Low", '<span class="hiT">' + (hiT != null ? hiT + "°F" : "–") + '</span> / <span class="loT">' + (loT != null ? loT + "°F" : "–") + "</span>", 1]);
     var p0 = p[0]; if (p0) rows.push(["Precip chance", (p0.popTrend ? p0.popTrend[0] + "% → " + p0.popTrend[1] + "%" : (p0.pop || 0) + "%") + " " + p0.name.toLowerCase().replace(/^this /, "")]);
@@ -188,10 +192,10 @@
     if (nowUV == null && uv && uv.hourly && uv.hourly.length && !isDay(Date.now())) nowUV = 0;
     if (nowUV != null) rows.push(["UV index", nowUV + " · " + uvCat(nowUV) + (uv && uv.alert ? " · UV alert" : "")]);
     rows.push(["Humidity", c.rh != null ? c.rh + "%" : "–"],
-      ["Observed wind / gusts", c.ws == null ? "–" : c.ws === 0 ? "Calm" + (gust ? " / " + gust + " mph" : "") : (c.wd ? c.wd + " " : "") + c.ws + " / " + (gust == null || gust <= c.ws ? "–" : gust) + " mph"],
+      ["Wind", c.ws == null ? "–" : c.ws === 0 ? "Calm" : (c.wd ? c.wd + " " : "") + c.ws + " mph"],
+      [gustForecast && gust != null ? "Forecast gusts" : "Gusts", gust == null ? "–" : gust + " mph"],
       ["Visibility", c.vis != null ? (c.vis >= 10 ? "10.00" : c.vis.toFixed(2)) + " mi" : "–"]);
-    if (c.ms) rows.push(["Observed", tm(c.ms) + " · " + ago(c.ms)]);
-        if (c.wc != null && c.t != null && c.wc < c.t) rows.push(["Wind chill", c.wc + "°F"]);
+    if (c.wc != null && c.t != null && c.wc < c.t) rows.push(["Wind chill", c.wc + "°F"]);
     if (c.hi != null && c.t != null && c.hi > c.t) rows.push(["Heat index", c.hi + "°F"]);
     var d0 = groupDays(p)[0];
     // today's date above the card, styled like the other days' titles (high / low stay in the card's list)
