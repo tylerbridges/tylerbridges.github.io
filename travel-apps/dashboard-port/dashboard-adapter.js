@@ -1,7 +1,7 @@
 "use strict";
 /* ================= Packing generator: Dashboard adapter =================
    The other files in js/packgen/ are verbatim copies of the standalone Packing List app (travel-apps/packing-list,
-   commit 372108a) so standalone changes can be re-ported by copying them again. Everything Dashboard-specific lives here:
+   commit 90c4df4) so standalone changes can be re-ported by copying them again. Everything Dashboard-specific lives here:
    - a synchronous in-memory mirror of the documents the standalone reads with lsGet("ta:" + path) / Store.exportAll(),
      filled from the async db before the Packing tab (or a preferences / learning / style sheet) renders;
    - a db facade (PackGen.wrapDb, applied in boot.js) whose writes update both the real db and the mirror;
@@ -97,7 +97,9 @@ var PackGen = (function(){
     return new Promise(function(res, rej){ (function poll(){ if (pk.ready) return res(); if (Date.now() - t0 > 12000) return rej(new Error("Packing list didn't load")); setTimeout(poll, 50); })(); }); }
   PG.load = function(id){
     if (PG.loading && PG.loading.id === id) return PG.loading.p;
-    var p = fetchDocs(GLOBAL_DOCS.concat(TRIP_DOCS.map(function(n){ return "trip/" + id + "/pack_meta/" + n; }))).then(function(){ return waitPack(id); })
+    // Start from a past trip (packingPastTrips) reads other trips' refinement docs: load those of trips that have a list.
+    var others = Object.keys(RAW).filter(function(x){ return x !== id && RAW[x] && RAW[x].packing === true && !RAW[x].packingDeleted; }).map(function(x){ return "trip/" + x + "/pack_meta/refinement"; });
+    var p = fetchDocs(GLOBAL_DOCS.concat(TRIP_DOCS.map(function(n){ return "trip/" + id + "/pack_meta/" + n; }), others)).then(function(){ return waitPack(id); })
       .then(function(){ if (PG.loading && PG.loading.p === p) PG.loading = null; PG.loadedTrip = id; }, function(e){ if (PG.loading && PG.loading.p === p) PG.loading = null; throw e; });
     PG.loading = {id:id, p:p}; return p;
   };
@@ -207,10 +209,12 @@ refineSaveTrip = function(record, patch, state, result){
     // Trip style chosen in the no-list setup: the same result as the standalone's new-trip path (style refinements under the
     // form's values, the style's trip type, Work/Events confirmations keyed to it), then re-evaluated.
     var ps = PackGen.setupStyle; PackGen.setupStyle = null;
+    // ps.past: Start from a past trip (its style part, then its carried edits).
     if (ps && ps.id === record.id && ps.style && !state.legacy){ var formKeys = ["extraItems","daypack","climate","rain","ruggedHike","brooksToo","work","workDays","formalDays","dinners"];
       Object.keys(ps.style.refinements || {}).forEach(function(k){ if (formKeys.indexOf(k) < 0) state.refinements[k] = clone(ps.style.refinements[k]); });
       state.inputs.tripType = ps.style.inputs.tripType || "leisure";
       ["Work","Events"].forEach(function(f){ if (state.decisionReviews && state.decisionReviews[f]) state.decisionReviews[f] = refineDecisionKey(state, f); });
+      if (ps.past) refineCarryOverrides(ps.past.state, state, generatorPrefs());
       result = refineEvaluate(state, generatorPrefs(), null); } }
   return PG_refineSaveTrip(record, patch, state, result).then(function(r){ PackGen.arm(record.id); return r; });
 };
@@ -297,21 +301,22 @@ function generatorRestoreList(){
     .catch(function(e){ return Promise.all(put.map(function(p){ return db.doc(p).delete().catch(function(){}); })).then(function(){ throw e; }); });
 }
 
-/* ---------- Trip style picker for a trip with no list yet ----------
-   The standalone builds "Trip style (optional)" only for brand-new trips; every Dashboard trip already exists, so the adapter adds
-   the same select (packingTripStyles()) to the no-list setup and mirrors the standalone change handler on the form's fields.
-   The Trip details editor (a list exists) has no picker, as in the standalone. */
+/* ---------- Trip style / past-trip pickers for a trip with no list yet ----------
+   The standalone builds "Trip style (optional)" and "Start from a past trip (optional)" only for brand-new trips; every Dashboard
+   trip already exists, so the adapter adds the same two selects (mutually exclusive) to the no-list setup and mirrors the
+   standalone's reuse() on the form's fields. The style/past choice is applied at save in the refineSaveTrip wrapper above.
+   The Trip details editor (a list exists) has neither, as in the standalone. */
 function PG_stylePicker(form, id){
-  var styleNote = form.querySelector("h2.k + p.gen-note"); if (!styleNote || form.querySelector("#rs-style")) return;
+  var styleNote = form.querySelector("#rs-style-note") || form.querySelector("h2.k + p.gen-note"); if (!styleNote || form.querySelector("#rs-style")) return;
   var styleSelect = sel("rs-style", [["","Usual defaults"]].concat(packingTripStyles().map(function(x){ return [x.id, x.name]; })), "");
   form.insertBefore(fieldEl("Trip style (optional)", styleSelect), styleNote);
+  var pastTrips = packingPastTrips(id), pastSelect = null;
+  if (pastTrips.length){ pastSelect = sel("rs-past", [["","None"]].concat(pastTrips.map(function(x){ return [x.id, x.label]; })), ""); form.insertBefore(fieldEl("Start from a past trip (optional)", pastSelect), styleNote); }
   function $(x){ return form.querySelector("#" + x); }
   function fire(x){ var e = $(x); if (e) e.dispatchEvent(new Event("change", {bubbles:true})); }
-  function chosen(){ return packingTripStyles().find(function(x){ return x.id === styleSelect.value; }) || null; }
-  styleSelect.addEventListener("change", function(){
-    var activeStyle = chosen(), style = activeStyle || {inputs:{tripType:"leisure",bag:"carryon",mode:"fly",activities:{}},refinements:{work:"none",extraItems:{}}};
-    PackGen.setupStyle = activeStyle ? {id:id, style:clone(activeStyle)} : null;
-    styleNote.hidden = !activeStyle; styleNote.textContent = activeStyle ? "Reusing "+style.name+": "+(style.refinements.packingMode==="extra" ? "Pack extra":"Standard packing")+", "+(style.refinements.laundry && style.refinements.laundry.available ? "laundry after "+style.refinements.laundry.firstWash+" days, then every "+style.refinements.laundry.interval+" days":"no laundry")+". Confirm dates, occasion counts and weather for this trip.":"";
+  function reuse(activeStyle, text){
+    var style = activeStyle || {inputs:{tripType:"leisure",bag:"carryon",mode:"fly",activities:{}},refinements:{work:"none",extraItems:{}}};
+    styleNote.hidden = !activeStyle; styleNote.textContent = activeStyle ? text : "";
     $("rs-type").value = style.inputs.tripType; $("rs-bag").value = style.inputs.bag; $("rs-mode").value = style.inputs.mode; $("rs-work").value = style.refinements.work || "none";
     ["hike","workout","water","fish"].forEach(function(k){ $("rs-" + k).checked = !!style.inputs.activities[k]; });
     REFINE_EXTRAS.forEach(function(c){ var x = $("rs-extra-" + c.key); if (x) x.checked = !!(style.refinements.extraItems && style.refinements.extraItems[c.key]); });
@@ -319,10 +324,21 @@ function PG_stylePicker(form, id){
     $("rs-climate").value = "unknown"; $("rs-rain").checked = false; $("rs-occasions").checked = !!style.inputs.occasions || $("rs-work").value !== "none";
     ["workDays","formalDays","dinners"].forEach(function(k){ $("rs-" + k).value = 0; });
     fire("rs-occasions"); fire("rs-hike");   // the setup's own count/hiking visibility handlers
-  });
-  // A restored unfinished draft keeps its style choice (fields themselves were already restored by autosave.js).
-  try { var d = JSON.parse(localStorage.getItem(packingDraftPath("setup:" + id)) || "null"), f = d && d.data && d.data.fields && d.data.fields["rs-style"];
-    if (f && f.value && /Restored your unfinished draft/.test(form.textContent)){ styleSelect.value = f.value; var st = chosen(); if (st){ PackGen.setupStyle = {id:id, style:clone(st)}; styleNote.hidden = false; } } } catch(e){}
+  }
+  function chosenStyle(){ return packingTripStyles().find(function(x){ return x.id === styleSelect.value; }) || null; }
+  function chosenPast(){ return pastSelect ? pastTrips.find(function(x){ return x.id === pastSelect.value; }) || null : null; }
+  styleSelect.addEventListener("change", function(){ var st = chosenStyle(); if (pastSelect) pastSelect.value = "";
+    PackGen.setupStyle = st ? {id:id, style:clone(st)} : null;
+    reuse(st, st ? "Reusing " + st.name + ": " + packingStyleSummary(st) + ". Confirm dates, occasion counts and weather for this trip." : ""); });
+  if (pastSelect) pastSelect.addEventListener("change", function(){ var past = chosenPast(), st = past ? packingPastTripStyle(past) : null; styleSelect.value = "";
+    PackGen.setupStyle = past ? {id:id, style:clone(st), past:past} : null;
+    reuse(st, past ? packingPastTripNote(past) : ""); });
+  // A restored unfinished draft keeps its style / past-trip choice (fields themselves were already restored by autosave.js).
+  try { var d = JSON.parse(localStorage.getItem(packingDraftPath("setup:" + id)) || "null"), fs = d && d.data && d.data.fields;
+    if (fs && /Restored your unfinished draft/.test(form.textContent)){
+      var pv = fs["rs-past"] && fs["rs-past"].value, sv = fs["rs-style"] && fs["rs-style"].value;
+      if (pv && pastSelect){ pastSelect.value = pv; var past = chosenPast(); if (past){ PackGen.setupStyle = {id:id, style:packingPastTripStyle(past), past:past}; styleNote.hidden = false; styleNote.textContent = packingPastTripNote(past); } }
+      else if (sv){ styleSelect.value = sv; var st = chosenStyle(); if (st){ PackGen.setupStyle = {id:id, style:clone(st)}; styleNote.hidden = false; styleNote.textContent = "Reusing " + st.name + ": " + packingStyleSummary(st) + ". Confirm dates, occasion counts and weather for this trip."; } } } } catch(e){}
 }
 
 /* ---------- Exports through the artifact's downloads capability ----------

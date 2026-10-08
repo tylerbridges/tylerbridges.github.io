@@ -1,9 +1,11 @@
 // Full harness for the Dashboard packing-generator port. node run.mjs
 import {readFile} from 'node:fs/promises';
-import {serve, seed, open, PW, SCRATCH, check} from './lib.mjs';
-const SHOTS = SCRATCH + '/dash-test/shots/', PHX = 'PHX-2026-10-08', WY = 'REPLACEMENT-2026-09-19';
-const port = await serve(SCRATCH + '/dash-port'), orig = await serve(SCRATCH + '/dash-orig');
-const data = await seed(SCRATCH + '/dash-port');
+import {mkdir} from 'node:fs/promises';
+import {serve, seed, open, PW, DIRS, check} from './lib.mjs';
+await mkdir(DIRS.shots, {recursive:true});
+const SHOTS = DIRS.shots, PHX = 'PHX-2026-10-08', WY = 'REPLACEMENT-2026-09-19';
+const port = await serve(DIRS.port), orig = await serve(DIRS.orig);
+const data = await seed(DIRS.port);
 const browser = await PW.chromium.launch(), R = [], allErrors = [];
 const store = (page) => page.evaluate(() => window.__mock.store());
 const packDocs = (s, id) => Object.keys(s).filter(p => p.startsWith('trip/' + id + '/pack_'));
@@ -101,6 +103,41 @@ try {
   await page.click('#packgen a:has-text("Cancel")'); await page.waitForSelector('#rr-export');
   check(R, 'Trip details Cancel → back to list', /\.packing$/.test(page.url()));
 
+  // ---------- 8c. Start from a past trip (Kauai from PHX), short-quantity warning, Sandals, new styles ----------
+  const KA = 'KAUAI-2026-09-19', ready = () => page.waitForFunction(() => { const b = document.querySelector('#pe-enex'); return b && !b.disabled; }, null, {timeout:8000});
+  await page.click('#rr-add'); await page.waitForSelector('.sheet-bg.packgen #ra-label'); await page.fill('#ra-label', 'Travel pillow'); await page.click('.sheet-bg button:has-text("Add item")'); await page.waitForSelector('.sheet-bg', {state:'detached'}); await settle(page);
+  const rmId = await page.evaluate(id => { const r = refineEvaluate(refineLoad(TRIPS[id]), generatorPrefs(), []); const x = r.items.find(i => !i.required && !i.critical && !i.manual && i.section === 'Personal bag & day gear' && /costa sunglasses|kindle|snacks|anker/i.test(i.label)) || r.items.find(i => !i.required && !i.critical && !i.manual && i.section === 'Personal bag & day gear'); return x && {id:x.id, label:x.label}; }, PHX);
+  await page.locator(`[data-item-id="${rmId.id}"]`).getByRole('button', {name:'Remove', exact:true}).click(); await page.click('.sheet-bg button:has-text("Remove for this trip")'); await page.waitForSelector('.sheet-bg', {state:'detached'}); await settle(page);
+  await page.goto(port.url + '#' + KA + '.packing'); await page.waitForSelector('#packgen #rs-past', {timeout:8000});
+  const styleOpts = await page.locator('#rs-style option').allTextContents();
+  check(R, 'new built-in styles listed', JSON.stringify(styleOpts.slice(0, 6)) === JSON.stringify(['Usual defaults','Weekend','Wedding / event weekend','Beach / Hawaii','Hiking (cooler)','International']), styleOpts.join(', '));
+  const pastOpts = await page.locator('#rs-past option').evaluateAll(xs => xs.map(x => x.value));
+  check(R, 'past-trip select lists the trip with a list (not itself, not legacy Wyoming)', pastOpts.includes(PHX) && !pastOpts.includes(KA) && !pastOpts.includes(WY), pastOpts.join(','));
+  await page.selectOption('#rs-past', PHX); const pnote = await page.textContent('#rs-style-note');
+  check(R, 'past-trip note says what carries over', /Reusing Phoenix Trip/.test(pnote) && /1 added item, 1 removal carry over/.test(pnote), pnote);
+  await page.selectOption('#rs-style', 'weekend'); const ex1 = await page.inputValue('#rs-past');
+  await page.selectOption('#rs-past', PHX); const ex2 = await page.inputValue('#rs-style');
+  check(R, 'past trip and style are mutually exclusive', ex1 === '' && ex2 === '' && await page.inputValue('#rs-mode') === 'fly');
+  await page.click('button:has-text("Generate my list")'); await page.waitForSelector('#rr-export', {timeout:8000}); await settle(page);   // 9-day trip: export waits on the laundry decision
+  const ks = await page.evaluate(([id, rm]) => { const s = refineLoad(TRIPS[id]), r = refineEvaluate(s, generatorPrefs(), []); return {added:Object.values(s.overrides.added).map(x => x.label), removed:!!s.overrides.removed[rm], edited:Object.keys(s.overrides.edited), carried:!!s.carried, tshirts:(r.items.find(x => x.id === 'pack:tshirts') || {}).quantity, days:refineDays(s.inputs.start, s.inputs.end)}; }, [KA, rmId.id]);
+  const ktext = await page.textContent('#packgen .gen-review');
+  check(R, 'past trip carries added item + removal, fresh quantities', ks.added.includes('Travel pillow') && ks.removed && ks.edited.length === 0 && ks.carried && ks.tshirts !== 9 && ktext.includes('Travel pillow') && !ktext.includes(rmId.label + '\n'), JSON.stringify(ks));
+  // short-quantity: pin T-shirts at today's automatic amount, then extend the trip in Trip details
+  await page.locator('[data-item-id="pack:tshirts"]').getByRole('button', {name:'Edit', exact:true}).click(); await page.waitForSelector('#ri-quantity');
+  const autoQ = +(await page.inputValue('#ri-quantity')); await page.fill('#ri-label', 'Tees'); await page.click('button:has-text("Save override")'); await page.waitForSelector('.sheet-bg', {state:'detached'}); await settle(page);
+  await page.click('a.trip-plan-card[aria-label^="Trip details"]'); await page.waitForSelector('#packgen form h2:has-text("Trip details")');
+  await page.locator('.rp-sum button').nth(1).click(); await page.locator('.rp-grid button[aria-label*="Sep 30"]').click(); await page.getByRole('button', {name:'OK', exact:true}).click();
+  await page.click('button:has-text("Update trip & recalculate")'); await page.waitForSelector('#rr-export', {timeout:8000}); await settle(page);
+  const warnText = await page.locator('.refine-warning').textContent().catch(() => '');
+  check(R, 'short-quantity warning after date extension (Trip details)', new RegExp('Tees ×' + autoQ + ' is below the \\d+ this trip now needs').test(warnText) && (await page.locator('.refine-warning button:has-text("Use new amount")').count()) === 1 && (await store(page))['trips/' + KA].end === '2026-09-30', warnText.slice(0, 120));
+  await page.click('.refine-warning button:has-text("Use new amount")'); await settle(page, 800);
+  const newQ = await page.evaluate(id => refineLoad(TRIPS[id]).overrides.edited['pack:tshirts'].quantity, KA);
+  check(R, 'Use new amount clears the warning', newQ > autoQ && !/is below the/.test(await page.locator('#packgen').textContent()), autoQ + ' → ' + newQ);
+  // Sandals on a swimming trip (Activities card)
+  await page.click('button.trip-plan-card[aria-label="Activities"]'); await page.check('#rf-water'); await page.click('button:has-text("Apply & recalculate")'); await page.waitForSelector('.sheet-bg', {state:'detached'}); await settle(page);
+  check(R, 'Sandals on a swimming trip', (await page.locator('#packgen .gen-review section:has(h3:text-is("Clothing"))').textContent()).includes('Sandals'));
+  await page.goto(port.url + '#' + PHX + '.packing'); await page.waitForSelector('#rr-export'); await settle(page);
+
   // ---------- 9. Layout at 360/390/430 light/dark ----------
   let overflowOk = true, notes = [];
   for (const width of [360, 390, 430]) for (const scheme of ['light', 'dark']){
@@ -110,6 +147,14 @@ try {
     await page.screenshot({path:`${SHOTS}phx-list-${width}-${scheme}.png`, fullPage:false});
   }
   check(R, 'no horizontal overflow 360/390/430 light+dark (review)', overflowOk, notes.join(','));
+  await page.goto(port.url + '#DULUTH-2026-10-23.packing'); await page.waitForSelector('#packgen #rs-past'); overflowOk = true; notes = [];
+  for (const width of [360, 390, 430]) for (const scheme of ['light', 'dark']){
+    await page.setViewportSize({width, height:844}); await page.emulateMedia({colorScheme:scheme}); await settle(page, 200);
+    if (!await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth && [...document.querySelectorAll('#packgen *')].every(e => e.getBoundingClientRect().right <= innerWidth + 0.5))){ overflowOk = false; notes.push(width + scheme); }
+    await page.locator('#packgen').screenshot({path:`${SHOTS}duluth-setup-past-${width}-${scheme}.png`});
+  }
+  check(R, 'no horizontal overflow 360/390/430 light+dark (setup with past-trip select)', overflowOk, notes.join(','));
+  await page.goto(port.url + '#' + PHX + '.packing'); await page.waitForSelector('#rr-export'); await settle(page);
   await page.setViewportSize({width:390, height:844}); await page.emulateMedia({colorScheme:'dark'});
   await page.click('button:has-text("Packing preferences")'); await page.waitForSelector('.sheet-bg.packgen'); await settle(page, 300);
   await page.screenshot({path:SHOTS + 'prefs-sheet-390-dark.png'}); await page.keyboard.press('Escape');
