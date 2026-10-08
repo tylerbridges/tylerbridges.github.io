@@ -30,5 +30,5 @@ assert(!context.leavingFor([{title:"Toiletries",items:[]}],false).some(i=>/Toile
 assert.equal(d.groups.at(-1).title,"Before leaving");
 assert.throws(()=>build({},prefs,{...trip,start:"",end:""}),/valid trip dates/);
 const html=context.packExportHtml({title:"Test",detail:"",groups:[{title:"Clothing",items:[{label:"A & <B>",checked:false}]}]},true);
-assert(!html.includes("<h1>")); assert(html.includes('<en-todo checked="false"/> A &amp; &lt;B&gt;'));
+assert(!html.includes("<h1>")); assert(html.includes('<en-todo checked="false"/>A &amp; &lt;B&gt;') && !html.includes('"/> '));
 console.log("OK: packing quantities, weather, laundry, events, saved preferences, departure dependencies, and Notes export");

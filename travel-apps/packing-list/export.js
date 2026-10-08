@@ -18,7 +18,7 @@ function packExportMarkdown(data){
 function packExportHtml(data, enml){
   return (enml ? "" : "<h1>" + escHtml(data.title) + "</h1>") + (data.detail ? "<p>" + escHtml(data.detail) + "</p>" : "") + data.groups.map(function(g){
     return "<h2>" + escHtml(g.title) + "</h2>" + (g.note ? "<p>" + escHtml(g.note) + "</p>" : "") + g.items.map(function(i){
-      return "<div>" + (enml ? '<en-todo checked="' + (i.checked ? "true" : "false") + '"/>' : (i.checked ? "☑" : "☐")) + " " + escHtml(i.label) + "</div>"; }).join(""); }).join("");
+      return "<div>" + (enml ? '<en-todo checked="' + (i.checked ? "true" : "false") + '"/>' : (i.checked ? "☑" : "☐") + " ") + escHtml(i.label) + "</div>"; }).join(""); }).join("");
 }
 function packExportEnex(data){
   var enml = '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE en-note SYSTEM "http://xml.evernote.com/pub/enml2.dtd"><en-note>' + packExportHtml(data, true) + "</en-note>";
