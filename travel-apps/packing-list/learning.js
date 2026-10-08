@@ -9,17 +9,19 @@ function packingLearningLoad(){
 function packingLearningObserve(t,state,result){
   var ledger=packingLearningLoad();if(state.legacy || ledger.observeEdits===false || (ledger.ignoredEditTrips || {})[t.id])return Promise.resolve();
   var automatic=clone(state);automatic.overrides={removed:{},edited:{},added:{}};
-  var baseline=refineEvaluate(automatic,generatorPrefs(),[]),items={},added={};
-  baseline.items.forEach(function(item){var edited=state.overrides.edited[item.id],change=state.overrides.removed[item.id] ? "removed":edited && (edited.label!==item.label || edited.quantity!==item.quantity || edited.section!==item.section) ? JSON.stringify([edited.label,edited.quantity,edited.section]):"kept";
+  var baseline=refineEvaluate(automatic,generatorPrefs(),[]),items={},added={},carried=packingLearningCarried(t,state);
+  baseline.items.forEach(function(item){if(carried && (carried.removed[item.id] || carried.edited[item.id]))return;var edited=state.overrides.edited[item.id],quantity=edited && edited.quantity!=null ? edited.quantity:item.quantity,change=state.overrides.removed[item.id] ? "removed":edited && (edited.label!==item.label || quantity!==item.quantity || (edited.section || item.section)!==item.section) ? JSON.stringify([edited.label,quantity,edited.section || item.section]):"kept";
     items[item.id]={id:item.id,label:item.label,context:packingLearningContext(state,item),safe:packingLearningSafe(item),change:change};
   });
-  result.items.filter(function(item){return state.overrides.added[item.id] && !item.legacy;}).forEach(function(item){var id=refineId(item.label);added[id]={label:item.label,quantity:item.quantity,section:item.section};});
+  result.items.filter(function(item){return state.overrides.added[item.id] && !item.legacy && !(carried && carried.added[item.id]);}).forEach(function(item){var id=refineId(item.label);added[id]={label:item.label,quantity:item.quantity,section:item.section};});
   ledger.editTrips=ledger.editTrips || {};var entry={name:t.name || t.where,end:state.inputs.end,items:items,added:added,context:packingLearningContext(state,{rule:"added item"}),assumptions:{inputs:clone(state.inputs),refinements:clone(state.refinements)},at:Date.now()},prev=ledger.editTrips[t.id];
   // Viewing an unchanged list must not rewrite the whole learning ledger.
   if(prev && JSON.stringify(Object.assign({},prev,{at:0}))===JSON.stringify(Object.assign({},entry,{at:0})))return Promise.resolve();
   ledger.editTrips[t.id]=entry;
   return db.doc(PACK_LEARNING_PATH).set(ledger);
 }
+// Standalone app: overrides carried from a past trip (state.carried) are not this trip's evidence until its list is exported; redone edits leave state.carried.
+function packingLearningCarried(t,state){var c=state.carried;return c && !lsGet("ta:trip/"+t.id+"/pack_meta/export",null) ? {removed:c.removed || {},edited:c.edited || {},added:c.added || {}}:null;}
 function packingLearningEditRecommendations(ledger,profile){
   var buckets={},all={},excluded=profile.refinementProfile && profile.refinementProfile.excluded || {};
   Object.keys(ledger.editTrips || {}).forEach(function(tripId){var trip=ledger.editTrips[tripId];Object.keys(trip.items).forEach(function(id){var item=trip.items[id],key=JSON.stringify([id,item.context]),row={tripId:tripId,name:trip.name,end:trip.end,at:trip.at,item:item};(buckets[key] || (buckets[key]=[])).push(row);(all[id] || (all[id]=[])).push(row);});});

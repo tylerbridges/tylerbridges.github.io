@@ -164,16 +164,22 @@ function refineEvaluate(state,profile,changed){
     if (excluded[item.id] && !item.critical && !item.required) return;
     if (!merged[item.id]){ merged[item.id] = item; order.push(item.id); } else { var old = merged[item.id]; old.quantity = Math.max(old.quantity,item.quantity); old.critical = old.critical || item.critical; old.required = old.required || item.required; old.requiredQuantity=Math.max(old.requiredQuantity,item.requiredQuantity); old.reasons = old.reasons.concat(item.reasons); }
   }); });
-  var warnings = [], items = [], overrides = state.overrides;
+  var warnings = [], items = [], overrides = state.overrides, autoQuantities = {};
   refinePendingDecisions(state).forEach(function(focus){warnings.push({id:"decision:"+focus,decision:focus,text:focus+" needs confirmation. Clothing quantities are provisional until you complete this step."});});
-  order.forEach(function(id){ var item = merged[id];
+  order.forEach(function(id){ var item = merged[id]; autoQuantities[id] = item.quantity;
     if (excluded[id] && (item.critical || item.required)) warnings.push({id:"excluded:"+id,itemId:id,text:item.label + " is excluded in your profile but required here; it has been kept."});
     if (overrides.removed[id]){ if (item.critical || item.required) warnings.push({id:"removed:"+id,itemId:id,text:item.label + " was removed manually but is required by this trip. Restore it or account for a replacement."}); return; }
-    if (overrides.edited[id]){ var edit = overrides.edited[id]; if ((item.critical || item.required) && edit.quantity < item.requiredQuantity) warnings.push({id:"quantity:"+id,itemId:id,text:item.label + " is pinned below the calculated requirement (" + edit.quantity + " vs " + item.requiredQuantity + "). Check that the need is covered."}); item = Object.assign({},item,{label:edit.label,quantity:edit.quantity,section:edit.section || item.section,manual:true,reasons:item.reasons.concat(["Your pinned manual edit; automatic quantities do not replace it"])}); }
+    if (overrides.edited[id]){ var edit = overrides.edited[id], pinned = edit.quantity != null;
+      // Standalone app: edit.autoQuantity is the automatic quantity when the edit was saved; warn only once it has risen past both it and the pinned quantity. Older edits without it keep the critical/required check alone.
+      var short = pinned && edit.autoQuantity != null && item.quantity > edit.quantity && item.quantity > edit.autoQuantity;
+      if (short) warnings.push({id:"short:"+id,itemId:id,short:true,autoQuantity:item.quantity,text:(edit.label || item.label) + " ×" + edit.quantity + " is below the " + item.quantity + " this trip now needs." + ((item.critical || item.required) ? " This item is required; check that the need is covered." : "")});
+      else if (pinned && (item.critical || item.required) && edit.quantity < item.requiredQuantity) warnings.push({id:"quantity:"+id,itemId:id,text:item.label + " is pinned below the calculated requirement (" + edit.quantity + " vs " + item.requiredQuantity + "). Check that the need is covered."});
+      // Standalone app: a label/section-only edit (carried from a past trip) keeps the automatic quantity.
+      item = Object.assign({},item,{label:edit.label || item.label,quantity:pinned ? edit.quantity : item.quantity,section:edit.section || item.section,manual:true,reasons:item.reasons.concat([pinned ? "Your pinned manual edit; automatic quantities do not replace it" : "Your label/section edit; the quantity stays automatic"])}); }
     if (item.quantity > 0) items.push(item);
   });
   // Pinned edits and manual additions stay visible even when their generating rule is no longer active.
-  Object.keys(overrides.edited).forEach(function(id){ if (!merged[id] && !overrides.removed[id]) items.push(Object.assign({},overrides.edited[id],{id:id,manual:true,reasons:["Your pinned manual edit"]})); });
+  Object.keys(overrides.edited).forEach(function(id){ if (!merged[id] && !overrides.removed[id] && overrides.edited[id].quantity != null) items.push(Object.assign({},overrides.edited[id],{id:id,manual:true,reasons:["Your pinned manual edit"]})); });
   Object.keys(overrides.added).forEach(function(id){ if (!overrides.removed[id]){ var original=merged[id];if(original && (original.critical || original.required) && overrides.added[id].quantity<original.requiredQuantity)warnings.push({id:"quantity:"+id,itemId:id,text:original.label+" is pinned below the calculated requirement ("+overrides.added[id].quantity+" vs "+original.requiredQuantity+"). Check coverage."}); items = items.filter(function(x){return x.id!==id;}); items.push(Object.assign({},overrides.added[id],{id:id,manual:true,reasons:[overrides.added[id].legacy ? "Preserved legacy item" : "Your pinned item"]})); } });
   if (c.inputs.bag === "carryon"){
     if (items.some(function(x){ return /monitors/.test(x.id); })) warnings.push({id:"work-baggage",text:"Full work setup includes monitors. Check carry-on capacity or switch to laptop only; nothing was silently removed."});
@@ -192,5 +198,5 @@ function refineEvaluate(state,profile,changed){
   items.forEach(function(item){ if (!groups.some(function(g){ return g.title === item.section; })){ groups.push({title:item.section,items:items.filter(function(x){ return x.section === item.section; })}); } });
   var departure = leavingFor(groups.map(function(g){ return {title:g.title,items:g.items.map(refineLabel)}; }),c.inputs.bag === "checked");
   groups.push({title:"Before leaving",depart:true,items:departure.map(function(label){ return refineItem(label,"Before leaving","Derived from your final list",{required:true}); })});
-  return {groups:groups,items:items,warnings:warnings,ruleResults:cache,ruleKeys:keys,profileSignature:signature,ran:ran,coverage:c.clothingDays};
+  return {groups:groups,items:items,warnings:warnings,ruleResults:cache,ruleKeys:keys,profileSignature:signature,ran:ran,coverage:c.clothingDays,autoQuantities:autoQuantities};
 }

@@ -83,3 +83,22 @@ function refineChanges(before,after){ var previous = {}, next = {}, changes = []
   Object.keys(next).forEach(function(id){ if (!previous[id]) changes.push("Added " + refineLabel(next[id])); }); return changes;
 }
 function refineExclude(profile,item){ var p = clone(profile); p.refinementProfile = p.refinementProfile || {excluded:{}}; p.refinementProfile.excluded = p.refinementProfile.excluded || {}; p.refinementProfile.excluded[item.id] = item.label; return p; }
+// Standalone app: Start from a past trip carries its explicit added items, removals and label/section edits onto a new trip's
+// fresh rules — never quantity edits. Removals of items this trip requires or no longer generates, adds the rules now cover and
+// legacy rows are skipped. Carried ids are listed in state.carried until the new list is exported or the edit is redone.
+function refineCarryOverrides(past,state,profile){
+  var auto=clone(state),items={},o=past.overrides || {},removed=o.removed || {},edited=o.edited || {},added=o.added || {},carried={from:past.inputs ? past.inputs.where:null,removed:{},edited:{},added:{}};
+  auto.overrides={removed:{},edited:{},added:{}};auto.ruleResults={};auto.ruleKeys={};
+  refineEvaluate(auto,profile,null).items.forEach(function(x){items[x.id]=x;});
+  Object.keys(removed).forEach(function(id){var x=items[id];if(!removed[id] || added[id] || !x || x.critical || x.required)return;state.overrides.removed[id]=true;carried.removed[id]=true;});
+  Object.keys(edited).forEach(function(id){var e=edited[id],x=items[id];if(!e || removed[id] || !x || state.overrides.removed[id])return;var label=String(e.label || "").trim() || x.label,section=e.section || x.section;if(section==="Toiletries")section=toiletryBagSection(label);
+    if(label===x.label && section===x.section)return;state.overrides.edited[id]={id:id,label:label,section:section};carried.edited[id]=true;});
+  Object.keys(added).forEach(function(id){var a=added[id],label=a && String(a.label || "").trim();if(!label || removed[id] || a.legacy || state.overrides.added[id])return;var key=refineId(label);if(items["pack:"+key] || items["wear:"+key])return;
+    state.overrides.added[id]={id:id,label:label,quantity:a.quantity>0 ? a.quantity:1,section:a.section==="Toiletries" ? toiletryBagSection(label):a.section || "Personal bag & day gear"};carried.added[id]=true;});
+  state.carried=carried;return carried;
+}
+// Redoing, reverting or restoring a carried override makes it this trip's own edit.
+function refineCarriedPrune(prev,next){var c=next.carried;if(!c)return next;
+  ["removed","edited","added"].forEach(function(kind){Object.keys(c[kind] || {}).forEach(function(id){if(JSON.stringify(((prev.overrides || {})[kind] || {})[id])!==JSON.stringify((next.overrides[kind] || {})[id]))delete c[kind][id];});});
+  if(!["removed","edited","added"].some(function(kind){return Object.keys(c[kind] || {}).length;}))delete next.carried;return next;
+}
