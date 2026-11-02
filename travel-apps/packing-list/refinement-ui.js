@@ -120,7 +120,7 @@ function refineTripDetails(t){
   });return f;
 }
 function refinePage(t){ var w = el("div","stack"), back = el("a","back","← Packing generator"); back.href = "#"; w.appendChild(back); if(PACK_TEST_MODE)w.appendChild(packingTestBanner()); w.appendChild(el("p","muted",[t.where,fmt(t.start)+" – "+fmt(t.end || t.start)].join(" · "))); if(t.packingDeleted){w.appendChild(el("h2",null,"Packing list deleted"));w.appendChild(generatorLink("Generate a packing list","#"+t.id+".edit",true));return w;} var pk = packData(t.id);
-  if (!pk.ready){ w.appendChild(el("p",null,"Loading your saved list…")); setTimeout(function(){ if (route().t && route().t.id === t.id) render(); },100); return w; }
+  if (!pk.ready){ w.appendChild(el("p",null,"Loading your saved list…")); packWhenReady(t.id); return w; }
   w.appendChild(refineReview(t)); return w;
 }
 function refineReview(t){

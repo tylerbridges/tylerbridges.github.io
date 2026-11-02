@@ -579,6 +579,10 @@ var Store = (function(){
     var openedNow = openGate();
     paintMigration();
     if (!openedNow) notifyAll();
+    // The open trip is not redrawn by the trips listener, so refresh it once the account copy is in place.
+    if (typeof render === "function" && !(document && document.querySelector && document.querySelector(".sheet-bg,form"))){
+      try { render(); } catch(e){}
+    }
   }
   function failCloud(my, text){
     if (my !== epoch) return;
@@ -675,14 +679,17 @@ var Store = (function(){
     } catch(e){}
   }
   function bootCloud(){
-    if (testMode() || !configured()) return;
-    paintAccount();
-    if (cachedSessionLikely()) holdGate();
+    if (testMode() || !configured() || cloudClient) return;
+    // The library is async so a slow CDN can't block the rest of the page.
     if (!window.supabase || !window.supabase.createClient){
+      bootCloud.tries = (bootCloud.tries || 0) + 1;
+      if (bootCloud.tries < 40){ setTimeout(bootCloud, 250); return; }
+      paintAccount();
       showSyncError("The sync library didn't load. Lists stay in this browser.");
       openGate();
       return;
     }
+    paintAccount();
     try {
       cloudClient = window.supabase.createClient(projectUrl(), projectKey(), {
         auth: {flowType:"pkce", detectSessionInUrl:true, persistSession:true, autoRefreshToken:true}
