@@ -188,7 +188,7 @@ function generatorBuild(t, s, prefs){
 function generatorSaved(t){ var pk = packData(t.id); return {groups:Object.keys(pk.sections).map(function(id){ var s = pk.sections[id]; return {id:id,title:s.title,order:s.order || 0,depart:!!s.depart}; }).sort(secSort).map(function(s){ return {title:s.title,depart:s.depart,items:Object.keys(pk.items).map(function(id){ return pk.items[id]; }).filter(function(i){ return i.section === s.id; }).sort(function(a,b){ return (a.order || 0) - (b.order || 0); }).map(function(i){ return i.label; })}; }),setup:t.generatorSetup || null,explanation:[]}; }
 function generatorReview(t){
   var w = el("div","gen-review"), pk = packData(t.id);
-  if (!pk.ready){ w.appendChild(el("p","muted","Loading your draft…")); setTimeout(function(){ if (route().t && route().t.id === t.id) render(); },100); return w; }
+  if (!pk.ready){ w.appendChild(el("p","muted","Loading your draft…")); packWhenReady(t.id); return w; }
   var pending = GEN_PENDING[t.id] || lsGet("ta:trip/" + t.id + "/pack_meta/draft",null), fresh = !!pending, draft = pending || generatorSaved(t), groups = draft.groups;
   if (!groups.length){ w.appendChild(el("p","muted","Set up this trip to generate an accurate packing list.")); w.appendChild(generatorLink("Set up & generate","#" + t.id + ".edit",true)); return w; }
   w.appendChild(el("h2","k","Review, then export")); w.appendChild(el("p","muted","Adjust item names and quantities here. Packing and checking items off happens in Notes."));

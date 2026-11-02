@@ -15,6 +15,17 @@ function packData(id){
   }
   return PACK[id];
 }
+// Keep the loading screen in place until the list is ready. Rebuilding the page on a timer
+// ate taps, and an update reload could start another wait before the first one finished.
+function packWhenReady(id){
+  (function wait(n){
+    setTimeout(function(){
+      if (!route().t || route().t.id !== id) return;
+      if (packData(id).ready) render();
+      else if (n < 100) wait(n + 1);
+    }, 100);
+  })(0);
+}
 var packRoot = null, packTrip = null;
 function packView(t){
   packLearning();
