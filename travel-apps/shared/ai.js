@@ -65,7 +65,7 @@ function aiSettingsSheet(onDone){
   var ex = el("button","btn","Download backup"); ex.type = "button";
   ex.addEventListener("click", function(){ var a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(Store.exportAll(), null, 1)], {type:"application/json"})); a.download = "travel-apps-backup.json"; a.click(); });
   var im = el("input"); im.type = "file"; im.accept = "application/json"; im.id = "ai-import"; im.style.maxWidth = "100%";
-  im.addEventListener("change", function(){ var f = im.files && im.files[0]; if (!f) return; f.text().then(function(s){ Store.importAll(JSON.parse(s)); closeSheet(); location.reload(); }).catch(function(){ showStatus("<strong>Couldn't</strong> read that backup file.", true); }); });
+  im.addEventListener("change", function(){ var f = im.files && im.files[0]; if (!f) return; f.text().then(function(s){ return Promise.resolve(Store.importAll(JSON.parse(s))); }).then(function(){ closeSheet(); location.reload(); }).catch(function(){ showStatus("<strong>Couldn't</strong> restore that backup.", true); }); });
   bx.appendChild(ex); bx.appendChild(fieldEl("Restore from backup", im)); body.appendChild(bx);
 }
 IDX.home = lsGet("ta-home", IDX.home);
