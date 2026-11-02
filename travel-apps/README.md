@@ -15,7 +15,8 @@ Static HTML/JS, no build step. Works on GitHub Pages: `/packing-list/` and `/iti
 index.html                 landing page linking both apps
 shared/
   core.js     helpers lifted from dashboard core.js + trip.js (dates, sheets, forms, undo, trip records)
-  store.js    localStorage stand-in for the artifact database (same doc/collection API)
+  store.js    document API (localStorage, or Supabase ta_docs when signed in)
+  supabase-config.js   project URL + publishable key (never the secret key)
   ai.js       optional Claude adapter (AI.sample / AI.sample.json), settings + backup/restore
   shell.js    trip list, trip form, routing
   styles.css  dashboard stylesheet, unchanged
@@ -35,7 +36,7 @@ itinerary-generator/
 
 ## How it differs from the dashboard
 
-- **Storage**: `store.js` keeps data in the browser (`localStorage`, keys `ta:<path>`) using the same paths the dashboard uses (`trips/<ID>`, `trip/<ID>/pack_items`, `trip/<ID>/itinerary/main`, `meta/packing`, `templates`). Both apps share one origin, so a trip created in one shows in the other. Settings has backup download/restore. Swap `store.js` for a synced backend later without touching the modules.
+- **Storage**: `store.js` keeps the same paths the dashboard uses (`trips/<ID>`, `trip/<ID>/pack_items`, `trip/<ID>/itinerary/main`, `meta/packing`, `templates`). Signed out, and in Test flow (`?test=1`), they stay in this browser (`localStorage` keys `ta:<path>`). Signed in, the same paths are rows in Supabase `public.ta_docs` and this browser keeps a mirror. Both apps share one origin. Settings still downloads and restores a backup. See [Supabase sync](#supabase-sync).
 - **Packing generator**: one compact setup form collects destination, dates, trip type, baggage and optional major activities, including Workouts for most days. Expected weather and rain are optional setup choices; skipping them keeps weather unconfirmed. Hiking reveals a rugged/wet-trails toggle. Trip name is automatic; travel mode/international status are optional details. Dates are required (1–60 calendar days, including both travel days). Generate first, resolve only applicable outfit decisions, then export. A single Adjust trip entry opens focused Laundry, Packing, Extras, Bag, Weather, Activities, Events, Work and Flight editors when something changes; repeated assumption checklists are removed from the generated list. No AI API call is needed. Weather defaults to unconfirmed and is never inferred as a forecast.
 - **App updates**: a local asset-version check bypasses cached HTML when the app launches or resumes, and once per minute while visible. Idle views load the newest version automatically; open forms show Load update so editing is not interrupted. Autosaved drafts resume after updating; a failed autosave blocks that reload.
 - **Draft autosave**: Setup (including calendar dates), semantic refinements, manual edits/additions, preference edits, trip-style names and post-trip feedback save unfinished work immediately in `meta/packingFormDrafts/<scope>`. Reopening the same editor restores the draft with a visible status and a Discard unfinished draft action. Drafts remain separate from confirmed assumptions, item overrides, preferences and learning evidence; Apply/Save confirms them and clears the draft only after a successful save. Draft context checks prevent restoring edits against changed confirmed values. Storage failures are visible and test-mode drafts are isolated. All data remains in this browser; Settings backup includes it.
@@ -69,6 +70,37 @@ node tests/autosave-ui.mjs # optional: reload/resume, confirm/discard, failures 
 ```
 
 Agent rules for this folder are in `AGENTS.md`.
+
+## Supabase sync
+
+Project `bpimarlvrastqchhxdcl` ([dashboard](https://supabase.com/dashboard/project/bpimarlvrastqchhxdcl)). The website already has the project URL and publishable key in `shared/supabase-config.js`. Replace those two fields if the project is rotated. Do not put the service role or an `sb_secret_` key there; row level security is what keeps each account to its own rows.
+
+`supabase-js` 2.118 accepts the publishable key (`sb_publishable_…`) in the browser. A legacy anon JWT is not required.
+
+### One-time setup
+
+1. In the SQL editor, run `supabase/migrations/001_ta_docs.sql`. It is safe if `public.ta_docs` already exists. It adds the owner-only policies, forces `user_id` to the signed-in user, turns on realtime, and sets replica identity to full so deletes sync.
+2. Authentication → URL configuration:
+   - Site URL: `https://tylerbridges.github.io/travel-apps/packing-list/`
+   - Redirect URLs (exact, no wildcards needed):
+     - `https://tylerbridges.github.io/travel-apps/auth.html`
+     - `http://localhost:8000/auth.html`
+     - `http://127.0.0.1:8000/auth.html`
+     - `http://localhost:8000/travel-apps/auth.html` (only if you serve the repo root)
+3. Leave the default email templates alone unless you edited them. The link has to be `{{ .ConfirmationURL }}` so the `redirect_to` to `auth.html` is kept. Sign-in uses PKCE (`?code=` on `auth.html`), not a hash, so it does not overwrite a trip URL such as `#KAUAI-2026-11-03`.
+4. Authentication → Users → Add user: `tylerbridges1@gmail.com`, a password, and Auto Confirm. Then Authentication → Providers → Email → turn off **Enable sign ups** so a second account cannot be created from the app. Policies are per signed-in user; disabling sign-ups is what keeps the project to that one account.
+5. The built-in mailer only delivers to addresses on the Supabase organization team, about two messages an hour, until a custom SMTP provider is set (Authentication → Emails → SMTP; a free SMTP account is enough, and it is not a paid Supabase add-on). Password sign-in does not need a message after the user exists. Magic link and the confirm-account message do.
+
+Open Packing List or Itinerary, choose **Sign in to sync**, and sign in with that email. The footer then reads `synced · tylerbridges1@gmail.com`.
+
+### What the app does after sign-in
+
+- If the account has no rows and this browser still has `ta:` lists, they upload on their own.
+- If both sides have lists and they differ, the page asks before copying the browser over the account. **Keep account copy** leaves the browser snapshot on this device until Account → Import or Discard.
+- Writes go to the account. This browser keeps a mirror so existing screens that read `localStorage` keep working. A failed write stays queued and is retried on the next sign-in. Unfinished form drafts under `ta:meta/packingFormDrafts/` sync with the rest; the draft line in the form still says "on this device".
+- The app also listens for realtime changes and re-reads the account every 12 seconds while the tab is open.
+- `?test=1` never talks to Supabase and never imports sandbox lists.
+- Settings → Download backup / Restore still uses `Store.exportAll` / `importAll`. Restore waits until the account write finishes.
 
 ## Run locally
 

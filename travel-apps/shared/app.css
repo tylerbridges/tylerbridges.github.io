@@ -8,3 +8,5 @@
 input[type=password]{width:100%;font:inherit;font-size:16px;color:var(--ink);background:var(--surface-2);border:1px solid var(--line);border-radius:7px;padding:8px 9px;}
 input,select,textarea{font-size:16px !important;} /* no iPhone auto-zoom */
 input[type=time]{width:100%;font:inherit;color:var(--ink);background:var(--surface-2);border:1px solid var(--line);border-radius:7px;padding:8px 9px;}
+#ta-cloud .ta-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;}
+#ta-account-btn{font-size:13px;}
