@@ -1,8 +1,10 @@
 // Start from a past trip (fields, item edits, fresh quantities, exclusive with styles) and short-quantity warnings after date changes.
 import http from 'node:http';import {readFile} from 'node:fs/promises';import {join,dirname,extname} from 'node:path';import {fileURLToPath} from 'node:url';
+// Existing flows run in the Adjust view (the list opens on Pack by default); pack-ui.mjs covers Pack.
+async function adjustPage(br,o){const pg=await br.newPage(o);await pg.addInitScript(()=>{try{localStorage.setItem('ta-ui:packModeDefault','adjust');}catch(e){}});return pg;}
 let pw;try{pw=await import(process.env.PLAYWRIGHT_MODULE || 'playwright');}catch{console.log('SKIP: playwright not installed');process.exit(0);}
 const root=join(dirname(fileURLToPath(import.meta.url)),'..'),server=http.createServer(async(req,res)=>{let path=req.url.split('?')[0];if(path.endsWith('/'))path+='index.html';try{res.setHeader('Content-Type',({'.html':'text/html','.js':'text/javascript','.css':'text/css'})[extname(path)] || 'application/octet-stream');res.end(await readFile(join(root,path)));}catch{res.writeHead(404);res.end();}});
-await new Promise(r=>server.listen(0,'127.0.0.1',r));const base=process.env.PACKING_BASE_URL || `http://127.0.0.1:${server.address().port}/packing-list/`,browser=await pw.chromium.launch({executablePath:process.env.CHROMIUM_PATH || undefined}),p=await browser.newPage({viewport:{width:390,height:844}}),errors=[];p.on('pageerror',e=>errors.push(e.message));
+await new Promise(r=>server.listen(0,'127.0.0.1',r));const base=process.env.PACKING_BASE_URL || `http://127.0.0.1:${server.address().port}/packing-list/`,browser=await pw.chromium.launch({executablePath:process.env.CHROMIUM_PATH || undefined}),p=await adjustPage(browser,{viewport:{width:390,height:844}}),errors=[];p.on('pageerror',e=>errors.push(e.message));
 function assert(value,message){if(!value)throw new Error(message);}
 async function month(){for(let n=0;n<24;n++){const m=await p.locator('.rp-head b').textContent();if(m==='October 2026')return;await p.locator('.rp-head button').nth(new Date(m+' 1')<new Date(2026,9,1) ? 1:0).click();}}
 async function dates(a,b){await p.locator('.rp-sum button').first().click();await month();await p.locator(`.rp-grid button[aria-label*="Oct ${a}"]`).click();await p.locator(`.rp-grid button[aria-label*="Oct ${b}"]`).click();await p.getByRole('button',{name:'OK',exact:true}).click();}
@@ -15,10 +17,10 @@ try{
   await p.goto(base+'?test=1#new');await p.waitForSelector('#rs-style');await p.fill('#rs-where','Chicago');await dates(8,14);await p.check('#rs-workout');await p.check('#rs-extra-kindle');await p.click('button:has-text("Generate my list")');await p.waitForSelector('#rr-export');
   const pastId=await p.evaluate(()=>route().t.id);
   await p.click('button[aria-label="Packing"]');await p.selectOption('#rf-packing','extra');await p.click('button:has-text("Apply & recalculate")');await closed();
-  await (await row('pack:tshirts')).getByRole('button',{name:'Edit',exact:true}).click();await p.fill('#ri-quantity','1');await p.click('button:has-text("Save override")');await closed();
-  await (await row('pack:toothpaste')).getByRole('button',{name:'Edit',exact:true}).click();await p.fill('#ri-label','Travel toothpaste');await p.selectOption('#ri-section','Dry toiletries');await p.click('button:has-text("Save override")');await closed();
-  await (await row('pack:wrinkle-release')).getByRole('button',{name:'Remove',exact:true}).click();await p.click('button:has-text("Remove for this trip")');await closed();
-  await p.click('#rr-add');await p.fill('#ra-label','Camera');await p.fill('#ra-quantity','2');await p.selectOption('#ra-section','Gear');await p.click('button:has-text("Add item")');await closed();
+  await (await row('pack:tshirts')).getByRole('button',{name:/^Edit /}).click();await p.fill('#ri-quantity','1');await p.click('button:has-text("Save override")');await closed();
+  await (await row('pack:toothpaste')).getByRole('button',{name:/^Edit /}).click();await p.fill('#ri-label','Travel toothpaste');await p.selectOption('#ri-section','Dry toiletries');await p.click('button:has-text("Save override")');await closed();
+  await (await row('pack:wrinkle-release')).getByRole('button',{name:/^Remove /}).click();await p.locator('.sheet-bg button:has-text("Remove for this trip")').click({timeout:1500}).catch(()=>{});await closed();
+  await p.fill('#ra-multi','Camera x2');await p.click('#rr-add button[type=submit]');await p.waitForFunction(()=>Object.values(refineLoad(route().t).overrides.added).some(x=>x.label==='Camera' && x.quantity===2));
   let past=await load();assert(past.overrides.edited['pack:tshirts'].autoQuantity===7 && past.overrides.edited['pack:tshirts'].quantity===1,'edit did not store the automatic quantity at edit time');
 
   // New trip: the past-trip select reuses fields, is exclusive with styles, and never copies dates, destination, weather or counts.
@@ -43,7 +45,7 @@ try{
 
   // Short-quantity warning: a deliberate lower quantity is quiet until the automatic quantity rises after a date change.
   const before=await p.evaluate(()=>refineEvaluate(refineLoad(route().t),generatorPrefs(),[]).autoQuantities['pack:tshirts']);
-  await (await row('pack:tshirts')).getByRole('button',{name:'Edit',exact:true}).click();await p.fill('#ri-quantity',String(before-1));await p.click('button:has-text("Save override")');await closed();
+  await (await row('pack:tshirts')).getByRole('button',{name:/^Edit /}).click();await p.fill('#ri-quantity',String(before-1));await p.click('button:has-text("Save override")');await closed();
   state=await load();assert(state.overrides.edited['pack:tshirts'].autoQuantity===before,'auto quantity not stored at edit time');assert(!(await p.textContent('.gen-review')).includes('this trip now needs'),'deliberate lower quantity warned');
   await p.goto(base+'?test=1#'+newId+'.edit');await p.waitForSelector('.rp-sum');await p.locator('.rp-sum button').nth(1).click();await month();await p.locator('.rp-grid button[aria-label*="Oct 26"]').click();await p.getByRole('button',{name:'OK',exact:true}).click();await p.click('button:has-text("Update trip & recalculate")');await p.waitForSelector('#rr-export');
   const after=await p.evaluate(()=>refineEvaluate(refineLoad(route().t),generatorPrefs(),[]).autoQuantities['pack:tshirts']);assert(after>before,'date extension did not raise T-shirts');

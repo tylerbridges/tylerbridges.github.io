@@ -1,8 +1,10 @@
 // Long trips without laundry require a Laundry answer before export; a banner flags list changes after the last export.
 import http from 'node:http';import {readFile} from 'node:fs/promises';import {join,dirname,extname} from 'node:path';import {fileURLToPath} from 'node:url';
+// Existing flows run in the Adjust view (the list opens on Pack by default); pack-ui.mjs covers Pack.
+async function adjustPage(br,o){const pg=await br.newPage(o);await pg.addInitScript(()=>{try{localStorage.setItem('ta-ui:packModeDefault','adjust');}catch(e){}});return pg;}
 let pw;try{pw=await import(process.env.PLAYWRIGHT_MODULE || 'playwright');}catch{console.log('SKIP: playwright not installed');process.exit(0);}
 const root=join(dirname(fileURLToPath(import.meta.url)),'..'),server=http.createServer(async(req,res)=>{let path=req.url.split('?')[0];if(path.endsWith('/'))path+='index.html';try{res.setHeader('Content-Type',({'.html':'text/html','.js':'text/javascript','.css':'text/css'})[extname(path)] || 'application/octet-stream');res.end(await readFile(join(root,path)));}catch{res.writeHead(404);res.end();}});
-await new Promise(r=>server.listen(0,'127.0.0.1',r));const base=process.env.PACKING_BASE_URL || `http://127.0.0.1:${server.address().port}/packing-list/`,browser=await pw.chromium.launch({executablePath:process.env.CHROMIUM_PATH || undefined}),p=await browser.newPage({viewport:{width:390,height:844},acceptDownloads:true}),errors=[];p.on('pageerror',e=>errors.push(e.message));
+await new Promise(r=>server.listen(0,'127.0.0.1',r));const base=process.env.PACKING_BASE_URL || `http://127.0.0.1:${server.address().port}/packing-list/`,browser=await pw.chromium.launch({executablePath:process.env.CHROMIUM_PATH || undefined}),p=await adjustPage(browser,{viewport:{width:390,height:844},acceptDownloads:true}),errors=[];p.on('pageerror',e=>errors.push(e.message));
 function assert(value,message){if(!value)throw new Error(message);}
 const BANNER='Changed since your last export — export again to update Notes.';
 async function newTrip(where,lastDay){
@@ -15,7 +17,7 @@ async function newTrip(where,lastDay){
 const laundryCard=()=>p.locator('button.trip-plan-card[aria-label="Laundry"]');
 const bannerShown=()=>p.locator('#rr-export-changed').isVisible();
 async function exportMeta(id){return p.evaluate(id=>({doc:lsGet('ta:trip/'+id+'/pack_meta/export',null),real:localStorage.getItem('ta:trip/'+id+'/pack_meta/export'),sandbox:localStorage.getItem('packing-test:ta:trip/'+id+'/pack_meta/export')}),id);}
-async function editTshirts(quantity){await p.locator('[data-item-id="pack:tshirts"]').getByRole('button',{name:'Edit',exact:true}).click();await p.fill('#ri-quantity',String(quantity));await p.click('button:has-text("Save override")');await p.waitForSelector('.sheet-bg',{state:'detached'});}
+async function editTshirts(quantity){await p.locator('[data-item-id="pack:tshirts"]').getByRole('button',{name:/^Edit /}).click();await p.fill('#ri-quantity',String(quantity));await p.click('button:has-text("Save override")');await p.waitForSelector('.sheet-bg',{state:'detached'});}
 async function ready(){await p.waitForSelector('#pe-enex');await p.waitForFunction(()=>!document.querySelector('#pe-enex').disabled);}
 try{
   // 9-day trip, no laundry: export is blocked until Laundry is confirmed.

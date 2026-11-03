@@ -45,7 +45,7 @@ function generatorPreferences(suggestedItem){
   else { savedGroups.forEach(function(g){ gOf(g.title); (g.items || []).forEach(function(item){ putItem(g.title,item,true); }); }); }
   PACK_PREFS.extras.forEach(function(g){ gOf(g.title); (g.items || []).forEach(function(item){ if (g.title==="Toiletries" && groups.some(function(existing){return existing.items.some(function(x){return x.label===item;});}))return;if (removed.indexOf(g.title + "|" + item) < 0) putItem(g.title,item,false); }); });
   p.refinementProfile=p.refinementProfile || {};p.refinementProfile.excluded=p.refinementProfile.excluded || {};
-  function importAlways(labels){(labels || []).forEach(function(label){var group=groups.find(function(g){return g.items.some(function(x){return refineId(x.label)===refineId(label);});});var item=group && group.items.find(function(x){return refineId(x.label)===refineId(label);});if(item){item.always=true;item.on=true;}else putItem("Personal bag & day gear",label,true,true);});}
+  function importAlways(labels){(labels || []).forEach(function(label){var group=groups.find(function(g){return g.items.some(function(x){return refineId(x.label)===refineId(label);});});var item=group && group.items.find(function(x){return refineId(x.label)===refineId(label);});if(item){item.always=true;item.on=true;}else putItem((p.generatorExtraSections || {})[refineId(label)] || "Personal bag & day gear",label,true,true);});}
   importAlways(p.generatorExtras);
   if(typeof suggestedItem==="string" && suggestedItem.trim())importAlways([suggestedItem.trim()]);
   groups=splitToiletryGroups(groups);idx={};groups.forEach(function(g,index){idx[g.title]=index;});

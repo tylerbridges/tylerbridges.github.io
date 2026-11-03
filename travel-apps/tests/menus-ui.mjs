@@ -1,8 +1,10 @@
 // Consolidated menus must preserve old defaults, drafts and deterministic refinement behavior.
 import http from 'node:http';import {readFile} from 'node:fs/promises';import {join,dirname,extname} from 'node:path';import {fileURLToPath} from 'node:url';import assert from 'node:assert/strict';
+// Existing flows run in the Adjust view (the list opens on Pack by default); pack-ui.mjs covers Pack.
+async function adjustPage(br,o){const pg=await br.newPage(o);await pg.addInitScript(()=>{try{localStorage.setItem('ta-ui:packModeDefault','adjust');}catch(e){}});return pg;}
 let pw;try{pw=await import(process.env.PLAYWRIGHT_MODULE || 'playwright');}catch{console.log('SKIP: playwright not installed');process.exit(0);}
 const root=join(dirname(fileURLToPath(import.meta.url)),'..'),server=http.createServer(async(req,res)=>{let path=req.url.split('?')[0];if(path.endsWith('/'))path+='index.html';try{res.setHeader('Content-Type',({'.html':'text/html','.js':'text/javascript','.css':'text/css'})[extname(path)] || 'application/octet-stream');res.end(await readFile(join(root,path)));}catch{res.writeHead(404);res.end();}});
-await new Promise(r=>server.listen(0,'127.0.0.1',r));const base=process.env.PACKING_BASE_URL || `http://127.0.0.1:${server.address().port}/packing-list/`,browser=await pw.chromium.launch({executablePath:process.env.CHROMIUM_PATH || undefined}),p=await browser.newPage({viewport:{width:390,height:844}}),errors=[];p.on('pageerror',e=>errors.push(e.message));
+await new Promise(r=>server.listen(0,'127.0.0.1',r));const base=process.env.PACKING_BASE_URL || `http://127.0.0.1:${server.address().port}/packing-list/`,browser=await pw.chromium.launch({executablePath:process.env.CHROMIUM_PATH || undefined}),p=await adjustPage(browser,{viewport:{width:390,height:844}}),errors=[];p.on('pageerror',e=>errors.push(e.message));
 const button=name=>p.getByRole('button',{name,exact:true});
 async function addUsual(name,section,always){await p.locator('.sheet-body details').filter({has:p.getByText('Add usual item',{exact:true})}).evaluate(x=>x.open=true);await p.fill('#gp-addName',name);await p.selectOption('#gp-addSection',section);await p.locator('#gp-addAlways').setChecked(always);await button('Add item').click();}
 try{

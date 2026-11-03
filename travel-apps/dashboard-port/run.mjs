@@ -58,7 +58,7 @@ try {
   check(R, 'reload → list persists (mirror rebuilt from db)', (await page.locator('.refine-item').count()) === countBefore && countBefore > 20 && await page.locator('#rr-export-changed').isHidden(), countBefore + ' rows');
 
   // ---------- 6. Edit → export-changed banner ----------
-  await page.locator('[data-item-id="pack:tshirts"]').getByRole('button', {name:'Edit', exact:true}).click();
+  await page.locator('[data-item-id="pack:tshirts"]').getByRole('button',{name:/^Edit /}).click();
   await page.waitForSelector('.sheet-bg.packgen #ri-quantity'); await page.fill('#ri-quantity', '9'); await page.click('button:has-text("Save override")');
   await page.waitForSelector('.sheet-bg', {state:'detached'}); await settle(page);
   check(R, 'edit item → export-changed banner', await page.locator('#rr-export-changed').isVisible() && (await page.textContent('#rr-export-changed')).includes('Changed since your last export'));
@@ -105,9 +105,9 @@ try {
 
   // ---------- 8c. Start from a past trip (Kauai from PHX), short-quantity warning, Sandals, new styles ----------
   const KA = 'KAUAI-2026-09-19', ready = () => page.waitForFunction(() => { const b = document.querySelector('#pe-enex'); return b && !b.disabled; }, null, {timeout:8000});
-  await page.click('#rr-add'); await page.waitForSelector('.sheet-bg.packgen #ra-label'); await page.fill('#ra-label', 'Travel pillow'); await page.click('.sheet-bg button:has-text("Add item")'); await page.waitForSelector('.sheet-bg', {state:'detached'}); await settle(page);
+  await page.fill('#ra-multi', 'Travel pillow'); await page.click('#rr-add button[type=submit]'); await page.waitForFunction(id => Object.values(refineLoad(TRIPS[id]).overrides.added).some(x => x.label === 'Travel pillow'), PHX); await settle(page);
   const rmId = await page.evaluate(id => { const r = refineEvaluate(refineLoad(TRIPS[id]), generatorPrefs(), []); const x = r.items.find(i => !i.required && !i.critical && !i.manual && i.section === 'Personal bag & day gear' && /costa sunglasses|kindle|snacks|anker/i.test(i.label)) || r.items.find(i => !i.required && !i.critical && !i.manual && i.section === 'Personal bag & day gear'); return x && {id:x.id, label:x.label}; }, PHX);
-  await page.locator(`[data-item-id="${rmId.id}"]`).getByRole('button', {name:'Remove', exact:true}).click(); await page.click('.sheet-bg button:has-text("Remove for this trip")'); await page.waitForSelector('.sheet-bg', {state:'detached'}); await settle(page);
+  await page.locator(`[data-item-id="${rmId.id}"]`).getByRole('button',{name:/^Remove /}).click();await page.locator('.sheet-bg button:has-text("Remove for this trip")').click({timeout:1500}).catch(()=>{}); await page.waitForSelector('.sheet-bg', {state:'detached'}); await settle(page);
   await page.goto(port.url + '#' + KA + '.packing'); await page.waitForSelector('#packgen #rs-past', {timeout:8000});
   const styleOpts = await page.locator('#rs-style option').allTextContents();
   check(R, 'new built-in styles listed', JSON.stringify(styleOpts.slice(0, 6)) === JSON.stringify(['Usual defaults','Weekend','Wedding / event weekend','Beach / Hawaii','Hiking (cooler)','International']), styleOpts.join(', '));
@@ -123,7 +123,7 @@ try {
   const ktext = await page.textContent('#packgen .gen-review');
   check(R, 'past trip carries added item + removal, fresh quantities', ks.added.includes('Travel pillow') && ks.removed && ks.edited.length === 0 && ks.carried && ks.tshirts !== 9 && ktext.includes('Travel pillow') && !ktext.includes(rmId.label + '\n'), JSON.stringify(ks));
   // short-quantity: pin T-shirts at today's automatic amount, then extend the trip in Trip details
-  await page.locator('[data-item-id="pack:tshirts"]').getByRole('button', {name:'Edit', exact:true}).click(); await page.waitForSelector('#ri-quantity');
+  await page.locator('[data-item-id="pack:tshirts"]').getByRole('button',{name:/^Edit /}).click(); await page.waitForSelector('#ri-quantity');
   const autoQ = +(await page.inputValue('#ri-quantity')); await page.fill('#ri-label', 'Tees'); await page.click('button:has-text("Save override")'); await page.waitForSelector('.sheet-bg', {state:'detached'}); await settle(page);
   await page.click('a.trip-plan-card[aria-label^="Trip details"]'); await page.waitForSelector('#packgen form h2:has-text("Trip details")');
   await page.locator('.rp-sum button').nth(1).click(); await page.locator('.rp-grid button[aria-label*="Sep 30"]').click(); await page.getByRole('button', {name:'OK', exact:true}).click();

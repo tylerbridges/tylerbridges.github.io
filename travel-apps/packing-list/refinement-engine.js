@@ -56,7 +56,7 @@ function refineDefaults(state,profile,c){
     var item = refineItem(label,g.title,"Your usual packing preferences",{optional:optional.test(qtyBase(label))});
     out.push(item);
   }); });
-  (profile.generatorExtras || []).forEach(function(label){var group=(profile.prefItems || []).find(function(g){return (g.items || []).some(function(x){return x.on && x.always && refineId(x.label)===refineId(label);});});out.push(refineItem(label,group ? group.title:"Personal bag & day gear","Your always-bring items",{required:true}));});
+  (profile.generatorExtras || []).forEach(function(label){var group=(profile.prefItems || []).find(function(g){return (g.items || []).some(function(x){return x.on && x.always && refineId(x.label)===refineId(label);});});out.push(refineItem(label,group ? group.title:((profile.generatorExtraSections || {})[refineId(label)] || "Personal bag & day gear"),"Your always-bring items",{required:true}));});
   return out;
 }
 function refineLayers(state,profile,c){

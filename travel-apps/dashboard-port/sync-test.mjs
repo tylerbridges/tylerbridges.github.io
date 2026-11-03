@@ -73,6 +73,17 @@ const okState = () => window.__acctSync && window.__acctSync.state === 'ok' && !
   check(R, 'no page errors (sync session)', errors.length === 0, errors.join(' | '));
   await page.context().close(); }
 
+// Pack view in the Dashboard: checks save to pack_meta/progress and reach the account.
+{ const {page, errors} = await open(browser, url, data, {supa, packMode:null});
+  await page.goto(url + '#APP-2026-12-01.packing');
+  await settle(page, okState); await page.goto(url + '#APP-2026-12-01.packing');
+  check(R, 'Dashboard list opens on Pack', await settle(page, () => !!document.querySelector('#pk-count'), 10000));
+  await page.locator('.pack-row').first().click();
+  check(R, 'Pack check counts in Dashboard', /^1 of/.test(await page.textContent('#pk-count')));
+  check(R, 'packed state synced to account', await settle(page, () => { const r = window.__mockSupa.rows()['trip/APP-2026-12-01/pack_meta/progress']; return r && Object.keys(r.data.checked || {}).length === 1; }, 15000));
+  check(R, 'no page errors (pack session)', errors.length === 0, errors.join(' | '));
+  await page.context().close(); }
+
 // Not yet allowed: button, no calls until tapped.
 { const {page, errors} = await open(browser, url, data, {supa, mock:{supaPerm:'prompt'}});
   await page.goto(url + '#REPLACEMENT-2026-09-19.packing'); await wait(3000);

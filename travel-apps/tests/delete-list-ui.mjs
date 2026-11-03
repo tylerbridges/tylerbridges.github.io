@@ -1,12 +1,14 @@
 // Production deletion flow, exercised with sandbox-prefixed storage only.
 import http from 'node:http';import {readFile} from 'node:fs/promises';import {join,dirname,extname} from 'node:path';import {fileURLToPath} from 'node:url';
+// Existing flows run in the Adjust view (the list opens on Pack by default); pack-ui.mjs covers Pack.
+async function adjustPage(br,o){const pg=await br.newPage(o);await pg.addInitScript(()=>{try{localStorage.setItem('ta-ui:packModeDefault','adjust');}catch(e){}});return pg;}
 let pw;try{pw=await import(process.env.PLAYWRIGHT_MODULE || 'playwright');}catch{console.log('SKIP: playwright not installed');process.exit(0);}
 const root=join(dirname(fileURLToPath(import.meta.url)),'..'),server=http.createServer(async(req,res)=>{let path=req.url.split('?')[0];if(path.endsWith('/'))path+='index.html';try{res.setHeader('Content-Type',({'.html':'text/html','.js':'text/javascript','.css':'text/css'})[extname(path)] || 'application/octet-stream');res.end(await readFile(join(root,path)));}catch{res.writeHead(404);res.end();}});
-await new Promise(r=>server.listen(0,'127.0.0.1',r));const base=`http://127.0.0.1:${server.address().port}/packing-list/`,browser=await pw.chromium.launch({executablePath:process.env.CHROMIUM_PATH || undefined}),p=await browser.newPage({viewport:{width:390,height:844}}),errors=[];p.on('pageerror',e=>errors.push(e.message));
+await new Promise(r=>server.listen(0,'127.0.0.1',r));const base=`http://127.0.0.1:${server.address().port}/packing-list/`,browser=await pw.chromium.launch({executablePath:process.env.CHROMIUM_PATH || undefined}),p=await adjustPage(browser,{viewport:{width:390,height:844}}),errors=[];p.on('pageerror',e=>errors.push(e.message));
 function assert(value,message){if(!value)throw new Error(message);}
 try{
   // Real touch input: the first tap must work immediately after a swipe, without settling delays.
-  const touch=await browser.newPage({viewport:{width:390,height:844},hasTouch:true,isMobile:true});
+  const touch=await adjustPage(browser,{viewport:{width:390,height:844},hasTouch:true,isMobile:true});
   await touch.goto(base+'?test=1');await touch.waitForFunction(()=>READY);
   await touch.evaluate(async()=>{PACK_TEST_MODE=false;await db.doc('trips/TOUCH').set({name:'Touch trip',where:'Test',start:'2026-10-08',end:'2026-10-12'});render();});
   await touch.locator('.packing-list-front').waitFor();const touchBox=await touch.locator('.packing-list-front').boundingBox(),cdp=await touch.context().newCDPSession(touch),y=touchBox.y+30,x=touchBox.x+touchBox.width-100;
