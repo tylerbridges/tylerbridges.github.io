@@ -34,3 +34,21 @@ Defaults are `../dash-port`, `../dash-orig`, `../travel-apps`, `./shots` and the
 `mock-claude.js` is injected before page scripts: an in-memory `window.claude` with the async `db`
 (seeded from `trips/*.json`, plus legacy Wyoming packing docs) and a `downloads` capability (`window.__mockDl` =
 `"declined"` / `"fail"` to test those paths). Screenshots go to `SHOTS`.
+
+## Packing app account sync (Nov 2026)
+
+`account-sync.js` (published as `js/packgen/account-sync.js`, loaded after the adapter) keeps the Dashboard's packing
+data in step with the standalone app's Supabase account. An artifact can't reach supabase.co directly, so it calls the
+claude.ai **Supabase** connector (`execute_sql`, declared in the artifact's `mcp` capability) and only runs the three
+functions in `../supabase/migrations/002_ta_sync_functions.sql` (execute revoked from the website's keys).
+
+- Paths are identical on both sides (`trip/<ID>/pack_*`, `meta/packing*`, `templates/*`); the ledger `meta/acctSync`
+  in the Dashboard db records each path's last synced hash and account `updated_at`.
+- One side changed → copied (deletes too). Both changed, or first sync with different content → the account wins.
+- Trip headers: the Dashboard's name/place/dates/status go to the account; the account's `packing`, `packingDeleted`
+  and `generatorSetup` come back. Account-only trips (not deleted there) are created in the Dashboard.
+- Runs on open once Supabase is allowed for the page (else a "Turn on sync" button on the Packing tab), every minute
+  while visible, ~3 s after a packing edit, and from "Sync now". Skips while a sheet or field is open.
+- Opening an old-style (legacy) list re-saves it once under new ids with the same contents; sync then pushes that once.
+
+Test: `DASH_PORT=… node sync-test.mjs` (fake connector in `mock-claude.js`, seeded via `open(…, {supa})`).

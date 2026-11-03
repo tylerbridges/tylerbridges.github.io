@@ -47,7 +47,7 @@ export async function seed(dir){
 export async function open(browser, base, seedData, opts = {}){
   const ctx = await browser.newContext({viewport:{width:opts.width || 390, height:844}, colorScheme:opts.colorScheme || 'light', acceptDownloads:true});
   await ctx.route(/fonts\.(googleapis|gstatic)\.com/, r => r.abort());
-  await ctx.addInitScript(({seed, opts}) => { window.__MOCK_SEED = seed; window.__MOCK_OPTS = opts; }, {seed:seedData, opts:opts.mock || {}});
+  await ctx.addInitScript(({seed, opts, supa}) => { window.__MOCK_SEED = seed; window.__MOCK_OPTS = opts; if (supa) window.__MOCK_SUPA = supa; }, {seed:seedData, opts:opts.mock || {}, supa:opts.supa || null});
   await ctx.addInitScript({path: join(HERE, 'mock-claude.js')});
   const page = await ctx.newPage(), errors = [];
   page.on('pageerror', e => errors.push(e.message));

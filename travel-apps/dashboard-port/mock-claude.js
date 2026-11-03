@@ -40,7 +40,31 @@
     if (mode === "declined") return Promise.reject(Object.assign(new Error("declined"), {code:"declined"}));
     if (mode === "fail") return Promise.reject(Object.assign(new Error("failed"), {code:"internal"}));
     return o.data.text().then(function(text){ downloads.push({filename:o.filename, type:o.data.type, text:text}); return {status:"saved"}; }); }};
+  // Fake Supabase connector for account-sync.js: execute_sql running the three ta_sync_* functions over an
+  // in-memory ta_docs table (window.__MOCK_SUPA = {path: data} seeds it; sessionStorage keeps it across reloads).
+  var SKEY = "__mocksupa", supa = null, tick = 0, supaCalls = [];
+  function supaLoad(){ if (supa) return supa; try { var s = sessionStorage.getItem(SKEY); supa = s ? JSON.parse(s) : null; } catch(e){}
+    if (!supa){ supa = {}; Object.keys(window.__MOCK_SUPA || {}).forEach(function(p){ supa[p] = {data:cp(window.__MOCK_SUPA[p]), at:stamp()}; }); supaSave(); } return supa; }
+  function supaSave(){ try { sessionStorage.setItem(SKEY, JSON.stringify(supa)); } catch(e){} }
+  function stamp(){ tick++; return new Date(Date.UTC(2026, 10, 3, 6, 0, 0) + tick).toISOString().replace("Z", "+00:00"); }
+  function reply(r){ return {payload:{result:"Below is the result. <untrusted-data-0000aaaa-1111-2222-3333-444455556666>\n" + JSON.stringify([{r:r}]) + "\n</untrusted-data-0000aaaa-1111-2222-3333-444455556666> end"}}; }
+  var mcpApi = {callTool:function(server, tool, input){
+    if (OPTS.supaError) return Promise.reject({code:OPTS.supaError, message:OPTS.supaError});
+    if (server !== "Supabase" || tool !== "execute_sql") return Promise.reject({code:"not_in_manifest", message:"no"});
+    var q = input.query, lits = [], m0, re = /\$j[a-z0-9]*\$([\s\S]*?)\$j[a-z0-9]*\$::jsonb/g, t = supaLoad(), out = {};
+    while ((m0 = re.exec(q))) lits.push(JSON.parse(m0[1]));
+    supaCalls.push(q.slice(0, 40));
+    if (/ta_sync_state\(/.test(q)) Object.keys(t).forEach(function(p){ out[p] = t[p].at; });
+    else if (/ta_sync_read\(/.test(q)) lits[0].forEach(function(p){ if (t[p]) out[p] = {data:cp(t[p].data), at:t[p].at}; });
+    else if (/ta_sync_write\(/.test(q)){ Object.keys(lits[0]).forEach(function(p){ t[p] = {data:cp(lits[0][p]), at:stamp()}; out[p] = t[p].at; }); lits[1].forEach(function(p){ delete t[p]; }); supaSave(); }
+    else return Promise.reject({code:"tool_error", message:"unexpected sql"});
+    return Promise.resolve(reply(out));
+  }};
+  window.__mockSupa = {rows:function(){ return supaLoad(); }, calls:supaCalls,
+    edit:function(p, data){ var t = supaLoad(); if (data == null) delete t[p]; else t[p] = {data:cp(data), at:stamp()}; supaSave(); }};
   window.claude = {use:function(name){
+    if (name === "mcp") return Promise.resolve(window.__MOCK_SUPA ? mcpApi : null);
+    if (name === "permissions") return Promise.resolve({state:function(){ return Promise.resolve(OPTS.supaPerm || "granted"); }});
     if (name === "downloads") return Promise.resolve(OPTS.noDownloads ? null : dlApi);
     if (name === "db") return OPTS.noDb ? Promise.resolve(null) : Promise.resolve(api);
     return Promise.resolve(null);
