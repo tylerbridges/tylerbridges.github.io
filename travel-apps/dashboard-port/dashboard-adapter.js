@@ -41,6 +41,10 @@ var PACK_TEST_MODE = false;
 function packingTestMenu(){}
 function packingTestHome(){ return el("div"); }
 function packingTestBanner(){ return el("div"); }
+/* generator.js / refinement-ui.js call packWhenReady (standalone packing.js) after saving: re-render once the trip's packing data is loaded. */
+if (typeof packWhenReady !== "function") window.packWhenReady = function(id){
+  (function wait(n){ setTimeout(function(){ if (!route().t || route().t.id !== id) return; if (packData(id).ready) render(); else if (n < 100) wait(n + 1); }, 100); })(0);
+};
 
 /* ---------- Mirror + db facade ---------- */
 var PackGen = (function(){
