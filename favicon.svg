@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<defs>
+<linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1B2F45"/><stop offset="1" stop-color="#0B121A"/></linearGradient>
+<linearGradient id="sun" gradientUnits="userSpaceOnUse" x1="270" y1="112" x2="392" y2="280"><stop offset="0" stop-color="#FFD98A"/><stop offset="1" stop-color="#F29B38"/></linearGradient>
+<linearGradient id="cl" gradientUnits="userSpaceOnUse" x1="0" y1="206" x2="0" y2="374"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#A9CBF0"/></linearGradient>
+<mask id="cut" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512"><rect width="512" height="512" fill="#fff"/><g transform="translate(-20.0 11.0) scale(1.0)" fill="#000" stroke="#000" stroke-width="30" stroke-linejoin="round"><circle cx="196" cy="318" r="56"/><circle cx="290" cy="290" r="84"/><circle cx="368" cy="330" r="44"/><rect x="196" y="300" width="172" height="74"/></g></mask>
+</defs>
+<rect width="512" height="512" rx="112" fill="url(#bg)"/>
+<g mask="url(#cut)"><g transform="translate(-20.0 11.0) scale(1.0)"><circle cx="330" cy="196" r="86" fill="url(#sun)"/></g></g>
+<g transform="translate(-20.0 11.0) scale(1.0)" fill="url(#cl)"><circle cx="196" cy="318" r="56"/><circle cx="290" cy="290" r="84"/><circle cx="368" cy="330" r="44"/><rect x="196" y="300" width="172" height="74"/></g>
+</svg>
