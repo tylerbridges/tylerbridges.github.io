@@ -507,12 +507,25 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
 /* landscape maps (about 4:3) so the Forecast tab scrolls past them easily */
 .mm{height:min(calc(100svh - var(--toph,96px) - 250px),78vw,520px);min-height:260px}
 .oqwrap .mm{height:min(72vw,400px);min-height:240px}
-/* the radar map fills the screen: the section spans from its top (--rtop, measured by radarFit() in app.js) to ~10 px above
-   the floating tab dock (52 px bar + its bottom inset), and the map takes whatever the attribution line leaves; the safety
-   notice falls below the fold. Min 280 px (landscape phones scroll); wide screens cap it at 70% of the window height. */
-#radar:not([hidden]){min-height:calc(100vh - var(--rtop,120px) - 62px - max(env(safe-area-inset-bottom,0px) - 12px,8px));min-height:calc(100dvh - var(--rtop,120px) - 62px - max(env(safe-area-inset-bottom,0px) - 12px,8px));box-sizing:border-box}
-.rmap{flex:1 1 0;height:auto!important;min-height:280px!important;max-height:none!important}
-@media (min-width:900px){#radar:not([hidden]){min-height:0}.rmap{flex:none;height:min(70vh,calc(100vh - var(--rtop,120px) - 110px))!important;height:min(70dvh,calc(100dvh - var(--rtop,120px) - 110px))!important}}
+/* Radar is exactly one screen (html.on-radar, set by showTab() in app.js): the page is one dynamic viewport tall, the map
+   takes everything between the header and ~10 px above the floating tab dock (52 px bar + its bottom inset), and the
+   attribution is one small line under it whose (i) opens the full credits and the safety notice; the foot is hidden on
+   this tab. Nothing overflows, so the page never scrolls or bounces; other tabs keep their normal page. Wide screens cap
+   the map at 70% of the window height. */
+:root{--dockh:calc(52px + max(env(safe-area-inset-bottom,0px) - 12px,8px))}
+html.on-radar{overscroll-behavior:none}
+html.on-radar .wrap{height:100vh;height:100dvh;min-height:0;padding-bottom:calc(var(--dockh) + 10px)}
+html.on-radar #foot{display:none}
+#radar:not([hidden]){flex:1 1 0;min-height:0;position:relative;gap:6px}
+.rmap{flex:1 1 0;height:auto!important;min-height:0!important;max-height:none!important}
+@media (min-width:900px){.rmap{flex:0 1 70vh;flex-basis:70dvh}}
+.rsrc{flex:none;position:relative}
+.rsrc > summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:6px;min-height:22px}
+.rsrc > summary::-webkit-details-marker{display:none}
+.rsrc .ri{position:relative;flex:none;margin-left:auto;width:17px;height:17px;border-radius:50%;border:1px solid currentColor;display:grid;place-items:center;font:italic 700 10.5px/1 Georgia,serif}
+.rsrc .ri::before{content:"";position:absolute;right:0;bottom:-6px;width:44px;height:34px} /* 44 px tap area */
+.rsrc .rpop{position:absolute;left:0;right:0;bottom:calc(100% + 6px);z-index:6;box-sizing:border-box;max-height:calc(100vh - var(--toph,96px) - var(--dockh) - 60px);max-height:calc(100dvh - var(--toph,96px) - var(--dockh) - 60px);overflow-y:auto;overscroll-behavior:contain;padding:12px 14px;border-radius:18px;font-size:12px;line-height:1.45;color:var(--ink2);background:color-mix(in srgb,var(--surface) 94%,transparent);-webkit-backdrop-filter:blur(28px) saturate(1.8);backdrop-filter:blur(28px) saturate(1.8);border:1px solid var(--glass-edge);box-shadow:inset 0 1px 0 var(--glass-hi),var(--glass-sh)}
+.rsrc .rpop p{margin:0 0 8px}.rsrc .rpop p:last-child{margin:0}.rsrc .rpop b{color:var(--ink)}
 /* the card's filters on one compact row of small segmented groups */
 .offq .oqrow{display:flex;flex-wrap:wrap;gap:5px;padding:0 10px 8px;align-items:center}
 .oqseg{display:inline-flex;gap:0;padding:2px;border-radius:999px;background:var(--sunk)}
@@ -895,8 +908,18 @@ body{font-size:clamp(14.5px,3.9vw,16px)}
 .model-bar :focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 @media(min-width:900px){.forecast-workspace .model-map #mmap{height:clamp(420px,55vh,650px)}}
 /* Forecast, simplified: source switch on top, the key right above a landscape map, then the controls in few rows */
-.forecast-workspace .mm,.forecast-workspace .model-map #mmap{height:clamp(230px,66vw,420px)!important;min-height:230px!important}
-@media(min-width:900px){.forecast-workspace .mm,.forecast-workspace .model-map #mmap{height:clamp(360px,48vh,560px)!important}}
+/* Forecast is one screen when it fits: the page is at least one dynamic viewport tall and every box from the section down to
+   the selected map is a growing flex column, so the map (or its failure panel) takes whatever height the header, switch, key,
+   controls, local amounts and dock leave. Its minimum (~200 px, less on short landscape screens so it still fits under the
+   sticky header) is where growth stops: content that can't fit then just makes the page scroll. Wide screens cap the map at
+   70% of the window height. The viewers' ResizeObservers redraw when the box changes. */
+.forecast-wide{min-height:100vh;min-height:100dvh}
+.forecast-wide #maps,.forecast-wide .forecast-workspace,.forecast-wide #forecast-nws,.forecast-wide #forecast-models,.forecast-wide #offq,.forecast-wide #forecast-models > .model-view,.forecast-wide #oqwrap,.forecast-wide #oqimg,.forecast-wide .model-map{flex:1 0 auto;display:flex;flex-direction:column}
+.forecast-wide #forecast-nws[hidden],.forecast-wide #forecast-models[hidden]{display:none}
+.forecast-workspace .mm,.forecast-workspace .model-map #mmap,.forecast-wide #oqimg > img,.forecast-wide #oqimg > .mfail{flex:1 1 0;height:auto!important;min-height:max(140px,min(200px,calc(100vh - var(--toph,96px) - 150px)))!important;min-height:max(140px,min(200px,calc(100dvh - var(--toph,96px) - 150px)))!important}
+.forecast-wide #oqimg > img{width:100%;object-fit:contain}
+.forecast-wide #oqimg > .mfail{position:static}
+@media(min-width:900px){.forecast-workspace .mm,.forecast-workspace .model-map #mmap,.forecast-wide #oqimg > img{max-height:70vh;max-height:70dvh}}
 .forecast-workspace > .forecast-toolbar{border-top:0;border-bottom:1px solid var(--grid);padding:8px 12px}
 .forecast-toolbar h2{margin:0}
 .forecast-context{display:none}
@@ -1031,14 +1054,39 @@ html.scrolled .top #fresh{display:inline-flex;max-height:0;opacity:0;visibility:
 
 #fresh{border:0;background:none;font-family:inherit;padding:0;cursor:pointer;text-align:left}
 #fresh:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:4px}
-/* Nov 25 polish. Header: bigger tap areas for the place name and "Checked …" from invisible pseudo-elements only (no
-   layout change; full header only). They split the 2 px gap between the lines, reach left into the header padding, stop
-   at the refresh button's column, and "Checked" reaches down past the header edge to 44 px (only to the test banner when it shows) */
+/* The header and the bottom tab bar are a pair: the header is exactly the full tab bar's height (52 px), width
+   (min(560 px, screen − 28 px − side insets), centred), corner radius (26 px) and glass, and sits 8 px below the top safe
+   area as the bar sits above the bottom one (--topgap). Inside: the place name over a one-line "Checked …" caption,
+   refresh at the right sized like the bar's tabs. Scrolled (html.scrolled) it shrinks to 36 px like the compact bar.
+   The test banner and data notices sit under it, outside the bar. --toph (setTopH) = header height + the gap. */
+:root{--topgap:8px}
+.wrap > .top{position:sticky;top:calc(env(safe-area-inset-top,0px) + var(--topgap));margin:calc(env(safe-area-inset-top,0px) + var(--topgap)) 0 0;align-self:center;width:min(560px,calc(100vw - 28px - env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px)));height:52px;box-sizing:border-box;padding:4px 4px 4px 16px;gap:0;justify-content:center;border-radius:26px;border:1px solid var(--glass-edge);background:color-mix(in srgb,var(--surface) 94%,transparent);-webkit-backdrop-filter:blur(28px) saturate(1.8);backdrop-filter:blur(28px) saturate(1.8);box-shadow:inset 0 1px 0 var(--glass-hi),var(--glass-sh);transition:height .28s cubic-bezier(.2,.8,.2,1),padding .28s cubic-bezier(.2,.8,.2,1)}
+.wrap > .top .top-row{row-gap:0;column-gap:8px}
+.wrap > .top .place b{font-size:clamp(19px,5.4vw,22px);line-height:24px}
+.wrap > .top .place b .pchev{width:15px;height:15px}
+.wrap > .top .fresh{font-size:12px;line-height:15px;max-height:15px;gap:5px}
+.wrap > .top .fresh .dot{width:7px;height:7px;margin:0 2px 0 1px;box-shadow:0 0 0 2px color-mix(in srgb,var(--ok) 22%,transparent)}
+.wrap > .top .fresh .dot.warn{box-shadow:0 0 0 2px color-mix(in srgb,var(--warn) 22%,transparent)}
+.wrap > .top .fresh .dot.crit{box-shadow:0 0 0 2px color-mix(in srgb,var(--crit) 22%,transparent)}
+.wrap > .top #rbtn{width:42px;height:42px}
+.wrap > .top #rbtn svg{width:19px;height:19px}
+html.scrolled .wrap > .top{height:36px;padding:2px 2px 2px 14px}
+html.scrolled .wrap > .top #rbtn{width:30px;height:30px}
+html.scrolled .wrap > .top #rbtn svg{width:15px;height:15px}
+html.scrolled .wrap > .top .place b{line-height:20px}
+.testbar{align-self:center;width:min(560px,calc(100vw - 28px - env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px)))}
+/* pull to refresh (app.js): a small glass disc slides out from under the header as you pull down from the top of the page */
+.ptr{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + var(--toph,60px) - 42px);z-index:19;width:36px;height:36px;margin-left:-18px;border-radius:50%;display:grid;place-items:center;pointer-events:none;opacity:0;border:1px solid var(--glass-edge);background:color-mix(in srgb,var(--surface) 94%,transparent);-webkit-backdrop-filter:blur(28px) saturate(1.8);backdrop-filter:blur(28px) saturate(1.8);box-shadow:inset 0 1px 0 var(--glass-hi),var(--glass-sh);transition:transform .28s cubic-bezier(.2,.8,.2,1),opacity .2s ease}
+.ptr svg{width:18px;height:18px;fill:none;stroke:var(--accent);stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.ptr.drag{transition:none}
+@media (prefers-reduced-motion: reduce){.ptr{transition:none}.ptr.spin svg{animation:none}}
+/* bigger tap areas for the place name and "Checked …" from invisible pseudo-elements only (full header only): they meet
+   between the two lines, reach left to the bar's edge and stop at the refresh button; the name reaches up past the bar's
+   top edge to the screen's top, and "Checked" down past its bottom edge, ending 2 px short of whatever sits under the bar (~40 px each) */
 .top-row .place,.top-row #fresh{position:relative}
-html:not(.scrolled) .top-row .place::before{content:"";position:absolute;left:-12px;right:0;top:-10px;bottom:-1px}
+html:not(.scrolled) .top-row .place::before{content:"";position:absolute;left:-16px;right:0;bottom:-1px;top:calc(-5px - var(--topgap))}
 html:not(.scrolled) .top #fresh{overflow:visible}
-html:not(.scrolled) .top #fresh::before{content:"";position:absolute;left:-12px;right:0;top:-1px;height:44px}
-html:not(.scrolled) .top:has(#testbar:not([hidden])) #fresh::before{height:auto;bottom:-10px}
+html:not(.scrolled) .top #fresh::before{content:"";position:absolute;left:-16px;right:0;top:-1px;bottom:-24px}
 /* current conditions: the temperature is the hero, condition and "Feels like" beside it */
 #nowcard .now-hero{grid-column:1/-1;display:flex;align-items:center;gap:6px 14px;min-width:0}
 #nowcard .now-hero + .hazs{margin-top:14px}
@@ -1129,6 +1177,22 @@ html:not(.scrolled) .top:has(#testbar:not([hidden])) #fresh::before{height:auto;
 .history-report{padding:10px 0;border-top:1px solid var(--grid);font-size:13px}
 .weather-timeline button:focus-visible,.compare-row button:focus-visible,.odds-grid button:focus-visible{outline:2px solid var(--accent)}
 .outlook-hazard{border-left:3px solid var(--accent);padding-left:8px}
+/* Daily: a day card's header is a button that opens Hourly at that day (same look; chevron, 44 px+ target, press scale) */
+.dday .gt.dgo{position:relative;box-sizing:border-box;width:calc(100% + 24px);min-height:48px;margin:-12px -12px 0;padding:12px 40px 4px 12px;border:0;background:none;color:inherit;text-align:left;cursor:pointer;border-radius:var(--r-card) var(--r-card) 0 0;-webkit-tap-highlight-color:transparent;transition:transform .12s ease}
+.dday .gt.dgo:active{transform:scale(.985)}
+.dday .gt.dgo:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.dgo-chev{position:absolute;right:12px;top:50%;margin-top:-5px;color:var(--ink2);opacity:.7}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+/* Daily: "what's next" sentence under the hero temperature (nextUp in app.js); at most two lines */
+#nowcard .nextup{grid-column:1/-1;margin:2px 0 0;font:600 15px/1.35 var(--sans);color:var(--ink);display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3;overflow:hidden;min-width:0}
+#nowcard .nextup + .hazs{margin-top:10px}
+/* Daily: Next 12 hours, a compact sibling of the Hourly graph cards (renderGraph(host, "next"), same classes) */
+#nownext{grid-column:1/-1;min-width:0;margin:2px 0 8px}
+#nownext .pan{padding:8px 0 4px}
+#nownext .pan > .gt{padding-bottom:4px}
+#nownext .lg:empty{display:none}
+.gstack.scrubbing .nxl{display:none}
+#nownext + #nowprecip:not([hidden]){margin-top:-10px}
 @media(min-width:900px){.outlook-card{padding-inline:18px}.odds-grid{max-width:640px}}
 </style>
 </head>
@@ -1140,8 +1204,8 @@ html:not(.scrolled) .top:has(#testbar:not([hidden])) #fresh::before{height:auto;
       <button type="button" class="fresh" id="fresh" aria-label="Data freshness and sources" aria-haspopup="dialog" aria-controls="data-info"><i class="dot" id="fdot"></i><span id="ftxt">Loading…</span></button>
       <button class="rbtn" id="rbtn" type="button" aria-label="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button>
     </div>
-    <div class="testbar" id="testbar" hidden><span>Test: <b id="testname"></b> · sample data, not a real forecast</span><button type="button" class="chip" id="testx">Exit</button></div>
   </header>
+  <div class="testbar" id="testbar" hidden><span>Test: <b id="testname"></b> · sample data, not a real forecast</span><button type="button" class="chip" id="testx">Exit</button></div>
 
   <p class="data-notice" id="data-notice" role="status" hidden></p>
 
@@ -1170,7 +1234,7 @@ html:not(.scrolled) .top:has(#testbar:not([hidden])) #fresh::before{height:auto;
   <section id="radar" class="sec" data-tab="radar" hidden>
     <div class="rmap" id="rmap"></div>
     <div class="rnow" id="rnow"></div>
-    <div class="rsrc">Radar: NOAA / National Weather Service. Map: OpenFreeMap, © OpenMapTiles, data © OpenStreetMap contributors (Esri if unavailable).</div>
+    <details class="rsrc" id="rsrc"><summary><span>Radar: NOAA/NWS · Map: OpenFreeMap, © OpenMapTiles, © OpenStreetMap</span><i class="ri" role="img" aria-label="Sources and safety notice">i</i></summary><div class="rpop"><p>Radar: NOAA / National Weather Service. Map: OpenFreeMap, © OpenMapTiles, data © OpenStreetMap contributors (Esri if unavailable).</p><div id="rnotice"></div></div></details>
   </section>
 
   <section id="maps" class="sec" data-tab="maps" hidden>
@@ -1239,6 +1303,7 @@ html:not(.scrolled) .top:has(#testbar:not([hidden])) #fresh::before{height:auto;
   <footer class="foot" id="foot"></footer>
 </div>
 <div class="tabdock" id="tabdock"><nav class="nav" id="nav" aria-label="Sections"><span class="navpill" aria-hidden="true"></span><button type="button" class="chip on" data-tab="daily"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="3.5"/><path d="M3.5 10h17M8.5 3v4M15.5 3v4"/></svg><span>Daily</span></button><button type="button" class="chip" data-tab="hourly"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.75"/><path d="M12 7.25V12l3.25 2"/></svg><span>Hourly</span></button><button type="button" class="chip" data-tab="radar"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.75"/><circle cx="12" cy="12" r="4.5"/><path d="M12 12l6.2-6.2"/></svg><span>Radar</span></button><button type="button" class="chip" data-tab="maps"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4.5 3.5 6.6v13l5.5-2.1 6 2.1 5.5-2.1v-13L15 6.6Z"/><path d="M9 4.5v13M15 6.6v13"/></svg><span>Forecast</span></button></nav></div>
+<div class="ptr" id="ptr" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></div>
 <dialog class="data-info" id="data-info" aria-labelledby="data-info-title"><div class="data-info-head"><h2 id="data-info-title">Data &amp; sources</h2><button type="button" class="rbtn" id="data-info-close" aria-label="Close data sources">×</button></div><div id="data-info-body"></div></dialog>
 <dialog class="forecast-tools" id="forecast-tools" aria-labelledby="forecast-tools-title">
   <div class="forecast-tools-head"><h2 id="forecast-tools-title">Forecast tools</h2><button type="button" class="rbtn" id="forecast-tools-close" aria-label="Close forecast tools">×</button></div>
@@ -1285,6 +1350,6 @@ html:not(.scrolled) .top:has(#testbar:not([hidden])) #fresh::before{height:auto;
 <script>window.WXV={"wx-scenarios.js":136,"wx-vmap.js":136,"wx-radar.js":136,"wx-models.js":156,"wx-official.js":156,"wx-archive.js":144,"wx-outlook.js":144};</script>
 <script src="wx-normalize.js?v=154" defer></script>
 <script src="wx-live.js?v=156" defer></script>
-<script src="app.js?v=156" defer></script>
+<script src="app.js?v=157" defer></script>
 </body>
 </html>

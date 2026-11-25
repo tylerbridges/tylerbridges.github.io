@@ -2,7 +2,7 @@
   "use strict";
   // check.html loads the site in a hidden frame with ?nostore=1 so its test places never end up in your recents or favorites
   if (/[?&]nostore=1/.test(location.search)) { try { Storage.prototype.setItem = function () {}; } catch (e) {} }
-  var H = 3600000, PX = 16, GL = 38; // GL: left gutter so the first hours (and the now line) sit clear of the axis labels
+  var H = 3600000, PX = 16, HPX = PX, GL = 38; // GL: left gutter so the first hours (and the now line) sit clear of the axis labels; HPX: PX for code that shadows it per graph (I.px)
   var tab = "daily", doc = null, db = null, lastCheck = 0, busy = false, selIdx = null, refreshFailed = false;
   var $ = function (id) { return document.getElementById(id); };
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
@@ -173,6 +173,110 @@
     return (hl[1] != null ? '<span class="loT">' + b + hl[1] + "°F</span>" : "") + (hl[0] != null ? '<span class="hiT">' + a + hl[0] + "°F</span>" : "");
   }
 
+  // ---------- "what's next": one sentence at the top of the Now card ----------
+  // @nextup-start — pure (grid, now, formatter); tools/weather_check.cjs lifts this block out and tests it
+  // Follows the outlook rules (docs/forecast.md): a start needs every hour before it known; "ends" needs three known
+  //   hours in a row under 20% with no precipitation wording or 20%+ thunder, and no unknown hour before them; "Dry" needs 24+ such hours from now;
+  //   amounts are whole NWS blocks (contiguous, none missing, never prorated) with their own period; otherwise nothing.
+  function nextUp(g, now, f) {
+    if (!g || !g.n || !g.s || !g.s.pop) return "";
+    var s = g.s, n = g.n, k0 = Math.floor((now - g.start) / H), i;
+    if (k0 < 0 || k0 >= n) return "";
+    var kEnd = Math.min(n, k0 + 36), PT = [["snow", "Snow"], ["rain", "Rain"], ["fzra", "Freezing rain"], ["sleet", "Sleet"]];
+    function lv(k, j) { var v = (s[k] || [])[j]; return (v && v[0]) || 0; }
+    function num(a, j) { var v = (a || [])[j]; return typeof v === "number" && isFinite(v) ? v : null; }
+    function known(j) { return !!(s.wxKnown || [])[j] && num(s.pop, j) != null; }
+    function wet(j) { var p = num(s.pop, j); return (p != null && p >= 50) || (!!(s.wxKnown || [])[j] && ["snow", "rain", "fzra", "sleet", "thunder"].some(function (k) { return lv(k, j) >= 3; })); }
+    function dry(j) { return j < n && known(j) && s.pop[j] < 20 && !["snow", "rain", "fzra", "sleet", "thunder", "hail"].some(function (k) { return lv(k, j); }) && !(num(s.thp, j) >= 20); }
+    // first of three quiet hours in a row; an unknown hour on the way means the end isn't known
+    function ends(a) { for (var j = a; j + 2 < n; j++) { if (dry(j) && dry(j + 1) && dry(j + 2)) return j; if (!known(j) && !wet(j)) return -1; } return -1; }
+    function runEnd(a) { var j = a; while (j < kEnd && wet(j)) j++; return j; }
+    function T(j) { return g.start + j * H; }
+    function name(a, b) { // what falls in the wet hours a..b-1
+      var has = {}, th = false, lk = false, thl = false;
+      for (var j = a; j < b; j++) {
+        if (!wet(j)) continue;
+        PT.forEach(function (t) { if (lv(t[0], j)) has[t[0]] = 1; });
+        if (lv("thunder", j) >= 2 || num(s.thp, j) >= 30) th = true;
+        if (lv("thunder", j) >= 3 || num(s.thp, j) >= 60) thl = true;
+        if (num(s.pop, j) >= 60 || PT.some(function (t) { return lv(t[0], j) >= 3; })) lk = true;
+      }
+      var ks = Object.keys(has), frozen = has.snow || has.fzra || has.sleet;
+      if (th && !frozen) return { nm: "Thunderstorms", pl: true, q: thl ? "likely" : "possible", has: has };
+      var nm = !ks.length ? "Precipitation" : ks.length === 1 ? PT.filter(function (t) { return t[0] === ks[0]; })[0][1] : ks.length === 2 && has.rain && has.snow ? "Rain and snow" : "Wintry mix";
+      return { nm: nm, pl: false, q: lk ? "likely" : "possible", has: has };
+    }
+    var D = { year: "numeric", month: "numeric", day: "numeric" }, day = function (ms) { return f(ms, D); };
+    var hr = function (ms) { var t = f(ms, { hour: "numeric" }); return t === "12 PM" ? "noon" : t === "12 AM" ? "midnight" : t; }, h23 = function (ms) { return +f(ms, { hour: "numeric", hourCycle: "h23" }); };
+    var today = day(now), tmw = day(now + 24 * H);
+    // tonight's small hours read as plain times ("1 AM" seen in the evening); other days get "tomorrow" or the weekday
+    function at(ms) {
+      if (h23(ms) === 0) { var dm = day(ms - H); return dm === today ? "midnight" : dm === tmw ? "midnight tomorrow" : f(ms - H, { weekday: "short" }) + " midnight"; } // closes the day before
+      var d = day(ms); return d === today || (d === tmw && h23(ms) < 5 && h23(now) >= 17) ? hr(ms) : d === tmw ? hr(ms) + " tomorrow" : f(ms, { weekday: "short" }) + " " + hr(ms); }
+    function span(a, b) { // a range; an end at midnight reads "midnight" (with the day it closes)
+      if (h23(b) === 0 && b > a) { var dm = day(b - H); return dm !== day(a) ? at(a) + "–" + at(b) : dm === today || dm === tmw ? hr(a) + "–" + at(b) : f(a, { weekday: "short" }) + " " + hr(a) + "–midnight"; }
+      if (day(a) !== day(b) && b - a > 12 * H) return at(a) + "–" + at(b);
+      var ha = hr(a).split(" "), hb = hr(b), core = ha[1] && hb.split(" ")[1] === ha[1] ? ha[0] + "–" + hb : hr(a) + "–" + hb, d = day(a);
+      return d === today ? core : d === tmw ? core + " tomorrow" : f(a, { weekday: "short" }) + " " + core;
+    }
+    function part(ms) { // "tonight", "tomorrow night", "Friday afternoon"; hours before 5 AM belong to the night before
+      var h = h23(ms), ref = h < 5 ? ms - 6 * H : ms, d = day(ref), nref = h23(now) < 5 ? now - 6 * H : now;
+      var p = h < 5 || h >= 21 ? "night" : h < 12 ? "morning" : h < 17 ? "afternoon" : "evening";
+      if (d === day(nref)) return p === "night" ? "tonight" : "this " + p;
+      if (d === day(nref + 24 * H)) return "tomorrow " + p;
+      return f(ref, { weekday: "long" }) + " " + p;
+    }
+    function blocks(arr, a, b) { // whole NWS blocks covering a..b: contiguous, none missing, else null
+      var bl = (arr || []).filter(function (x) { return x[0] < b && x[0] + x[1] * H > a; }).sort(function (x, y) { return x[0] - y[0]; });
+      if (!bl.length || bl[0][0] > a) return null;
+      for (var j = 0; j < bl.length; j++) {
+        if (typeof bl[j][2] !== "number" || !isFinite(bl[j][2])) return null;
+        if (j && bl[j][0] !== bl[j - 1][0] + bl[j - 1][1] * H) return null;
+      }
+      var e = bl[bl.length - 1][0] + bl[bl.length - 1][1] * H; if (e < b) return null;
+      return { v: bl.reduce(function (t, x) { return t + x[2]; }, 0), a: bl[0][0], b: e };
+    }
+    function amounts(a, b, has) { // a, b: hour indexes of the event
+      var out = [], rng = null;
+      function add(r, txt) { if (!r) return; if (!rng) rng = r; if (r.a === rng.a && r.b === rng.b) out.push(txt(r.v)); }
+      if (has.snow) { var sn = blocks(g.snow, T(a), T(b)); if (sn && sn.v >= 0.05) add(sn, function (v) { return (v < 0.1 ? "<0.1" : v.toFixed(1)) + " in snow"; }); }
+      if (has.fzra) { var ic = blocks(g.ice, T(a), T(b)); if (ic && ic.v >= 0.005) add(ic, function (v) { return v.toFixed(2) + " in ice"; }); }
+      if (!has.snow && !has.fzra && !has.sleet) {
+        // liquid reads as rain only when frozen precipitation is ruled out for the whole block period
+        var q = blocks(g.qpf, T(a), T(b));
+        if (q && q.v >= 0.005) {
+          var ok = true, z = Math.floor((q.a - g.start) / H), ze = Math.ceil((q.b - g.start) / H);
+          if (z < 0 || ze > n) ok = false;
+          for (var j = Math.max(0, z); ok && j < Math.min(n, ze); j++) if (!(s.wxKnown || [])[j] || lv("snow", j) || lv("fzra", j) || lv("sleet", j)) ok = false;
+          var sz = blocks(g.snow, q.a, q.b), iz = blocks(g.ice, q.a, q.b);
+          if (ok && sz && sz.v === 0 && iz && iz.v === 0) add(q, function (v) { return v.toFixed(2) + " in rain"; });
+        }
+      }
+      return out.length ? out.join(", ") + " " + span(rng.a, rng.b) : "";
+    }
+    var line, amt, nm;
+    if (wet(k0)) { // under way now: when it ends, or how long it lasts at least
+      var j = ends(k0 + 1), r = runEnd(k0);
+      if (j > 0 && j <= kEnd) {
+        nm = name(k0, j); line = nm.nm + (nm.pl ? " end" : " ends") + " about " + at(T(j)); amt = amounts(k0, j, nm.has);
+      } else { nm = name(k0, r); line = nm.nm + " until at least " + at(T(r)); amt = amounts(k0, r, nm.has); }
+    } else {
+      var w = -1;
+      for (i = k0; i < kEnd; i++) { if (wet(i)) { w = i; break; } if (!known(i)) return ""; }
+      if (w < 0) { // nothing likely: "Dry" only for a run of 24+ known quiet hours from now
+        var e = k0; while (e < k0 + 48 && dry(e)) e++;
+        return e - k0 >= 24 ? "Dry through " + part(T(e - 1)) : "";
+      }
+      var jj = ends(w + 1), rr = runEnd(w), stop = jj > 0 ? jj : rr;
+      nm = name(w, stop);
+      if (jj > 0 && jj - w <= 12) line = nm.nm + " " + nm.q + " " + span(T(w), T(jj));
+      else { var n0 = name(w, w + 1); line = n0.nm + (n0.pl ? " start" : " starts") + " about " + at(T(w)); }
+      amt = amounts(w, stop, nm.has);
+    }
+    return line + (amt ? " · " + amt : "");
+  }
+  // @nextup-end
+
   // ---------- current ----------
   function renderNow() {
     var c = doc && doc.cur, st = (doc && doc.station) || {};
@@ -210,17 +314,19 @@
     if (c.wc != null && c.t != null && c.wc < c.t) rows.push(["Wind chill", c.wc + "°F"]);
     if (c.hi != null && c.t != null && c.hi > c.t) rows.push(["Heat index", c.hi + "°F"]);
     var feels = c.t == null ? null : c.wc != null && c.wc < c.t ? c.wc : c.hi != null && c.hi > c.t ? c.hi : null;
-    var d0 = groupDays(p)[0];
+    var d0 = groupDays(p)[0], nextTxt = nextUp(grid, Date.now(), fmt);
     // today's date above the card, styled like the other days' titles (low / high stay in the card's list)
     $("nowtitle").textContent = fmt(d0 ? d0.s : Date.now(), { weekday: "long", month: "short", day: "numeric" });
     $("nowcard").innerHTML =
       // the temperature is the hero; icon + condition beside it, and "Feels like" when wind chill / heat index differ
       '<div class="now-hero"><span class="nh-t num">' + (c.t == null ? "—" : c.t + "°<small>F</small>") + '</span><span class="nh-side"><span class="nh-cond"><span class="now-ico">' + iconHtml(c.icon, isDay(c.ms)) + '</span><span class="now-desc">' + esc(c.desc || "—") + "</span></span>" +
-        (feels != null ? '<span class="nh-fl num">Feels like ' + feels + "°</span>" : "") + "</span></div>" + hazHtml() +
+        (feels != null ? '<span class="nh-fl num">Feels like ' + feels + "°</span>" : "") + "</span></div>" +
+      (nextTxt ? '<p class="nextup num" id="nownext-line" title="' + esc(nextTxt) + '">' + esc(nextTxt) + "</p>" : "") + hazHtml() +
       '<dl class="kv num">' + rows.map(function (r) { return "<div><dt>" + r[0] + "</dt><dd>" + (r[2] ? r[1] : esc(r[1])) + "</dd></div>"; }).join("") + "</dl>" +
+      '<div id="nownext" class="gstack" hidden></div>' +
       '<div id="nowprecip" class="gstack" hidden></div>' +
       '<div id="nowday"></div>';
-    renderNowPrecip();
+    renderNowPrecip(); renderNext();
   }
   // Is it precipitating right now, going by the current observation (its wording, or its weather icon)? "… in Vicinity"
   //   means nearby, not at the station, and "freezing fog" isn't precipitation.
@@ -239,10 +345,28 @@
   }
   // While it is precipitating or about to (see above), show the Precipitation card from the Hourly tab (same card, same
   //   hold-to-read) on the Now tab, between the current conditions and today/tonight.
+  function nowPrecipOn() { return !!(doc && doc.grid && doc.grid.n && (precipNow(doc.cur) || precipSoon(doc.grid))); }
   function renderNowPrecip() {
     var host = $("nowprecip"); GN = null; if (!host) return;
-    if (!doc || !doc.grid || !doc.grid.n || !(precipNow(doc.cur) || precipSoon(doc.grid))) { host.hidden = true; host.innerHTML = ""; return; }
+    if (!nowPrecipOn()) { host.hidden = true; host.innerHTML = ""; return; }
     host.hidden = false; GN = renderGraph(host, "precip");
+  }
+  // Next 12 hours card on Daily (renderGraph(host, "next"), instance GX, hold-to-read like the other graphs): the hourly
+  //   grid from the current hour on, 12 hours (fewer if that's all there is, none under 3), each hour as wide as fits the card
+  function nextGrid() {
+    var g = doc && doc.grid; if (!g || !g.n || !g.s || !g.s.t) return null;
+    var k0 = Math.floor((Date.now() - g.start) / H), k1 = Math.min(g.n, k0 + 12); if (k0 < 0 || k1 - k0 < 3) return null;
+    var s = {}; Object.keys(g.s).forEach(function (k) { s[k] = Array.isArray(g.s[k]) ? g.s[k].slice(k0, k1) : g.s[k]; });
+    if (!s.t.some(function (v) { return v != null; })) return null;
+    return { start: g.start + k0 * H, n: k1 - k0, s: s, qpf: g.qpf, snow: g.snow, ice: g.ice, updated: g.updated };
+  }
+  function pxOf(gin, only) {
+    if (only !== "next") return PX;
+    var w = gin.clientWidth; return w ? Math.max(16, Math.floor((w - GL - 4) / 12 * 10) / 10) : 22; // hidden: redrawn at its real width once shown (layoutAll)
+  }
+  function renderNext() {
+    var host = $("nownext"); GX = null; if (!host) return;
+    host.hidden = false; GX = renderGraph(host, "next"); host.hidden = !GX; // shown first so it can measure its width
   }
 
   // ---------- 7-day ----------
@@ -364,13 +488,18 @@
     var hl = hiLo(p, d.rows[0]), dy = d.rows.filter(function (i) { return p[i].day; })[0], nt = d.rows.filter(function (i) { return !p[i].day; }).pop();
     return [dy != null ? p[dy].temp : hl[0], nt != null && (dy == null || nt > dy) ? p[nt].temp : dy != null && p[dy + 1] && !p[dy + 1].day ? p[dy + 1].temp : hl[1]];
   }
+  var DGCHEV = '<svg class="dgo-chev" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
   function renderDetail() {
     var p = (doc && doc.periods) || [], notes = {}, days = groupDays(p); // forecast-discussion notes removed at Tyler's request
+    // first hourly-graph hour of each calendar day (midnight, or the first hour the grid has): a day header opens Hourly there
+    var g = doc && doc.grid, first = {};
+    if (g && g.n) for (var q = 0; q < g.n; q++) { var dk = fmt(g.start + q * H, { year: "numeric", month: "numeric", day: "numeric" }); if (first[dk] == null) first[dk] = q; }
     function dayCard(d, k, copy) {
-      var hl = dayHL(p, d);
+      var hl = dayHL(p, d), hi = first[d.k], hd = esc(fmt(d.s, { weekday: "long", month: "short", day: "numeric" })) +
+        '<span class="dhl3 num"><span class="loT">' + (hl[1] != null ? hl[1] + "°F" : "–") + '</span> / <span class="hiT">' + (hl[0] != null ? hl[0] + "°F" : "–") + "</span></span>";
       // copy = the Now tab's version: no header (the date and high/low are already at the top of that card)
-      return (copy ? '<div class="dday nowfc">' : '<div class="card dday" id="d' + k + '"><div class="gt">' + esc(fmt(d.s, { weekday: "long", month: "short", day: "numeric" })) +
-        '<span class="dhl3 num"><span class="loT">' + (hl[1] != null ? hl[1] + "°F" : "–") + '</span> / <span class="hiT">' + (hl[0] != null ? hl[0] + "°F" : "–") + "</span></span></div>") + d.rows.map(function (i) {
+      // days past the end of the hourly forecast keep a plain header
+      return (copy ? '<div class="dday nowfc">' : '<div class="card dday" id="d' + k + '">' + (hi != null ? '<button type="button" class="gt dgo" data-hi="' + hi + '">' + hd + '<span class="vh">, open the hourly forecast</span>' + DGCHEV + "</button>" : '<div class="gt">' + hd + "</div>")) + d.rows.map(function (i) {
         var x = p[i], nt = notes[i] ? '<div class="afdnote"><span>From the forecast discussion</span>' + notes[i].map(esc).join(" ") + "</div>" : "";
         var sub = /^(Today|Tonight|This Afternoon|Overnight|Late Afternoon)$/.test(x.name) ? x.name : x.day ? "Day" : "Night";
         return '<div class="drow"' + (copy ? "" : ' id="p' + i + '"') + '><div class="ccard dc' + (x.day ? "" : " night") + '">' + ccardInner(p, i, true) + '</div><div><div class="dsub">' + esc(sub) + '</div><p>' + esc(x.detail) + "</p>" + nt + "</div></div>";
@@ -385,7 +514,7 @@
 
   // ---------- hourly graph ----------
   var AMIO = {}; // per graph host: the observer that hides amount numbers pushed under the row labels
-  var G = null, GN = null; // G: the Hourly graphs; GN: the Precipitation card shown on Now while it is precipitating
+  var G = null, GN = null, GX = null; // G: the Hourly graphs; GN: the Precipitation card shown on Now while it is precipitating; GX: Next 12 hours on Daily
   function lanes() {
     return [["rain", "Rain"], ["thunder", "Thunder"], ["snow", "Snow"], ["fzra", "Freezing rain"], ["sleet", "Sleet"], ["fog", "Fog"]];
   }
@@ -393,9 +522,10 @@
 
   // Draws the graph cards into `gin` and returns the state the hold-to-read code needs. only === "precip" draws just the
   //   Precipitation card (the copy on the Now tab); it is the same card, built by the same code.
+  //   only === "next" draws the compact Next 12 hours card on Daily from the same helpers (its own hour width, `I.px`).
   function renderGraph(gin, only) {
-    var g = doc && doc.grid;
-    if (!g || !g.n) { gin.innerHTML = '<div class="empty">Hourly data not available.</div>'; return null; }
+    var PX = pxOf(gin, only), g = only === "next" ? nextGrid() : doc && doc.grid;
+    if (!g || !g.n) { gin.innerHTML = only === "next" ? "" : '<div class="empty">Hourly data not available.</div>'; return null; }
 
     var s = g.s, n = g.n, W = n * PX, start = g.start;
     var X = function (i) { return i * PX + PX / 2; };
@@ -513,6 +643,46 @@
     mids.forEach(function (i) { head += '<text x="' + (i * PX + 4) + '" y="12" font-size="11" font-weight="600" fill="var(--ink)">' + esc(fmt(start + i * H, { weekday: "short", month: "numeric", day: "numeric" })) + "</text>"; });
     if (!mids.length || mids[0] > 6) head = '<text x="4" y="12" font-size="11" font-weight="600" fill="var(--ink)">' + esc(fmt(start, { weekday: "short", month: "numeric", day: "numeric" })) + "</text>" + head;
 
+    // 0 Next 12 hours (Daily): the temperature line with a few values on it, and under it one thin row of precip-chance
+    //   bars (height = chance, coloured by type as on the Precipitation card, thunder as a strip along its top). The row is
+    //   left out while the full Precipitation card shows right under this one, so the two don't repeat each other.
+    //   Missing hours stay gaps ("–" in the chance row), never 0.
+    if (only === "next") {
+      var showP = !nowPrecipOn(), NT = [["rain", "Rain"], ["snow", "Snow"], ["fzra", "Freezing rain"], ["sleet", "Sleet"]], nUsed = {};
+      var nHD = 16, tTop = nHD + 16, tBot = tTop + 28, bTop = tBot + 12, bBase = bTop + 24, BHn = 18, nH2 = showP ? bBase + 2 : tBot + 8;
+      var tvn = s.t.filter(function (v) { return v != null; }), tlo = Math.min.apply(null, tvn), thi = Math.max.apply(null, tvn);
+      if (thi - tlo < 6) { tlo = (tlo + thi) / 2 - 3; thi = tlo + 6; }
+      var yT = function (v) { return tBot - (tBot - tTop) * (v - tlo) / (thi - tlo); }, yPn = function (v) { return bBase - BHn * Math.max(0, Math.min(100, v)) / 100; };
+      var nnx = Math.max(1, Math.min(W - 1, (Date.now() - start) / H * PX)), nb = "", lastL = -99;
+      nb += '<line x1="0" x2="' + W + '" y1="' + tBot + '" y2="' + tBot + '" stroke="var(--grid)" stroke-width="1"/>';
+      if (tvn.length) nb += '<path d="' + path(s.t, yT) + '" fill="none" stroke="var(--t)" stroke-width="2.75"/>';
+      for (i = 0; i < n; i++) { // a value every 3 hours, as the axis labels; none right beside the now line (its own value sits there); hidden while holding to read (.nxl)
+        var tvi = s.t[i]; if (tvi == null || hourNum(start + i * H) % 3 || X(i) < nnx + 44 || X(i) > W - 8) continue;
+        nb += '<text class="nxl" x="' + X(i) + '" y="' + (yT(tvi) - 7).toFixed(1) + '" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--ink)" stroke="var(--surface)" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">' + tvi + "°</text>";
+      }
+      if (showP) {
+        nb += '<line x1="0" x2="' + W + '" y1="' + bBase + '" y2="' + bBase + '" stroke="var(--line)"/>';
+        for (i = 0; i < n; i++) {
+          var pv = s.pop[i];
+          if (pv == null) { nb += '<text x="' + X(i) + '" y="' + (bBase - 4) + '" text-anchor="middle" font-size="10" fill="var(--muted)">–</text>'; continue; }
+          var nhere = NT.filter(function (t) { return s[t[0]][i]; }), top = yPn(pv), bw = (PX - 4) / Math.max(1, nhere.length);
+          if (pv >= 15) (nhere.length ? nhere : [[null]]).forEach(function (t, k) { // under 15% is left off, as on the period tiles (popShow)
+            if (t[0]) nUsed[t[0]] = 1;
+            nb += '<rect x="' + (i * PX + 2 + k * bw).toFixed(1) + '" y="' + top.toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + (bBase - top).toFixed(1) + '" fill="' + (t[0] ? "var(--" + t[0] + ")" : "var(--muted)") + '" fill-opacity="' + (t[0] ? ".85" : ".45") + '"/>';
+          });
+          if (s.thunder && s.thunder[i]) { nUsed.thunder = 1; nb += '<rect x="' + (i * PX + 1).toFixed(1) + '" y="' + (bTop - 6) + '" width="' + (PX - 2).toFixed(1) + '" height="4" rx="1.5" fill="var(--thunder)"/>'; }
+          // the chance where it changes (NWS chances come in blocks), when 15%+ and clear of the last label
+          if (pv >= 15 && pv !== s.pop[i - 1] && X(i) - lastL >= 26) { lastL = X(i); nb += '<text class="nxl" x="' + X(i) + '" y="' + (top - 3).toFixed(1) + '" text-anchor="middle" font-size="10" font-weight="700" fill="var(--ink2)" stroke="var(--surface)" stroke-width="3" paint-order="stroke" stroke-linejoin="round">' + pv + "%</text>"; }
+        }
+      }
+      var tMark = { a: s.t, y: yT, c: "var(--t)", u: "°", n: "Temp" };
+      var nLegend = showP && Object.keys(nUsed).length ? li("var(--t)", "", "Temp") + NT.concat([["thunder", "Thunder"]]).filter(function (t) { return nUsed[t[0]]; }).map(function (t) { return li("var(--" + t[0] + ")", t[0] === "thunder" ? "strip" : "blk", t[1]); }).join("") : "";
+      var nAxis = showP ? '<div class="yax" style="height:' + nH2 + "px;margin-bottom:-" + nH2 + 'px"><span class="mkl" style="top:' + (bBase - 7) + 'px">Precip</span></div>' : "";
+      out.push(wrap("Next 12 hours", nLegend, nAxis, '<svg class="gsvg plot" width="' + W + '" height="' + nH2 + '" viewBox="0 0 ' + W + " " + nH2 + '">' +
+        (function (v) { return v[0] + nb + v[1] + nowVals([tMark], 0, 0, nH2); })(vlines(nH2, 0, nHD)) + "</svg>",
+        [tMark].concat(showP ? [{ a: s.pop, y: yPn, c: "var(--ink2)", u: "%", n: "Precip" }] : []), 0, 0));
+    }
+
     // 1 temperature
     var tv = s.t.concat(s.wc, s.hi).filter(function (v) { return v != null; });
     var tt = nice(Math.min.apply(null, tv), Math.max.apply(null, tv), 10), h1 = 125, y1 = scale(tt, h1, 8);
@@ -610,7 +780,7 @@
       (AMT.length ? li("var(--line)", "box", "Amounts") : "");
     var pMarks = [{ a: s.pop, y: yP, c: "var(--ink2)", u: "%", n: "Precip chance" }];
     var PK = out.length; // this card leads the Hourly tab
-    out.push(wrap("Precipitation", pLegend, pAxis, '<svg class="gsvg plot" width="' + W + '" height="' + pHH + '">' +
+    if (only !== "next") out.push(wrap("Precipitation", pLegend, pAxis, '<svg class="gsvg plot" width="' + W + '" height="' + pHH + '">' +
       (function (v) { return pg + v[0] + pb + v[1] + nowVals(pMarks, 0, 0, pHH); })(vlines(pHH, 0, pTop)) + "</svg>",
       // holding: a compact stack under the time (chance, then the types with their wording, then this block's amounts)
       [{ txt: function (i) {
@@ -653,7 +823,7 @@
         { root: gin.querySelector(".gall"), rootMargin: "0px 0px 0px -" + amg + "px", threshold: [0, 0.99, 1] });
       amS.forEach(function (sp) { amio.observe(sp); });
     }
-    var I = { el: gin, start: start, n: n, nowI: nowI, mids: mids, marks: MARKS, W: W };
+    var I = { el: gin, start: start, n: n, nowI: nowI, mids: mids, marks: MARKS, W: W, px: PX, cw: gin.clientWidth };
 
     // day chips (Hourly only)
     if (!only) {
@@ -694,7 +864,7 @@
   function scrollAll(x, smooth) { firstSc().scrollTo({ left: x, behavior: smooth ? "smooth" : "auto" }); }
   function scrollNow(I) {
     var sc = scOf(I); if (!I.needScroll || !sc.clientWidth) return; I.needScroll = false;
-    sc.scrollTo({ left: Math.max(0, GL + ((Date.now() - I.start) / H) * PX - sc.clientWidth * 0.3), behavior: "auto" });
+    sc.scrollTo({ left: Math.max(0, GL + ((Date.now() - I.start) / H) * (I.px || PX) - sc.clientWidth * 0.3), behavior: "auto" });
   }
   // size sticky titles/legends to the visible width and draw each card's box behind its panel
   function gLayout(gin) {
@@ -707,12 +877,13 @@
   // re-lay-out whenever the Hourly area or the Now card changes size (including when a hidden tab is shown)
   function layoutAll() {
     gLayout($("gin")); var np = $("nowprecip"); if (np) gLayout(np);
+    var nn = $("nownext"); if (nn && GX && nn.clientWidth && Math.abs(nn.clientWidth - GX.cw) > 1) renderNext(); else if (nn) gLayout(nn);
     if (G) scrollNow(G); if (GN) scrollNow(GN);
   }
   if (window.ResizeObserver) { var ro = new ResizeObserver(function () { requestAnimationFrame(layoutAll); }); ro.observe($("gin")); ro.observe($("nowcard")); }
   function select(i, host, show, I) {
     I = I || G; if (!I) return; selIdx = i;
-    var s = doc.grid.s, t = I.start + i * H;
+    var PX = I.px || HPX, s = doc.grid.s, t = I.start + i * H;
     var cur = [];
     I.el.querySelectorAll(".gin2").forEach(function (g2) {
       var c = g2.querySelector(".cursor"), sv = g2.querySelector("svg.plot"); if (!c || !sv) return;
@@ -1016,6 +1187,7 @@
   }
   function renderFoot() {
     $("forecast-site-notes").innerHTML = NOTICE;
+    $("rnotice").innerHTML = NOTICE;
     if (!doc) { footNotice(); return; }
     var l = doc.loc;
     var link = "https://forecast.weather.gov/MapClick.php?lat=" + l.lat + "&lon=" + l.lon;
@@ -1103,6 +1275,14 @@
     requestAnimationFrame(function () { window.scrollTo({ top: Math.max(0, t.getBoundingClientRect().top + window.scrollY - document.querySelector(".top").offsetHeight - 12), behavior: "auto" }); });
   });
   $("strip2").addEventListener("click", stripClick);
+  // a day card's header opens Hourly (as a tab tap does) with that day's first hour at the left edge of the plot, just
+  //   right of the y-axis gutter (GL) — where hour 0 sits unscrolled; the browser clamps the last days to the end
+  $("det").addEventListener("click", function (e) {
+    var b = e.target.closest(".dgo"); if (!b) return;
+    var mini = $("tabdock").classList.contains("mini"); dockSet(false); pillSnap = mini; showTab("hourly"); pillSnap = false;
+    if (!G) return;
+    G.needScroll = false; scOf(G).scrollLeft = +b.dataset.hi * PX;
+  });
 
   // Daily: compact strip stays pinned and follows the paragraph being read
   var activeCard = -1, syncQueued = false, tapLock = null;
@@ -1129,17 +1309,15 @@
   window.addEventListener("scroll", function () { if (!syncQueued) { syncQueued = true; requestAnimationFrame(syncStrip); } }, { passive: true });
   // Radar tab (wx-radar.js): centred on the current location, frame times in the location's time zone
   function radarOn() {
-    radarFit(); setTimeout(radarFit, 350);
     if (window.WXRadar) WXRadar.show($("rmap"), curLoc(), { fmtTime: tm, mine: follow });
     else after("radar", function () { if (tab === "radar") radarOn(); }, function () { if (tab === "radar") toast("Radar couldn't load right now · open the tab again to retry"); });
   }
-  // the Radar tab's map fills the screen down to the tab dock (CSS on #radar): it needs the section's page offset, which
-  //   moves with the header (compact state, test banner) and the notice under it, so re-measure whenever those resize
-  //   (wx-radar.js's own ResizeObserver then resizes its canvases)
-  function radarFit() { var s = $("radar"); if (s.hidden) return; document.documentElement.style.setProperty("--rtop", Math.round(s.getBoundingClientRect().top + window.scrollY) + "px"); }
-  if (window.ResizeObserver) { var rfit = new ResizeObserver(function () { radarFit(); }); rfit.observe(document.querySelector(".top")); rfit.observe($("data-notice")); }
-  window.addEventListener("resize", radarFit);
-  function setTopH() { document.documentElement.style.setProperty("--toph", document.querySelector(".top").offsetHeight + "px"); }
+  // the Radar tab is exactly one screen (html.on-radar; CSS sizes the map by flex, and wx-radar.js's own ResizeObserver
+  //   resizes its canvases); its (i) popover with the credits and safety notice closes on a tap elsewhere or Escape
+  document.addEventListener("pointerdown", function (e) { var d = $("rsrc"); if (d.open && !d.contains(e.target)) d.open = false; });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") $("rsrc").open = false; });
+  // --toph: how far the stuck header reaches below the top safe area (its height plus the gap above it, --topgap)
+  function setTopH() { var r = document.documentElement; r.style.setProperty("--toph", document.querySelector(".top").offsetHeight + (parseFloat(getComputedStyle(r).getPropertyValue("--topgap")) || 0) + "px"); }
   setTopH(); window.addEventListener("resize", setTopH);
   function showTab(t) {
     if (t === "totals") t = "maps"; // old tab name (the storm totals card is on Forecast)
@@ -1148,6 +1326,8 @@
     if (!$("nav").querySelector('[data-tab="' + t + '"]')) t = "daily";
     var changed = t !== tab; tab = t;
     document.querySelector(".wrap").classList.toggle("forecast-wide", t === "maps");
+    document.documentElement.classList.toggle("on-radar", t === "radar");
+    if (t === "radar" && typeof dockSet === "function") dockSet(false); // nothing scrolls there, so header and dock stay full size
     document.querySelectorAll("#nav .chip").forEach(function (c) { c.classList.toggle("on", c.dataset.tab === t); });
     movePill(changed && !pillSnap);
     document.querySelectorAll("section[data-tab]").forEach(function (s) {
@@ -1236,7 +1416,7 @@
   // Lifting the finger clears everything and the graphs go back to the current time.
   var sc0 = null, scrubbing = false;
   var scrubI = null; // the graph instance being read (Hourly or the Now card)
-  function idxAt(sc, clientX, I) { var r = sc.getBoundingClientRect(); return Math.max(0, Math.min(I.n - 1, Math.floor((clientX - r.left + sc.scrollLeft - GL) / PX))); }
+  function idxAt(sc, clientX, I) { var r = sc.getBoundingClientRect(); return Math.max(0, Math.min(I.n - 1, Math.floor((clientX - r.left + sc.scrollLeft - GL) / (I.px || PX)))); }
   function scrubStart(target, x, y, I) {
     if (!I) return; var sc = target.closest && target.closest(".gsc"); if (!sc) return;
     clearTimeout(sc0 && sc0.t); scrubI = I;
@@ -1285,6 +1465,7 @@
   }
   wireScrub($("gin"), function () { return G; });
   wireScrub($("nowcard"), function () { return GN; }, "#nowprecip");
+  wireScrub($("nowcard"), function () { return GX; }, "#nownext");
   window.addEventListener("mousemove", function (e) { if (sc0) scrubMove(e.clientX, e.clientY, e); });
   window.addEventListener("mouseup", function () { if (sc0 || scrubbing) scrubEnd(); });
 
@@ -1308,6 +1489,46 @@
     if (want) window.addEventListener("touchmove", noPull, { passive: false }); else window.removeEventListener("touchmove", noPull, { passive: false });
   }
   window.addEventListener("scroll", guardTop, { passive: true }); guardTop();
+
+  // Pull to refresh (touch only): from the very top of the page a downward drag pulls a small glass disc out from under the
+  //   header (with resistance); let go once it has come PTR_AT px and it runs exactly what the refresh button does (same
+  //   busy guard, spinner, radar re-check, version check); short of that it springs back. It never starts on a map (those
+  //   drags pan), the tab dock, the Location sheet, an open dialog or popover, a slider, or while a refresh runs; the drag
+  //   must be clearly downward (sideways swipes on graphs and strips are left alone) and must start moving within 250 ms
+  //   (a hold is hold-to-read). Its listeners are passive: noPull() above already cancels the browser's own pull at the top.
+  var PTR_AT = 70, ptrEl = $("ptr"), pr = null;
+  function ptrShow(d, drag) {
+    ptrEl.classList.toggle("drag", drag); ptrEl.style.opacity = d ? String(Math.min(1, d / 40)) : "";
+    ptrEl.style.transform = d ? "translateY(" + d + "px)" : ""; ptrEl.firstChild.style.transform = drag ? "rotate(" + Math.round(d / PTR_AT * 300) + "deg)" : "";
+  }
+  function ptrEnd(go) {
+    pr = null;
+    if (!go || busy || $("rbtn").disabled) { ptrShow(0, false); return; }
+    ptrShow(PTR_AT * 0.8, false); ptrEl.classList.add("spin"); $("rbtn").click();
+    var w = setInterval(function () { if (busy) return; clearInterval(w); ptrEl.classList.remove("spin"); ptrShow(0, false); }, 120);
+  }
+  window.addEventListener("touchstart", function (e) {
+    if (pr && pr.on) { ptrEnd(false); return; } // a second finger cancels a pull
+    pr = null;
+    if (e.touches.length !== 1 || window.scrollY > 0 || busy || $("rbtn").disabled || ptrEl.classList.contains("spin")) return;
+    if (document.documentElement.classList.contains("lsopen") || document.querySelector("dialog[open]")) return;
+    var t = e.target; if (!t.closest || t.closest(".rmap,.mm,#mmap,.model-map,.oqimg,.tabdock,#locsheet,dialog,.rsrc[open],.oqset,input,select,.rbar")) return;
+    pr = { x: e.touches[0].clientX, y: e.touches[0].clientY, t: performance.now(), on: false, d: 0 };
+  }, { passive: true });
+  window.addEventListener("touchmove", function (e) {
+    if (!pr || e.touches.length !== 1) return;
+    var x = e.touches[0].clientX, y = e.touches[0].clientY, dx = x - pr.x, dy = y - pr.y;
+    if (!pr.on) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      if (scrubbing || window.scrollY > 0 || dy <= 0 || dy < Math.abs(dx) * 1.5 || performance.now() - pr.t > 250) { pr = null; return; }
+      pr.on = true; pr.y0 = y;
+    }
+    if (window.scrollY > 0) { ptrEnd(false); return; }
+    var raw = y - pr.y0; pr.d = raw > 0 ? 110 * (1 - Math.exp(-raw / 130)) : 0;
+    ptrShow(pr.d, true);
+  }, { passive: true });
+  window.addEventListener("touchend", function () { if (pr && pr.on) ptrEnd(pr.d >= PTR_AT); else pr = null; });
+  window.addEventListener("touchcancel", function () { if (pr && pr.on) ptrEnd(false); else pr = null; });
 
   // A phone keeps the page in memory for hours, and the refresh button only refetches weather data, so check for a
   //   newer published version (the ?v= number on app.js in index.html) when the page comes back, on manual refresh
@@ -1341,7 +1562,7 @@
         var host = $("gin"), sc = host.querySelector(".gall"), x = sc ? sc.scrollLeft : 0;
         G = renderGraph(host);
         sc = host.querySelector(".gall"); if (sc) sc.scrollLeft = x;
-      } else if (tab === "daily") renderNowPrecip();
+      } else if (tab === "daily") { renderNowPrecip(); renderNext(); }
     }, 200);
   });
 
