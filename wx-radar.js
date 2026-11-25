@@ -348,8 +348,9 @@
   }
   function drawLabels() {
     cxL.setTransform(1, 0, 0, 1, 0, 0); cxL.clearRect(0, 0, cvL.width, cvL.height);
-    if (vec()) VM.drawTop(cxL, visible(VM.tileZoom(rv.z), ldpr), { dark: dark(), dpr: ldpr, z: rv.z, w: SW, h: SH });
+    if (vec()) { drawWarn(cxL, ldpr); VM.drawTop(cxL, visible(VM.tileZoom(rv.z), ldpr), { dark: dark(), dpr: ldpr, z: rv.z, w: SW, h: SH }); }
     else if (!VM || VM.failed()) { var g = layerGet("Reference"); visible(tz(), ldpr).forEach(function (v) { drawTile(cxL, v, g); }); }
+    drawWarn(cxL, ldpr);
     // markers: the blue dot is the device's own position (or the forecast location when it follows the device);
     //   any other forecast location gets a small neutral pin-dot
     var s = rscale(), d = ldpr;
@@ -476,6 +477,7 @@
     if (playing) { advance(dt); need |= 2; }
     if (inertia) { stepInertia(dt); }
     if (tween) { stepTween(ts); }
+    if (wtip && (view.x !== wtip.x || view.y !== wtip.y || view.z !== wtip.z)) tipHide(); // the readout doesn't follow the map
     // Each layer shows its last drawing moved/scaled by a CSS transform until it is redrawn at the current view:
     //   right away for new content (need bits), when the gesture is over, or mid-gesture once its spare margin is
     //   half used. Stale layers are redrawn one per frame so no single frame does all the work. While playing, the
@@ -810,6 +812,115 @@
   }
   function status(t) { if (ui.stat.textContent !== t) { ui.stat.textContent = t; ui.stat.hidden = !t; } }
 
+  // ---------- NWS storm-based warnings (outlines on the lines/labels layer) ----------
+  // One national query for the polygon-based warning types (usually tens of features), so panning never needs a new
+  //   request; zone-based alerts (geometry null) are skipped. Rings are projected to world x/y once per fetch; drawing
+  //   only offsets/scales them. A failed fetch keeps the last good set while its alerts are unexpired (ok: false).
+  var WEV = { "Tornado Warning": ["#FF0000", 9], "Extreme Wind Warning": ["#FF00FF", 8], "Severe Thunderstorm Warning": ["#FFD400", 7],
+    "Flash Flood Warning": ["#00C853", 6], "Snow Squall Warning": ["#B9A2FF", 5], "Special Marine Warning": ["#FF8C1A", 4],
+    "Dust Storm Warning": ["#2F7DF6", 3], "Flood Warning": ["#2F7DF6", 2], "Flood Advisory": ["#2F7DF6", 1] };
+  var WURL = "https://api.weather.gov/alerts/active?status=actual&message_type=alert,update&event=" + Object.keys(WEV).map(encodeURIComponent).join(",");
+  var WARN = { list: [], ok: null, at: 0, err: "" }, warnT = 0, warnAC = null, wtip = null;
+  function wEnd(p) { var t = [p.expires, p.ends].map(function (s) { return s ? Date.parse(s) : NaN; }).filter(isFinite); return t.length ? Math.min.apply(null, t) : Infinity; }
+  function wParse(j) {
+    var out = [];
+    ((j && j.features) || []).forEach(function (f) {
+      var p = f && f.properties || {}, g = f && f.geometry, c = WEV[p.event];
+      if (!c || !g || p.status && p.status !== "Actual" || p.messageType === "Cancel") return;
+      var polys = g.type === "Polygon" ? [g.coordinates] : g.type === "MultiPolygon" ? g.coordinates : null; if (!polys) return;
+      var x0 = 9, y0 = 9, x1 = -9, y1 = -9, rings = [];
+      polys.forEach(function (poly) {
+        var pr = [];
+        (poly || []).forEach(function (ring) {
+          var a = new Float64Array(ring.length * 2), px = null;
+          ring.forEach(function (q, i) {
+            var x = mx(+q[0]), y = my(+q[1]); if (px != null) x -= Math.round(x - px); px = x; // unwrap across 180°
+            a[2 * i] = x; a[2 * i + 1] = y; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+          });
+          if (ring.length > 2) pr.push(a);
+        });
+        if (pr.length) rings.push(pr);
+      });
+      if (!rings.length) return;
+      out.push({ id: p.id || f.id, ev: p.event, col: c[0], pri: c[1], end: wEnd(p), until: Date.parse(p.ends || "") || null, area: String(p.areaDesc || ""), polys: rings, bb: [x0, y0, x1, y1], sz: (x1 - x0) * (y1 - y0) });
+    });
+    return out.sort(function (a, b) { return a.pri - b.pri || b.sz - a.sz; }); // drawn in this order: tornado on top
+  }
+  function wPrune() {
+    var now = Date.now(), n = WARN.list.length; WARN.list = WARN.list.filter(function (w) { return w.end > now; });
+    if (wtip && !WARN.list.some(function (w) { return w.id === wtip.id; })) tipHide();
+    if (WARN.list.length !== n) paint(4);
+  }
+  function warnFetch() {
+    clearTimeout(warnT); warnT = 0;
+    if (!on || document.hidden) return;
+    if (warnAC) warnAC.abort(); // one request at a time; a newer one replaces a stale one
+    var ac = warnAC = typeof AbortController !== "undefined" ? new AbortController() : null, to = setTimeout(function () { if (ac) ac.abort(); }, 20000);
+    fetch(WURL, { cache: "no-store", signal: ac ? ac.signal : undefined }).then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }).then(function (j) {
+      if (warnAC !== ac) return;
+      WARN.list = wParse(j); WARN.ok = true; WARN.at = Date.now(); WARN.err = ""; wPrune(); paint(4);
+    }).catch(function (e) {
+      if (warnAC !== ac) return;
+      WARN.ok = false; WARN.err = String(e && e.message || e).slice(0, 60); wPrune();
+    }).then(function () {
+      clearTimeout(to); if (warnAC !== ac) return; warnAC = null;
+      if (on && !document.hidden) warnT = setTimeout(warnFetch, 120000);
+    });
+  }
+  function warnStop() { clearTimeout(warnT); warnT = 0; if (warnAC) { warnAC.abort(); warnAC = null; } }
+  if (typeof document !== "undefined") document.addEventListener("visibilitychange", function () {
+    if (document.hidden) warnStop(); else if (on && !warnAC) { if (Date.now() - WARN.at > 110000) warnFetch(); else { clearTimeout(warnT); warnT = setTimeout(warnFetch, 120000 - (Date.now() - WARN.at)); } }
+  });
+  // draws on the lines/labels canvas (called from drawLabels with rv = RV.L), under the place names
+  function drawWarn(ctx, d) {
+    if (!WARN.list.length) return;
+    var s = rscale(), now = Date.now(), hw = SW / 2 / s, hh = SH / 2 / s;
+    ctx.save(); ctx.lineJoin = "round"; ctx.lineCap = "round";
+    WARN.list.forEach(function (w) {
+      if (w.end <= now) return;
+      var b = w.bb, off = Math.round(rv.x - (b[0] + b[2]) / 2);
+      if (b[2] + off < rv.x - hw || b[0] + off > rv.x + hw || b[3] < rv.y - hh || b[1] > rv.y + hh) return;
+      var ox = (off - rv.x) * s + SW / 2, oy = SH / 2 - rv.y * s;
+      ctx.beginPath();
+      w.polys.forEach(function (pr) { pr.forEach(function (a) {
+        for (var i = 0; i < a.length; i += 2) { var x = (a[i] * s + ox) * d, y = (a[i + 1] * s + oy) * d; if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }
+        ctx.closePath();
+      }); });
+      ctx.globalAlpha = 0.07; ctx.fillStyle = w.col; ctx.fill("evenodd"); ctx.globalAlpha = 1;
+      ctx.strokeStyle = "rgba(0,0,0,.72)"; ctx.lineWidth = 4.25 * d; ctx.stroke(); // casing: keeps yellow readable on the light map
+      ctx.strokeStyle = w.col; ctx.lineWidth = 2.25 * d; ctx.stroke();
+    });
+    ctx.restore();
+  }
+  function inRing(a, x, y) {
+    var c = false;
+    for (var i = 0, j = a.length - 2; i < a.length; j = i, i += 2) { var yi = a[i + 1], yj = a[j + 1]; if ((yi > y) !== (yj > y) && x < (a[j] - a[i]) * (y - yi) / (yj - yi) + a[i]) c = !c; }
+    return c;
+  }
+  function warnAt(p) {
+    var now = Date.now(), hit = null;
+    WARN.list.forEach(function (w) {
+      if (w.end <= now) return;
+      var x = p.x + Math.round((w.bb[0] + w.bb[2]) / 2 - p.x), b = w.bb;
+      if (x < b[0] || x > b[2] || p.y < b[1] || p.y > b[3]) return;
+      if (w.polys.some(function (pr) { var c = false; pr.forEach(function (a) { if (inRing(a, x, p.y)) c = !c; }); return c; })) hit = w; // last = highest priority
+    });
+    return hit;
+  }
+  function tipHide() { wtip = null; if (ui.warn && !ui.warn.hidden) ui.warn.hidden = true; }
+  function tipAt(sx, sy) {
+    var w = warnAt(worldAt(sx, sy)); if (!w) { tipHide(); return; }
+    var t = ui.warn; t.innerHTML = "";
+    var h = document.createElement("b"), i = document.createElement("i"), u = document.createElement("span"), a = document.createElement("span");
+    i.style.background = w.col; h.appendChild(i); h.appendChild(document.createTextNode(w.ev));
+    u.textContent = w.until ? "until " + fmt(w.until) : "no end time given"; a.className = "wa"; a.textContent = w.area.replace(/\s+/g, " ").trim();
+    t.appendChild(h); t.appendChild(u); t.appendChild(a); t.hidden = false;
+    var tw = t.offsetWidth, th = t.offsetHeight, x = Math.max(8, Math.min(W - tw - 8, sx - tw / 2)), y = sy - th - 14;
+    if (y < 8) y = Math.min(HH - th - 8, sy + 18);
+    t.style.left = x + "px"; t.style.top = y + "px";
+    wtip = { id: w.id, x: view.x, y: view.y, z: view.z };
+  }
+
   // ---------- gestures ----------
   var pts = new Map(), g0 = null, inertia = null, tween = null, lastTap = 0, samples = [];
   function worldAt(sx, sy) { var s = scale(); return { x: view.x + (sx - W / 2) / s, y: view.y + (sy - HH / 2) / s }; }
@@ -851,7 +962,7 @@
       if (!pts.has(e.pointerId)) return; var p = local(e), d0 = t._down; pts.delete(e.pointerId);
       if (pts.size === 0) {
         var tap = d0 && Math.hypot(p.x - d0.x, p.y - d0.y) < 8 && e.timeStamp - d0.t < 300;
-        if (tap) { if (e.timeStamp - lastTap < 320) { zoomTo(p.x, p.y, Math.round(view.z) + 1); lastTap = 0; } else lastTap = e.timeStamp; }
+        if (tap) { if (e.timeStamp - lastTap < 320) { tipHide(); zoomTo(p.x, p.y, Math.round(view.z) + 1); lastTap = 0; } else { lastTap = e.timeStamp; tipAt(p.x, p.y); } }
         else if (g0 && g0.n === 1 && samples.length > 1) {
           var a = samples[0], b = samples[samples.length - 1], dt = Math.max(16, b.t - a.t);
           if (e.timeStamp - b.t < 80) { inertia = { vx: (b.x - a.x) / dt, vy: (b.y - a.y) / dt }; paint(0); }
@@ -924,7 +1035,7 @@
   function build(host) {
     el = host; el.innerHTML =
       '<div class="rstage"><canvas class="rl rb"></canvas><canvas class="rl rr"></canvas><canvas class="rl rt"></canvas></div>' +
-      '<div class="rstat" hidden></div>' +
+      '<div class="rstat" hidden></div><div class="rwarn" role="status" hidden></div>' +
       '<button type="button" class="rleg" aria-label="Switch radar colours"><span class="lrow lr"><span>Rain</span><i></i></span><span class="lrow ls"><span>Snow</span><i></i></span><em></em></button>' +
       '<div class="rbtns"><button type="button" class="rloc" aria-label="Go to my current location"><svg viewBox="0 0 24 24"><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2" class="f"/></svg></button>' +
       '<button type="button" class="rloc rhome" aria-label="Back to the forecast location" hidden><svg viewBox="0 0 24 24"><path d="M12 21.5s-6.5-6.2-6.5-11.2a6.5 6.5 0 0 1 13 0c0 5-6.5 11.2-6.5 11.2Z"/><circle cx="12" cy="10.3" r="2.3" class="f"/></svg></button></div>' +
@@ -932,7 +1043,7 @@
     stage = el.querySelector(".rstage"); var cs = el.querySelectorAll("canvas"); cvB = cs[0]; cvR = cs[1]; cvL = cs[2];
     cxB = cvB.getContext("2d"); cxR = cvR.getContext("2d"); cxL = cvL.getContext("2d");
     LAYERS = [{ k: "R", b: 2, c: cvR, draw: drawRadar, tf: "" }, { k: "B", b: 1, c: cvB, draw: drawBase, tf: "" }, { k: "L", b: 4, c: cvL, draw: drawLabels, tf: "" }];
-    ui = { stat: el.querySelector(".rstat"), play: el.querySelector(".rplay"), range: el.querySelector(".rrange"), time: el.querySelector(".rtime"), t1: el.querySelector(".rtime b"), t2: el.querySelector(".rtime span"), leg: el.querySelector(".rleg") };
+    ui = { stat: el.querySelector(".rstat"), play: el.querySelector(".rplay"), range: el.querySelector(".rrange"), time: el.querySelector(".rtime"), t1: el.querySelector(".rtime b"), t2: el.querySelector(".rtime span"), leg: el.querySelector(".rleg"), warn: el.querySelector(".rwarn") };
     ui.play.addEventListener("click", function () { userPaused = playing; play(!playing); started = true; });
     ui.range.addEventListener("input", function () { var v = +ui.range.value; playing && play(false); userPaused = true; started = true; cur = Math.min(NF - 1, Math.floor(v)); frac = v - cur; if (cur === NF - 1) frac = 0; paint(2); });
     // like RadarScope's product time: tap to jump to the newest scan and check for a newer one now
@@ -996,13 +1107,16 @@
       if (!frames || Math.floor(Date.now() / STEP) !== frames.bucket) loadFrames();
       else plan();
       // keeps "Updated" and the late colour current between scans
-      clearInterval(tickT); tickT = setInterval(function () { timeUi(); nowLine(); }, 15000);
+      clearInterval(tickT); tickT = setInterval(function () { timeUi(); nowLine(); wPrune(); }, 15000);
+      if (!warnAC && Date.now() - WARN.at > 110000) warnFetch(); else if (!warnAC && !warnT) warnT = setTimeout(warnFetch, Math.max(1000, 120000 - (Date.now() - WARN.at)));
       paint(7);
     },
-    hide: function () { stopWatch(); if (gpsMode === "wait") gpsMode = "off"; on = false; playing && play(false); started = false; userPaused = false; clearTimeout(refreshT); clearInterval(tickT); if (raf) cancelAnimationFrame(raf); raf = 0; },
-    refresh: function () { if (on) loadFrames(); },
+    hide: function () { warnStop(); tipHide(); stopWatch(); if (gpsMode === "wait") gpsMode = "off"; on = false; playing && play(false); started = false; userPaused = false; clearTimeout(refreshT); clearInterval(tickT); if (raf) cancelAnimationFrame(raf); raf = 0; },
+    refresh: function () { if (on) { loadFrames(); warnFetch(); } },
     // for the live data check
-    _state: function () { return { why: s3Why, dom: dom.k, rvR: RV.R, rdpr: rdpr, SW: SW, SH: SH, times: frames && frames.times, refs: frames && frames.refs, flags: frames && frames.flags, s3OK: s3OK, box: box, wk: !!WK, mv: (MV[mvKey] || []).map(function (m) { return m ? [+(m.x * rscale()).toFixed(1), +(m.y * rscale()).toFixed(1)] : null; }), redraws: redraws, tf: cvL && cvL.style.transform, tfs: LAYERS.map(function (L) { return L.c.style.transform; }), src: frames && frames.src, mrmsOK: mrmsOK, corsOK: corsOK, frames: frames && frames.n, valid: frames && frames.valid, ready: frames ? ready(frames) : 0, ring: frames ? ringReady() : 0, miss: miss, view: view, playing: playing, cur: cur, frac: frac }; },
+    _state: function () { return { why: s3Why, dom: dom.k, rvR: RV.R, rdpr: rdpr, SW: SW, SH: SH, times: frames && frames.times, refs: frames && frames.refs, flags: frames && frames.flags, s3OK: s3OK, box: box, wk: !!WK, mv: (MV[mvKey] || []).map(function (m) { return m ? [+(m.x * rscale()).toFixed(1), +(m.y * rscale()).toFixed(1)] : null; }), redraws: redraws, tf: cvL && cvL.style.transform, tfs: LAYERS.map(function (L) { return L.c.style.transform; }), src: frames && frames.src, mrmsOK: mrmsOK, corsOK: corsOK, frames: frames && frames.n, valid: frames && frames.valid, ready: frames ? ready(frames) : 0, ring: frames ? ringReady() : 0, miss: miss, view: view, playing: playing, cur: cur, frac: frac, warn: { n: WARN.list.length, at: WARN.at, ok: WARN.ok, err: WARN.err } }; },
+    // warning outlines for tests: [{ev, until, pts: [[sx, sy], …] first ring of each polygon in map CSS px}]
+    _warn: function () { var s = scale(); return WARN.list.map(function (w) { var off = Math.round(view.x - (w.bb[0] + w.bb[2]) / 2); return { ev: w.ev, until: w.until, end: w.end, pts: w.polys.map(function (pr) { var a = pr[0], o = []; for (var i = 0; i < a.length; i += 2) o.push([(a[i] + off - view.x) * s + W / 2, (a[i + 1] - view.y) * s + HH / 2]); return o; }) }; }); },
     _pal: function () { return pal(); },
     // radar values at [[lat, lon], …] for frame time t (default newest), as drawn; for the live accuracy check
     _probe: function (pts, t) {
