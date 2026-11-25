@@ -489,7 +489,10 @@ var Store = (function(){
     if (/not confirmed/i.test(msg)) return "Confirm that email first, then sign in.";
     if (/signups not allowed|signup_disabled/i.test(msg + code)) return "New accounts are turned off. Sign in instead.";
     if (/already registered|already been registered/i.test(msg)) return "That email already has an account. Sign in instead.";
-    if (/rate limit|only request this after/i.test(msg) || code === "over_email_send_rate_limit") return "The email limit was reached. Wait a bit, or sign in with a password.";
+    var wait = /only request this after (\d+) second/i.exec(msg);
+    if (wait) return "Supabase allows one email every so often. You can send another in " + wait[1] + " seconds. If an earlier email arrived, enter its code below instead.";
+    if (/token has expired|otp.*(expired|invalid)|invalid.*(otp|token)/i.test(msg) || code === "otp_expired") return "That code didn't work or has expired. Check the newest email and try again, or send a new one.";
+    if (/rate limit/i.test(msg) || code === "over_email_send_rate_limit") return "This hour's email allowance is used up. Use a code from an email you already got, or sign in with a password.";
     if (/not authorized/i.test(msg)) return "The built-in mail only delivers to addresses on the Supabase project team.";
     return msg;
   }
@@ -531,8 +534,29 @@ var Store = (function(){
     var signIn = el("button", "btn primary", "Sign in"); signIn.type = "button";
     var link = el("button", "btn", "Email me a sign-in link"); link.type = "button";
     var create = el("button", "btn", "Create account"); create.type = "button";
-    function busy(on){ signIn.disabled = link.disabled = create.disabled = on; }
+    // An emailed code works in any browser, so a link that opens in the wrong
+    // browser (Mail, Gmail, a home-screen app) no longer forces another email.
+    var otp = inp("ta-otp", "text", "", "123456");
+    otp.autocomplete = "one-time-code";
+    otp.inputMode = "numeric";
+    otp.maxLength = 10;
+    var useCode = el("button", "btn", "Sign in with code"); useCode.type = "button";
+    var codeRow = el("div", "actions");
+    codeRow.style.display = "flex"; codeRow.style.gap = "8px"; codeRow.style.flexWrap = "wrap"; codeRow.style.marginTop = "8px";
+    var cooldown = null;
+    function busy(on){ signIn.disabled = create.disabled = useCode.disabled = on; link.disabled = on || !!cooldown; }
     function address(){ return email.value.trim(); }
+    function waitToResend(err){
+      var m = /only request this after (\d+) second/i.exec(err && (err.message || err.msg) || "");
+      if (!m) return;
+      var left = +m[1];
+      if (cooldown) clearInterval(cooldown);
+      function tick(){
+        if (left <= 0 || !link.isConnected){ clearInterval(cooldown); cooldown = null; link.textContent = "Email me a new link"; link.disabled = false; return; }
+        link.textContent = "Send again in " + left + "s"; link.disabled = true; left--;
+      }
+      cooldown = setInterval(tick, 1000); tick();
+    }
     signIn.addEventListener("click", function(){
       if (!cloudClient){ msg.textContent = "The sync library didn't load."; return; }
       busy(true);
@@ -549,9 +573,23 @@ var Store = (function(){
       cloudClient.auth.signInWithOtp({email:address(), options:{emailRedirectTo:authRedirect(), shouldCreateUser:false}}).then(function(res){
         if (res.error) throw res.error;
         busy(false);
-        msg.textContent = "Check that inbox for a sign-in link. Open it in this browser. The free mail service only delivers to the project team, a couple of times an hour.";
-      }).catch(function(err){ busy(false); msg.textContent = authText(err); });
+        link.textContent = "Email me a new link";
+        msg.textContent = "Check that inbox. Enter the code from the email below, or open the link in this browser. If one doesn't work, try the other or send again.";
+        otp.focus();
+      }).catch(function(err){ busy(false); msg.textContent = authText(err); waitToResend(err); });
     });
+    useCode.addEventListener("click", function(){
+      if (!cloudClient){ msg.textContent = "The sync library didn't load."; return; }
+      var token = otp.value.replace(/\D/g, "");
+      if (!address()){ msg.textContent = "Enter the email the code was sent to."; email.focus(); return; }
+      if (token.length < 6){ msg.textContent = "Enter the code from the sign-in email."; otp.focus(); return; }
+      busy(true);
+      cloudClient.auth.verifyOtp({email:address(), token:token, type:"email"}).then(function(res){
+        if (res.error) throw res.error;
+        closeSheet();
+      }).catch(function(err){ busy(false); msg.textContent = authText(err); otp.select(); });
+    });
+    otp.addEventListener("keydown", function(e){ if (e.key === "Enter"){ e.preventDefault(); useCode.click(); } });
     create.addEventListener("click", function(){
       if (!cloudClient){ msg.textContent = "The sync library didn't load."; return; }
       if (password.value.length < 6){ msg.textContent = "Use a password of at least 6 characters."; password.focus(); return; }
@@ -565,7 +603,11 @@ var Store = (function(){
       }).catch(function(err){ busy(false); msg.textContent = authText(err); });
     });
     row.appendChild(signIn); row.appendChild(link); row.appendChild(create);
-    body.appendChild(row); body.appendChild(msg);
+    body.appendChild(row);
+    body.appendChild(fieldEl("Code from the email", otp, "Got a sign-in email? Type its code here. Works even if the link didn't."));
+    codeRow.appendChild(useCode);
+    body.appendChild(codeRow);
+    body.appendChild(msg);
     setTimeout(function(){ email.focus(); }, 0);
   }
   function finishCloud(my){

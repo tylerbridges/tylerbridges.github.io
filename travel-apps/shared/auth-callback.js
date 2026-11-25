@@ -44,10 +44,10 @@
   client.auth.getSession().then(function(res){
     var session = res && res.data && res.data.session;
     if (session) finish(session);
-    else setTimeout(function(){ if (!done) say(params.get("code") ? "This sign-in link didn't finish. Request a new one from the app." : "This sign-in link didn't include a code. Request a new one from the app."); }, 1500);
+    else setTimeout(function(){ if (!done) say(params.get("code") ? "This sign-in link didn't finish here. Go back to the app and enter the code from the same email instead." : "This sign-in link didn't include a code. Go back to the app and enter the code from the email instead."); }, 1500);
   }).catch(function(e){
     var msg = e && e.message || "";
-    if (/code verifier/i.test(msg)) say("Open the sign-in link in the same browser that requested it.");
-    else say(msg || "Couldn't finish sign-in. Request a new link.");
+    if (/code verifier/i.test(msg)) say("This link opened in a different browser than the one that asked for it. Go back to the app and enter the code from the same email instead.");
+    else say((msg ? msg + " " : "Couldn't finish sign-in. ") + "Go back to the app and enter the code from the email instead.");
   });
 })();
