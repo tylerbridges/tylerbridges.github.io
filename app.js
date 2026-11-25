@@ -1557,7 +1557,7 @@
   function curLoc() { return loc; }
   // "Use my current location" turns on following (like a weather app's My Location): on every later open, and on
   //   returning to the app after 10+ minutes, the site quietly re-checks the phone's position (only if location
-  //   permission isn't blocked) and switches when it has moved ~2 km or more. Picking any other place turns it off.
+  //   permission is already granted, so it never prompts on open) and switches when it has moved ~2 km or more. Picking any other place turns it off.
   var follow = !!store("wx-follow"), lastFix = 0;
   function setFollow(on) { follow = !!on; store("wx-follow", follow); markFollow(); }
   function markFollow() {
@@ -1578,7 +1578,10 @@
         }).catch(function () {});
       }, function () {}, { enableHighAccuracy: false, timeout: 15000, maximumAge: 600000 });
     }
-    try { navigator.permissions.query({ name: "geolocation" }).then(function (st) { if (st.state !== "denied") ask(); }, ask); } catch (e) { ask(); }
+    // only when the browser already holds permission: an installed iPhone app forgets it between launches and would
+    //   otherwise pop the location prompt on every open; then the last current-location fix stays in use (still
+    //   following) until the location is shared again from the Location sheet or the browser keeps the permission
+    try { navigator.permissions.query({ name: "geolocation" }).then(function (st) { if (st.state === "granted") ask(); }, function () {}); } catch (e) {}
   }
   function saveCache(d) { store("wx-cache", d); }
   function same(a, b) { return a && b && Math.abs(a.lat - b.lat) < 0.02 && Math.abs(a.lon - b.lon) < 0.02; }
