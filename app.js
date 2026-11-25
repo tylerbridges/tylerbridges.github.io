@@ -185,7 +185,11 @@
     }
     var rows = [];
     if (hiT != null || loT != null) rows.push(["High / Low", '<span class="hiT">' + (hiT != null ? hiT + "°F" : "–") + '</span> / <span class="loT">' + (loT != null ? loT + "°F" : "–") + "</span>", 1]);
-    var p0 = p[0]; if (p0) rows.push(["Precip chance", (p0.popTrend ? p0.popTrend[0] + "% → " + p0.popTrend[1] + "%" : (p0.pop || 0) + "%") + " " + p0.name.toLowerCase().replace(/^this /, "")]);
+    // this hour's chance from the hourly grid; falls back to the current forecast period's chance
+    var popNow = null, popK = grid && grid.s && grid.s.pop ? Math.floor((Date.now() - grid.start) / H) : -1;
+    if (popK >= 0 && popK < grid.s.pop.length && grid.s.pop[popK] != null) popNow = grid.s.pop[popK];
+    var p0 = p[0]; if (popNow == null && p0) popNow = p0.pop || 0;
+    if (popNow != null) rows.push(["Precip", Math.round(popNow) + "%"]);
     // EPA's daily UV forecast is for one calendar day: label it with the day when it isn't today (late evening it's already tomorrow's)
     var uv = doc.uv, uvD = uv && uv.date ? new Date(uv.date.replace(/\//g, " ")) : null, todayD = new Date(fmt(Date.now(), { year: "numeric", month: "short", day: "numeric" }));
     var uvOff = uvD ? Math.round((uvD - todayD) / 864e5) : null;
