@@ -104,16 +104,18 @@
   }
   // NWS text comes hard-wrapped at ~69 columns: rejoin lines inside each paragraph (words unchanged) so it reflows on a phone
   function reflow(t) { return String(t || "").replace(/\r/g, "").trim().split(/\n\s*\n/).map(function (p) { return p.replace(/\s*\n\s*/g, " ").trim(); }).join("\n\n"); }
+  var HZCHEV = '<svg class="hz-chev" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
   function hazHtml() {
     var a = (doc && doc.alerts) || [], h = doc && doc.hwo, out = [];
     var sev = { Extreme: "var(--sev-ext)", Severe: "var(--sev-sev)", Moderate: "var(--sev-mod)", Minor: "var(--sev-min)" };
     a.forEach(function (x) {
       var what = /WHAT\.\.\.([\s\S]*?)(\n\n|\n\*|$)/.exec(x.desc || "");
       var brief = firstSent(what ? what[1] : (x.desc || x.headline || ""), 170);
-      var when = x.ends ? "Until " + dtm(x.ends) : x.onset ? "From " + dtm(x.onset) : "";
+      var when = x.ends ? "until " + dtm(x.ends) : x.onset ? "from " + dtm(x.onset) : "";
       var meta = [x.sent ? "Issued " + dtm(x.sent) : "", x.expires ? "Expires " + dtm(x.expires) : ""].filter(Boolean).join(" · ");
-      out.push('<details class="haz" style="--sev:' + (sev[x.severity] || "var(--sev-mod)") + '"><summary><div class="hz-t">' + esc(x.event) + '<span class="hz-when">' + esc(when) + '</span></div>' +
-        (meta ? '<div class="hz-m">' + esc(meta) + "</div>" : "") + '<div class="hz-b">' + esc(brief) + '</div><span class="hz-more"><span class="hz-o">Details ▾</span><span class="hz-c">Hide details ▴</span></span></summary>' +
+      // collapsed: one tappable row (name, until …, chevron); expanded: issued/expires, then the alert verbatim
+      out.push('<details class="haz" style="--sev:' + (sev[x.severity] || "var(--sev-mod)") + '"><summary aria-label="' + esc(x.event + (when ? ", " + when : "") + ". " + brief) + '"><div class="hz-t">' + esc(x.event) + '<span class="hz-when">' + esc(when) + '</span></div>' + HZCHEV + '</summary>' +
+        (meta ? '<div class="hz-m">' + esc(meta) + "</div>" : "") +
         // expanded: the alert verbatim (headline, description, NWS's own action heading and instructions, areas)
         '<div class="hz-body">' + (x.headline ? "<b>" + esc(x.headline) + "</b>\n\n" : "") + esc(reflow(x.desc)) + (x.instr ? "\n\n<b>PRECAUTIONARY/PREPAREDNESS ACTIONS...</b>\n\n" + esc(reflow(x.instr)) : "") +
         (x.area ? '\n\n<span class="hz-area">' + esc(x.area) + "</span>" : "") + "</div></details>");
@@ -124,8 +126,8 @@
     if (h && h.day1 && !quiet(h.day1)) parts.push(["Today and tonight", h.day1]);
     if (h && h.days27 && !quiet(h.days27)) parts.push(["Next 7 days", h.days27]);
     if (h && parts.length) {
-      out.push('<details class="haz hwo" style="--sev:var(--sev-min)"><summary><div class="hz-t">Hazardous Weather Outlook<span class="hz-when">NWS ' + esc(doc.loc.office || "") + '</span></div>' +
-        '<div class="hz-m">' + esc("Issued " + dtm(h.issued) + (h.expires ? " · Expires " + dtm(h.expires) : "")) + '</div><div class="hz-b">' + esc(firstSent(parts[0][1], 170)) + '</div><span class="hz-more"><span class="hz-o">Details ▾</span><span class="hz-c">Hide details ▴</span></span></summary>' +
+      out.push('<details class="haz hwo" style="--sev:var(--sev-min)"><summary aria-label="' + esc("Hazardous Weather Outlook, NWS " + (doc.loc.office || "") + ". " + firstSent(parts[0][1], 170)) + '"><div class="hz-t">Hazardous Weather Outlook<span class="hz-when">NWS ' + esc(doc.loc.office || "") + '</span></div>' + HZCHEV + '</summary>' +
+        '<div class="hz-m">' + esc("Issued " + dtm(h.issued) + (h.expires ? " · Expires " + dtm(h.expires) : "")) + '</div>' +
         // expanded: the outlook verbatim (section headers like ".DAY ONE..." in bold); older cached data falls back to its two sections
         '<div class="hz-body">' + (h.text ? reflow(h.text).split("\n\n").map(function (p) { return /^\.[A-Z]/.test(p) ? p.replace(/^(\.[A-Z][^.]*(?:\.\.\.)?)(.*)$/, function (m, hd, rest) { return "<b>" + esc(hd) + "</b>" + esc(rest); }) : esc(p); }).join("\n\n")
           : parts.map(function (p) { return "<b>" + p[0] + "</b>\n" + esc(p[1]); }).join("\n\n")) + "</div></details>");
@@ -153,7 +155,7 @@
     var x = p[i], anyAmt = p.some(function (y) { return textAmounts(y.detail).length; });
     var nm = x.name.replace(/\b(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)\b/, function (m) { return WD[m]; }).replace("This Afternoon", "Today").replace("Overnight", "Overnt");
     return (bare ? "" : '<span class="cn">' + esc(nm) + "</span>") + '<span class="ci">' + iconHtml(x.icon, x.day) + "</span>" + (bare ? "" : '<span class="ct num">' + hlHtml(hiLo(p, i), "", "") + "</span>") + // in the Daily rows (bare) empty lines are dropped so the card shrinks to what it has
-      (bare && !x.pop && !x.popTrend ? "" : '<span class="cp">' + popTxt(x) + "</span>") +
+      (bare && !popShow(x) ? "" :'<span class="cp">' + popTxt(x) + "</span>") +
       (bare ? (amtHtml(x) ? '<span class="ca">' + amtHtml(x) + "</span>" : "") : anyAmt ? '<span class="ca">' + (amtHtml(x) || "&nbsp;") + "</span>" : "");
   }
   // EPA UV stamps look like "Sep/27/2026 06 AM" (local time)
@@ -163,7 +165,9 @@
     var uv = doc && doc.uv, k = uvKey(ms), hit = uv && (uv.hourly || []).filter(function (h) { return h[0] === k; })[0];
     return hit ? hit[1] : null;
   }
-  function popTxt(x) { return x.popTrend ? x.popTrend[0] + "% → " + x.popTrend[1] + "%" : x.pop ? x.pop + "%" : "&nbsp;"; }
+  // chances under 15% are left off the period icons (noise); a trend shows if either end reaches 15%
+  function popShow(x) { return x.popTrend ? Math.max(x.popTrend[0], x.popTrend[1]) >= 15 : x.pop >= 15; }
+  function popTxt(x) { return !popShow(x) ? "&nbsp;" : x.popTrend ? x.popTrend[0] + "% → " + x.popTrend[1] + "%" : x.pop + "%"; }
   function hlHtml(hl, a, b) {
     // low first, then high (Tyler's order throughout)
     return (hl[1] != null ? '<span class="loT">' + b + hl[1] + "°F</span>" : "") + (hl[0] != null ? '<span class="hiT">' + a + hl[0] + "°F</span>" : "");
@@ -198,17 +202,21 @@
     var nowUV = uvAt(Date.now());
     if (nowUV == null && uv && uv.hourly && uv.hourly.length && !isDay(Date.now())) nowUV = 0;
     if (nowUV != null) rows.push(["UV index", nowUV + " · " + uvCat(nowUV) + (uv && uv.alert ? " · UV alert" : "")]);
+    // no gust (or one not above the sustained wind): just "Wind 10 mph"; "Calm" and "–" never get a unit
+    var hasGust = gust != null && !(c.ws != null && gust <= c.ws);
     rows.push(["Humidity", c.rh != null ? c.rh + "%" : "–"],
-      ["Wind/Gusts", (c.ws == null ? "–" : c.ws === 0 ? "Calm" : c.ws) + " / " + (gust == null ? "–" : gust) + " mph"],
+      hasGust ? ["Wind/Gusts", (c.ws == null ? "–" : c.ws === 0 ? "Calm" : c.ws) + " / " + gust + " mph"] : ["Wind", c.ws == null ? "–" : c.ws === 0 ? "Calm" : c.ws + " mph"],
       ["Visibility", c.vis != null ? (c.vis >= 10 ? "10.00" : c.vis.toFixed(2)) + " mi" : "–"]);
     if (c.wc != null && c.t != null && c.wc < c.t) rows.push(["Wind chill", c.wc + "°F"]);
     if (c.hi != null && c.t != null && c.hi > c.t) rows.push(["Heat index", c.hi + "°F"]);
+    var feels = c.t == null ? null : c.wc != null && c.wc < c.t ? c.wc : c.hi != null && c.hi > c.t ? c.hi : null;
     var d0 = groupDays(p)[0];
     // today's date above the card, styled like the other days' titles (low / high stay in the card's list)
     $("nowtitle").textContent = fmt(d0 ? d0.s : Date.now(), { weekday: "long", month: "short", day: "numeric" });
     $("nowcard").innerHTML =
-      // one line, all at the title's size: icon, condition, then temperature
-      '<div class="now-line"><span class="now-ico">' + iconHtml(c.icon, isDay(c.ms)) + '</span><span class="now-desc">' + esc(c.desc || "—") + '</span><span class="now-t num">' + (c.t == null ? "–" : c.t) + "°F</span></div>" + hazHtml() +
+      // the temperature is the hero; icon + condition beside it, and "Feels like" when wind chill / heat index differ
+      '<div class="now-hero"><span class="nh-t num">' + (c.t == null ? "—" : c.t + "°<small>F</small>") + '</span><span class="nh-side"><span class="nh-cond"><span class="now-ico">' + iconHtml(c.icon, isDay(c.ms)) + '</span><span class="now-desc">' + esc(c.desc || "—") + "</span></span>" +
+        (feels != null ? '<span class="nh-fl num">Feels like ' + feels + "°</span>" : "") + "</span></div>" + hazHtml() +
       '<dl class="kv num">' + rows.map(function (r) { return "<div><dt>" + r[0] + "</dt><dd>" + (r[2] ? r[1] : esc(r[1])) + "</dd></div>"; }).join("") + "</dl>" +
       '<div id="nowprecip" class="gstack" hidden></div>' +
       '<div id="nowday"></div>';
@@ -298,7 +306,7 @@
   }
   function half(x, cls) {
     if (!x) return "";
-    return '<span class="' + cls + (x.day ? " dh" : " nh") + '"><span class="hi-ic">' + iconHtml(x.icon, x.day) + '</span><span class="num ' + (x.day ? "hiT" : "loT") + ' h-t">' + x.temp + '°</span><span class="h-p">' + (x.pop ? x.pop + "%" : "&nbsp;") + "</span>" +
+    return '<span class="' + cls + (x.day ? " dh" : " nh") + '"><span class="hi-ic">' + iconHtml(x.icon, x.day) + '</span><span class="num ' + (x.day ? "hiT" : "loT") + ' h-t">' + x.temp + '°</span><span class="h-p">' + (x.pop >= 15 ? x.pop + "%" : "&nbsp;") + "</span>" +
       '<span class="h-a">' + (amtHtml(x) || "") + "</span></span>";
   }
   function renderWeek() {
@@ -307,7 +315,7 @@
     var anyAmt = p.some(function (x) { return textAmounts(x.detail).length; });
     $("strip").innerHTML = p.map(function (x, i) {
       return '<button type="button" class="pcard' + (x.day ? "" : " night") + '" data-i="' + i + '"><span class="pn">' + esc(x.name) + '</span><span class="pi">' + iconHtml(x.icon, x.day) +
-        '</span><span class="pp">' + (x.pop ? x.pop + "%" : "") + '</span>' + (anyAmt ? '<span class="pa">' + amtHtml(x) + "</span>" : "") + '<span class="ps">' + esc(x.short) + '</span><span class="pt num">' + hlHtml(hiLo(p, i), "High ", "Low ") + "</span></button>";
+        '</span><span class="pp">' + (x.pop >= 15 ? x.pop + "%" : "") + '</span>' + (anyAmt ? '<span class="pa">' + amtHtml(x) + "</span>" : "") + '<span class="ps">' + esc(x.short) + '</span><span class="pt num">' + hlHtml(hiLo(p, i), "High ", "Low ") + "</span></button>";
     }).join("");
     $("strip2").innerHTML = p.map(function (x, i) { return '<button type="button" class="ccard' + (x.day ? "" : " night") + '" data-i="' + i + '">' + ccardInner(p, i) + "</button>"; }).join("");
     // if any period shows a split (A→B) icon, widen every compact card equally so it fits
@@ -376,6 +384,7 @@
 
 
   // ---------- hourly graph ----------
+  var AMIO = {}; // per graph host: the observer that hides amount numbers pushed under the row labels
   var G = null, GN = null; // G: the Hourly graphs; GN: the Precipitation card shown on Now while it is precipitating
   function lanes() {
     return [["rain", "Rain"], ["thunder", "Thunder"], ["snow", "Snow"], ["fzra", "Freezing rain"], ["sleet", "Sleet"], ["fog", "Fog"]];
@@ -580,21 +589,25 @@
     // the Definite (100%) level drawn darker, over the bars, so a full-height bar is easy to spot
     pb += '<line x1="0" x2="' + W + '" y1="' + yP(100) + '" y2="' + yP(100) + '" stroke="var(--ink2)" stroke-opacity=".55" stroke-width="1.25"/>';
     pb += '<path d="' + popD + '" fill="none" stroke="var(--surface)" stroke-width="5" stroke-linejoin="round" stroke-opacity=".85"/><path d="' + popD + '" fill="none" stroke="var(--ink2)" stroke-width="2" stroke-linejoin="round"/>';
+    // the boxes stay in the SVG; their numbers are HTML (.amtl) with position:sticky, so a box partly scrolled under the
+    //   row labels keeps its number in the visible part instead of showing it cut off ("03 in" for 0.03 in)
+    var amtl = "";
     AMT.forEach(function (a, k) {
       (g[a[0]] || []).forEach(function (b) {
         if (!(b[2] > 0)) return;
         var x0 = Math.max(0, (b[0] - start) / H) * PX, x1 = Math.min(n, (b[0] - start) / H + b[1]) * PX; if (x1 - x0 < 8) return;
-        pb += '<rect x="' + (x0 + 1) + '" y="' + rowY(k) + '" width="' + (x1 - x0 - 2) + '" height="16" rx="3" fill="var(--surface)" stroke="var(--' + a[2] + ')" stroke-width="1.25"/>' +
-          '<text x="' + ((x0 + x1) / 2) + '" y="' + (rowY(k) + 12) + '" text-anchor="middle" font-size="10.5" font-weight="700" fill="var(--ink)">' + b[2].toFixed(a[3]) + ' in</text>';
+        pb += '<rect x="' + (x0 + 1) + '" y="' + rowY(k) + '" width="' + (x1 - x0 - 2) + '" height="16" rx="3" fill="var(--surface)" stroke="var(--' + a[2] + ')" stroke-width="1.25"/>';
+        amtl += '<div class="amb" style="left:' + (x0 + 1) + "px;top:" + rowY(k) + "px;width:" + (x1 - x0 - 2) + 'px"><span>' + b[2].toFixed(a[3]) + " in</span></div>";
       });
     });
     var pAxis = '<div class="yax" style="height:' + pHH + "px;margin-bottom:-" + pHH + 'px">' +
       [["Slight", 20], ["Chance", 50], ["Likely", 70], ["Definite", 100]] /* NWS wording on each level's line */.map(function (l) { return '<span class="mkl" style="top:' + yP(l[1]) + 'px">' + l[0] + "</span>"; }).join("") +
-      AMT.map(function (a, k) { return '<span style="top:' + (rowY(k) + 8) + 'px">' + (a[1] === "Liquid" ? "Liq" : a[1]) + "</span>"; }).join("") +
-      MU.map(function (t, k) { return '<span class="mkl" style="top:' + (MY0 + k * MROW + 3.5) + "px;color:var(--" + t[0] + ')">' + t[1] + "</span>"; }).join("") + "</div>";
+      AMT.map(function (a, k) { return '<span class="aml" style="top:' + (rowY(k) + 8) + 'px">' + a[1] + "</span>"; }).join("") +
+      MU.map(function (t, k) { return '<span class="mkl" style="top:' + (MY0 + k * MROW + 3.5) + "px;color:var(--" + t[0] + ')">' + t[1] + "</span>"; }).join("") + "</div>" +
+      (amtl ? '<div class="amtl" style="width:' + W + "px;height:" + pHH + 'px">' + amtl + "</div>" : "");
     var pLegend = li("var(--ink2)", "", "Precip chance") + PT.filter(function (t) { return used[t[0]]; }).map(function (t) { return li("var(--" + t[0] + ")", "blk", t[1]); }).join("") +
       MU.map(function (t) { return li("var(--" + t[0] + ")", "strip", t[1]); }).join("") +
-      (AMT.length ? li("var(--line)", "box", "Amount per NWS time block") : "");
+      (AMT.length ? li("var(--line)", "box", "Amounts") : "");
     var pMarks = [{ a: s.pop, y: yP, c: "var(--ink2)", u: "%", n: "Precip chance" }];
     var PK = out.length; // this card leads the Hourly tab
     out.push(wrap("Precipitation", pLegend, pAxis, '<svg class="gsvg plot" width="' + W + '" height="' + pHH + '">' +
@@ -630,6 +643,16 @@
     // order: Precipitation, Temperature, Wind, Cloud Cover (CSS order, so the DOM order that MARKS is indexed by stays put)
     gin.querySelectorAll(".pan").forEach(function (pn, k) { var r = WXK.indexOf(k); pn.style.order = r >= 0 ? r - 100 : k === CLOUDK ? 100 : k; });
     gLayout(gin);
+    // an amount pushed under the row labels (the box's visible part narrower than its number) is hidden rather than shown
+    //   cut off; an IntersectionObserver does it off the scroll path (no scroll listener)
+    if (AMIO[gin.id]) AMIO[gin.id].disconnect(); AMIO[gin.id] = null;
+    var amS = gin.querySelectorAll(".amb > span");
+    if (amS.length && window.IntersectionObserver) {
+      var amg = parseFloat(getComputedStyle(gin).getPropertyValue("--amg")) || 48;
+      var amio = AMIO[gin.id] = new IntersectionObserver(function (es) { es.forEach(function (e) { e.target.classList.toggle("amhide", e.intersectionRatio < 0.99); }); },
+        { root: gin.querySelector(".gall"), rootMargin: "0px 0px 0px -" + amg + "px", threshold: [0, 0.99, 1] });
+      amS.forEach(function (sp) { amio.observe(sp); });
+    }
     var I = { el: gin, start: start, n: n, nowI: nowI, mids: mids, marks: MARKS, W: W };
 
     // day chips (Hourly only)
@@ -798,7 +821,7 @@
     fetch(u).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (j) {
       if (LSR.key !== key) return;
       if (!j || !Array.isArray(j.features)) throw new Error("Invalid storm reports response");
-      if (window.WXOutlook) WXOutlook.setReports(j.features, "available", l);
+      lsrRep(j.features, "available", l);
       LSR.list = ((j && j.features) || []).map(function (f) {
         var p = f.properties || {}, g = f.geometry && f.geometry.coordinates, la = +(p.lat != null ? p.lat : g && g[1]), lo = +(p.lon != null ? p.lon : g && g[0]);
         var k = lsrKind(p), m = parseFloat(p.magnitude != null ? p.magnitude : p.mag), ms = Date.parse(p.valid || p.utc_valid || "");
@@ -807,7 +830,7 @@
         return { k: k, m: m, ms: ms, mi: mi, dir: bearing(l.lat, l.lon, la, lo), city: p.city || "", st: p.state || p.st || "", q: p.qualifier || "" };
       }).filter(Boolean).sort(function (a, b) { return a.mi - b.mi; });
       LSR.t = Date.now(); LSR.busy = false; renderPast();
-    }).catch(function () { if (LSR.key === key) { LSR.busy = false; LSR.t = Date.now(); LSR.list = LSR.list || []; if (window.WXOutlook) WXOutlook.setReports([], "unavailable", l); } });
+    }).catch(function () { if (LSR.key === key) { LSR.busy = false; LSR.t = Date.now(); LSR.list = LSR.list || []; lsrRep([], "unavailable", l); } });
   }
   function renderPast() {
     var el = $("past"); if (!el) return;
@@ -980,20 +1003,26 @@
   }
 
   // safety / liability notice, on every tab (plain text: no outbound links)
-  var NOTICE = '<p class="notice"><b>Not an official warning source.</b> Forecasts, alerts and maps come from the National Weather Service ' +
+  var NOTICE_REST = "Forecasts, alerts and maps come from the National Weather Service " +
     "and NOAA and are shown as published, but they can be delayed, incomplete or out of date here, and this site can fail to load or update. " +
     "Don't rely on it for decisions that affect life or property. For emergencies and the latest official warnings, use weather.gov, " +
     "NOAA Weather Radio, Wireless Emergency Alerts on your phone and local officials. This is an independent site, not affiliated with or " +
-    "endorsed by NWS or NOAA, provided as-is without warranty of any kind; you use it at your own risk.</p>";
+    "endorsed by NWS or NOAA, provided as-is without warranty of any kind; you use it at your own risk.";
+  var NOTICE = '<p class="notice"><b>Not an official warning source.</b> ' + NOTICE_REST + "</p>";
+  // the page foot: one faint line, the rest of the same text on tap (written once, so a refresh doesn't close it)
+  function footNotice() {
+    if ($("foot").querySelector(".notice-d")) return;
+    $("foot").innerHTML = '<details class="notice-d"><summary class="notice"><b>Not an official warning source.</b> <span class="nmore">More</span><span class="nless">Less</span></summary><p class="notice">' + NOTICE_REST + "</p></details>";
+  }
   function renderFoot() {
     $("forecast-site-notes").innerHTML = NOTICE;
-    if (!doc) { $("foot").innerHTML = NOTICE; return; }
+    if (!doc) { footNotice(); return; }
     var l = doc.loc;
     var link = "https://forecast.weather.gov/MapClick.php?lat=" + l.lat + "&lon=" + l.lon;
     $("plabel").textContent = l.label || HOME.label; fitTop();
     document.title = (l.label || HOME.label) + " Weather";
     if (false) $("psub").textContent = "NWS " + l.office + " · grid " + l.grid + " · " + l.lat.toFixed(4) + "°N " + Math.abs(l.lon).toFixed(4) + "°W" + (l.elevFt ? " · " + l.elevFt + " ft" : "");
-    $("foot").innerHTML = NOTICE;
+    footNotice();
   }
 
   function renderAll() {
@@ -1005,7 +1034,7 @@
   // ---------- data ----------
   function accept(d) {
     if (!d || !d.v || !d.grid) return false;
-    doc = d; if (!TEST && window.WXOutlook) WXOutlook.capture(d); renderAll(); return true;
+    doc = d; if (!TEST) { if (window.WXOutlook) WXOutlook.capture(d); else pendCap = d; } renderAll(); return true;
   }
   function toast(msg) {
     var t = $("toast"); t.textContent = msg; t.hidden = false;
@@ -1031,8 +1060,25 @@
   }
 
   // ---------- interactions ----------
-  // the refresh button reloads the whole page, like the browser's reload (the saved tab brings you back where you were)
-  $("rbtn").addEventListener("click", function () { $("rbtn").classList.add("spin"); try { touchTab(); } catch (e) {} location.reload(); });
+  // the refresh button refreshes in place: weather data, plus the shown tab's live layer (radar re-lists scans now; the
+  //   Forecast maps re-show through renderAll, as on opening the tab), keeping the tab and scroll positions. A newly
+  //   published version still reloads the page (checkVersion).
+  $("rbtn").addEventListener("click", function () {
+    var b = $("rbtn"); if (busy || b.disabled) return;
+    checkVersion(true);
+    var t0 = tab, y = window.scrollY, sc = document.querySelector("#gin .gall"), x = sc ? sc.scrollLeft : 0;
+    if (tab === "radar" && window.WXRadar) WXRadar.refresh();
+    b.disabled = true; b.setAttribute("aria-busy", "true");
+    refresh(true).then(function () {
+      b.disabled = false; b.removeAttribute("aria-busy");
+      // restored after the redrawn cards have been laid out (the graphs size themselves a frame later)
+      requestAnimationFrame(function () { requestAnimationFrame(function () {
+        if (tab !== t0) return;
+        var s2 = document.querySelector("#gin .gall"); if (s2 && tab === "hourly") s2.scrollLeft = x;
+        if (Math.abs(window.scrollY - y) > 1) window.scrollTo(0, y);
+      }); });
+    });
+  });
   function stripClick(e) {
     var c = e.target.closest("[data-i]"); if (!c) return;
     showTab("daily");
@@ -1082,7 +1128,17 @@
   }
   window.addEventListener("scroll", function () { if (!syncQueued) { syncQueued = true; requestAnimationFrame(syncStrip); } }, { passive: true });
   // Radar tab (wx-radar.js): centred on the current location, frame times in the location's time zone
-  function radarOn() { if (window.WXRadar) WXRadar.show($("rmap"), curLoc(), { fmtTime: tm, mine: follow }); }
+  function radarOn() {
+    radarFit(); setTimeout(radarFit, 350);
+    if (window.WXRadar) WXRadar.show($("rmap"), curLoc(), { fmtTime: tm, mine: follow });
+    else after("radar", function () { if (tab === "radar") radarOn(); }, function () { if (tab === "radar") toast("Radar couldn't load right now · open the tab again to retry"); });
+  }
+  // the Radar tab's map fills the screen down to the tab dock (CSS on #radar): it needs the section's page offset, which
+  //   moves with the header (compact state, test banner) and the notice under it, so re-measure whenever those resize
+  //   (wx-radar.js's own ResizeObserver then resizes its canvases)
+  function radarFit() { var s = $("radar"); if (s.hidden) return; document.documentElement.style.setProperty("--rtop", Math.round(s.getBoundingClientRect().top + window.scrollY) + "px"); }
+  if (window.ResizeObserver) { var rfit = new ResizeObserver(function () { radarFit(); }); rfit.observe(document.querySelector(".top")); rfit.observe($("data-notice")); }
+  window.addEventListener("resize", radarFit);
   function setTopH() { document.documentElement.style.setProperty("--toph", document.querySelector(".top").offsetHeight + "px"); }
   setTopH(); window.addEventListener("resize", setTopH);
   function showTab(t) {
@@ -1292,14 +1348,20 @@
   // ---------- model maps (wx-models.js) ----------
   // Pivotal Weather–style maps drawn in the browser from NOAA model output (HRRR, NAM 3 km, GFS), centred on the
   //   current location, times in its time zone. Only the selected map source runs.
-  var forecastMode = "nws";
+  var forecastMode = "nws", mapsFallback = false;
   function renderMaps() {
+    // map code arrives on first use: draw the rest now and the maps once it has loaded (WPC images if it can't load)
+    var code = mapsFallback || window.WXModels && window.WXOfficial && window.WXOutlook;
+    if (!code) after("forecast", function () { if (tab === "maps") renderMaps(); }, function () {
+      if (tab !== "maps") return; toast("Forecast maps couldn't load · open the tab again to retry");
+      mapsFallback = true; renderMaps(); mapsFallback = false;
+    });
     if (window.WXOutlook && doc) WXOutlook.show(doc, {
       fmt: fmt,
       onOdds: function (r) { OQ = { k: r.k, p: r.day === 2 ? 48 : 24, th: String(r.threshold).padStart(2, "0") }; forecastMode = "nws"; renderMaps(); },
       onTime: function (r) {
         forecastMode = "models"; renderMaps();
-        WXModels.openTime(r.param, r.start, r.param === "qpf" ? r.end : null).then(function (t) {
+        need("forecast").then(function () { return WXModels.openTime(r.param, r.start, r.param === "qpf" ? r.end : null); }).then(function (t) {
           if (t != null) { toast("Model forecast · " + fmt(t, { weekday: "short", hour: "numeric", timeZoneName: "short" })); $("mmap").scrollIntoView({ block: "start", behavior: "auto" }); }
           else toast("No model hour is available right now");
         }).catch(function () { toast("Model data couldn't load"); });
@@ -1320,6 +1382,7 @@
     $("forecast-models").hidden = forecastMode !== "models";
 
     $("forecast-context").textContent = forecastMode === "nws" ? "NWS regional amounts · Tap a county" : "Model forecasts · Play or scrub ahead";
+    if (!code) return;
     if (forecastMode === "models") {
       if (window.WXOfficial) WXOfficial.hide(); iStop();
       if (window.WXModels) WXModels.show($("mmap"), curLoc(), { fmt: fmt, regions: $("model-regions") });
@@ -1358,6 +1421,12 @@
       return '<div><dt>' + r[1] + '</dt><dd>' + value + '</dd></div>';
     }).join("") + '</dl>' : '<p>Local amounts unavailable.</p>';
   }
+  // a map that couldn't load: card-toned panel, short message, Retry (busy until the attempt settles, at least 0.6 s so it reads)
+  var oqTry = 0;
+  var failHTML = function (msg) { return '<p>' + esc(msg) + '</p><button type="button" class="mretry">Retry</button>'; };
+  function mapFail(box, msg, tone) { box.innerHTML = '<div class="mmsg mfail' + (tone ? " " + tone : "") + '" role="status">' + failHTML(msg) + '</div>'; return box.querySelector(".mretry"); }
+  function retryBusy(b, on) { b.disabled = on; b.classList.toggle("busy", on); b.setAttribute("aria-busy", String(on)); b.textContent = on ? "Retrying…" : "Retry"; }
+  function retryEnd(b, t0, fn) { setTimeout(function () { if (fn) fn(); if (b.isConnected) retryBusy(b, false); }, Math.max(0, 600 - (Date.now() - t0))); }
   function renderOfficial() {
     var el = $("offq"); if (!el) return; renderLocalAmounts();
     var c = Math.floor((Date.now() - 4 * H) / (12 * H)) * 12 * H, d = OQ.p === 48 ? 2 : 1, img, per, cap;
@@ -1370,14 +1439,14 @@
       cap = "Official chance of " + (OQ.k === "snow" ? +OQ.th + '"+ snow' : '0.25"+ ice') + ", Day " + d + (d === 1 ? " (next 24 hours)" : " (24–48 hours out)");
     }
     var chip = function (attr, v, label, on) { return '<button type="button" class="chip' + (on ? " on" : "") + '" ' + attr + '="' + v + '">' + label + "</button>"; };
-    var bust = "?t=" + Math.floor(Date.now() / 9e5);
+    var bust = "?t=" + Math.floor(Date.now() / 9e5) + (oqTry ? "." + oqTry : ""); // after a Retry, ask WPC again, not the cache
     // one compact row: kind and period as two small segmented groups (snow adds its threshold group on the same row when it fits)
     el.innerHTML = '<div class="oqh oqrow"><span class="oqseg">' + chip("data-oqk", "qpf", "Precip", OQ.k === "qpf") + chip("data-oqk", "snow", "Snow chance", OQ.k === "snow") + chip("data-oqk", "ice", "Ice chance", OQ.k === "ice") + "</span>" +
       '<span class="oqseg">' + chip("data-oqp", 24, OQ.k === "qpf" ? "24 hr" : "Day 1", OQ.p === 24) + chip("data-oqp", 48, OQ.k === "qpf" ? "48 hr" : "Day 2", OQ.p === 48) + "</span>" +
       (OQ.k === "snow" ? '<span class="oqseg">' + ["04", "08", "12"].map(function (t) { return chip("data-oqt", t, +t + '"+', OQ.th === t); }).join("") + "</span>" : "") + "</div>" +
       (window.WXOfficial ? '<div class="mleg oqkey" id="oqkey">' + WXOfficial.legend(OQ) + '</div><div class="oqwrap" id="oqwrap"><span class="mfr num" id="oqper">' + esc(per) + "</span></div>"
         : '<div class="oqimg" id="oqimg"><img src="' + img + bust + '" alt="' + esc(cap) + '"><span class="mfr num">' + esc(per) + "</span></div>") +
-      '<div class="oqnote">WPC · <span id="oqissued">Issue time unavailable</span></div>';
+      '<div class="oqnote" hidden>WPC<span id="oqissued"></span></div>';
     $("official-map-source").innerHTML = '<h3>Official map</h3><p><b>' + esc(cap) + '</b> · NWS Weather Prediction Center</p><p>' + esc(window.WXOfficial ? WXOfficial.caption(OQ) : cap) + '</p><p><a href="' + WPC + (OQ.k === "qpf" ? "qpf/qpf2.shtml" : "wwd/winter_wx.shtml") + '" target="_blank" rel="noopener">NWS source</a></p><p>Local liquid amounts include rain and melted snow. Rolling totals apportion published NWS blocks and are approximate; unavailable or incomplete coverage is not zero.</p>';
     var mapBox = el.querySelector("#oqwrap,#oqimg"), controls = el.querySelector(".oqrow");
     var regions = document.createElement("div"); regions.id = "official-regions"; regions.className = "map-regions";
@@ -1386,7 +1455,20 @@
     var imgOk = function (box) {
       regions.hidden = true; var key = $("oqkey"); if (key) key.remove();
       box.className = "oqimg"; box.id = "oqimg"; box.innerHTML = '<img src="' + img + bust + '" alt="' + esc(cap) + '"><span class="mfr num">' + esc(per) + "</span>";
-      var im = box.querySelector("img"); im.onerror = function () { box.innerHTML = '<div class="mmsg">This map isn\'t available right now.</div>'; };
+      var im = box.querySelector("img"); im.onload = function () { var n = el.querySelector(".oqnote"); if (n) n.hidden = false; };
+      im.onerror = function () { oqFail(box); };
+    };
+    // the NOAA data and WPC's image both failed: Retry tries the data, then the image, and redraws once either loads
+    var oqFail = function (box) {
+      var th = window.WXOfficial && WXOfficial.theme ? WXOfficial.theme() : "auto"; // the map's own Map colors setting, if set
+      var b = mapFail(box, "This map isn't available right now.", th === "dark" ? "tdark" : th === "light" ? "tlight" : "");
+      b.addEventListener("click", function () {
+        if (b.disabled) return; retryBusy(b, true); oqTry++;
+        var t0 = Date.now(), k1 = OQ.k + OQ.p + OQ.th, src = img + "?t=" + Math.floor(Date.now() / 9e5) + "." + oqTry;
+        (window.WXOfficial ? WXOfficial._probe(OQ) : Promise.reject()).catch(function () {
+          return new Promise(function (ok, no) { var i = new Image(); i.onload = ok; i.onerror = no; i.src = src; });
+        }).then(function () { if (b.isConnected && k1 === OQ.k + OQ.p + OQ.th) renderOfficial(); }, function () { retryEnd(b, t0); });
+      });
     };
     var wrap = $("oqwrap");
     if (!wrap) return imgOk(el.querySelector("#oqimg"));
@@ -1394,7 +1476,7 @@
     WXOfficial.show(wrap, curLoc(), OQ, regions).then(function (r) {
       if (!r || k0 !== OQ.k + OQ.p + OQ.th || !$("oqper")) return;
       if (r.start && r.end) $("oqper").textContent = span(r.start, r.end); // the product's own period
-      if ($("oqissued")) $("oqissued").textContent = r.issue ? "Issued " + stamp(r.issue) : "Issue time unavailable";
+      if ($("oqissued")) { $("oqissued").textContent = r.issue ? " · Issued " + stamp(r.issue) : ""; $("oqissued").parentNode.hidden = false; }
     }).catch(function () {
       if (k0 !== OQ.k + OQ.p + OQ.th || $("oqwrap") !== wrap || tab !== "maps" || forecastMode !== "nws") return;
       imgOk(wrap);
@@ -1526,8 +1608,20 @@
     if (img.getAttribute("src") === url) return;
     $("mmsg").hidden = true; img.classList.add("ld");
     img.onload = function () { img.classList.remove("ld"); };
-    img.onerror = function () { img.classList.remove("ld"); $("mmsg").hidden = false; $("mmsg").textContent = "This map isn't available right now. Try another time step or open the source."; };
+    img.onerror = function () { img.classList.remove("ld"); $("mmsg").hidden = false; mImgFail(img, url); };
     img.src = url;
+  }
+  // image didn't load: message + Retry, which reloads it with a one-off query so the browser asks the server again
+  function mImgFail(img, url) {
+    var box = $("mmsg"); box.className = "mmsg mfail"; box.setAttribute("role", "status");
+    box.innerHTML = failHTML("This map isn't available right now."); var b = box.querySelector(".mretry");
+    b.addEventListener("click", function (e) {
+      e.stopPropagation(); if (b.disabled) return; retryBusy(b, true); // (a tap on the box would open the full-screen viewer)
+      var t0 = Date.now();
+      img.onload = function () { box.hidden = true; retryBusy(b, false); };
+      img.onerror = function () { retryEnd(b, t0); };
+      img.src = url + (url.indexOf("?") < 0 ? "?" : "&") + "r=" + t0;
+    });
   }
   function mStep(d) { var n = mProd().frames.length; M.f = (M.f + d + n) % n; mShow(); }
   $("forecast-extra").addEventListener("click", function (e) {
@@ -1776,6 +1870,48 @@
     var q = $("lsq").value.trim(); if (q.length >= 2) search(q);
   });
   document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !$("locsheet").hidden) lsClose(); });
+  // the test scenario list fills in once wx-scenarios.js has loaded
+  document.querySelector(".ls-test").addEventListener("toggle", function () { if (this.open && !window.WXScenario) after("test", function () { if (!$("locsheet").hidden) renderLs(); }); });
+
+  // ---------- code loaded on demand ----------
+  // Only wx-normalize.js, wx-live.js and this file load with the page. The map, archive and test-scenario files load the
+  //   first time they're needed, and quietly once the page has settled, so later tab switches are instant. Their ?v=
+  //   numbers live in index.html (window.WXV). The workers in wx-vmap/radar/models find their own URL (currentScript).
+  var LZ = {}, LZW = {}, pendCap = null;
+  var LZG = { radar: ["wx-vmap.js", "wx-radar.js"], forecast: ["wx-vmap.js", "wx-models.js", "wx-official.js", "wx-archive.js", "wx-outlook.js"], outlook: ["wx-archive.js", "wx-outlook.js"], test: ["wx-scenarios.js"] };
+  // radar/models/official read WXVMap as they load; wx-outlook.js hands over to WXArchive as soon as it arrives (outlookIn)
+  var LZDEP = { "wx-radar.js": "wx-vmap.js", "wx-models.js": "wx-vmap.js", "wx-official.js": "wx-vmap.js", "wx-outlook.js": "wx-archive.js" };
+  function loadJS(f) {
+    if (LZ[f]) return LZ[f];
+    return (LZ[f] = (LZDEP[f] ? loadJS(LZDEP[f]) : Promise.resolve()).then(function () {
+      return new Promise(function (ok, no) {
+        var s = document.createElement("script"); s.src = f + "?v=" + ((window.WXV || {})[f] || 0);
+        s.onload = function () { if (f === "wx-outlook.js" && window.WXOutlook) try { outlookIn(); } catch (e) { console.error(e); } ok(); }; s.onerror = function () { s.remove(); no(new Error("couldn't load " + f)); };
+        document.body.appendChild(s);
+      });
+    }).catch(function (e) { delete LZ[f]; throw e; })); // a failed file is fetched again the next time it's needed
+  }
+  function need(g) { return Promise.all(LZG[g].map(loadJS)); }
+  window.WXLoad = need; // for check.html and tests: WXLoad("radar"|"forecast"|"outlook"|"test")
+  // run fn once group g has loaded (fail if it couldn't); repeated calls while loading just replace the pending callbacks
+  function after(g, fn, fail) {
+    var w = LZW[g]; if (w) { w.fn = fn; w.fail = fail; return; }
+    w = LZW[g] = { fn: fn, fail: fail };
+    need(g).then(function () { delete LZW[g]; w.fn(); }, function (e) { delete LZW[g]; console.warn(e.message); if (w.fail) w.fail(e); });
+  }
+  // storm reports go to the forecast archive (wx-outlook.js); the latest is replayed when that file arrives
+  function lsrRep(f, state, l) { LSR.rep = [f, state, l]; if (window.WXOutlook) WXOutlook.setReports(f, state, l); }
+  function outlookIn() {
+    if (pendCap && !TEST) WXOutlook.capture(pendCap); pendCap = null;
+    if (LSR.rep) WXOutlook.setReports.apply(null, LSR.rep);
+  }
+  function idle(fn) { if (window.requestIdleCallback) requestIdleCallback(fn, { timeout: 3000 }); else setTimeout(fn, 300); }
+  function preload() {
+    var q = ["outlook", "radar", "forecast", "test"];
+    (function next() { var g = q.shift(); if (g) idle(function () { need(g).catch(function () {}).then(next); }); })();
+  }
+  function settled() { setTimeout(preload, 1500); }
+  if (document.readyState === "complete") settled(); else window.addEventListener("load", settled);
 
   // ---------- boot ----------
   var startTab = "daily";
@@ -1789,17 +1925,21 @@
     var known = [loc].concat(favs, recents).filter(function (r) { return r && r.label && same(r, { lat: qLat, lon: qLon }); })[0];
     loc = { lat: qLat, lon: qLon, label: qs.get("label") || (known && known.label) || null };
   }
-  if (qs.get("test")) setTest(qs.get("test"));
+  // ?test= waits for wx-scenarios.js (loaded on demand) before the first render
+  if (qs.get("test")) need("test").then(function () { setTest(qs.get("test")); }, function (e) { console.warn(e.message); }).then(boot);
+  else boot();
+  function boot() {
   if (cached && cached.loc && same(cached.loc, loc) && !TEST) doc = cached;
   renderAll(); showTab(startTab);
-  // a #tab in the URL picks the tab once; drop it so the browser doesn't scroll to that section's id (which left the
-  //   top of the tab under the header) and so a reload follows the saved tab; later hash changes switch tabs too
-  function dropHash() { if (location.hash) try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {} }
   dropHash(); window.scrollTo(0, 0);
-  window.addEventListener("hashchange", function () { var h = location.hash.replace("#", ""); if (h) { showTab(h); dropHash(); window.scrollTo(0, 0); } });
   if (qQ) {
     WXLive.geocode(qQ).then(function (hit) { if (hit) useLoc(hit); else { toast("No US location found for \"" + qQ + "\""); useLoc(loc); } }).catch(function () { useLoc(loc); });
   } else useLoc(loc);
   markFollow();
   if (follow && !urlLoc) locateQuietly();
+  }
+  // a #tab in the URL picks the tab once; drop it so the browser doesn't scroll to that section's id (which left the
+  //   top of the tab under the header) and so a reload follows the saved tab; later hash changes switch tabs too
+  function dropHash() { if (location.hash) try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {} }
+  window.addEventListener("hashchange", function () { var h = location.hash.replace("#", ""); if (h) { showTab(h); dropHash(); window.scrollTo(0, 0); } });
 })();

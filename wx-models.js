@@ -616,12 +616,27 @@
   }
   function status() {
     if (!ui.st) return;
-    var hs = hours(), f = frames[fkey(hs[cur.k])], loading = Q.length + busy, t = "";
-    if (!R()) t = !runs[cur.model] ? "Loading model runs…" : runs[cur.model].fail ? "Model data couldn't load right now" : "No recent " + MODELS[cur.model].name + " runs found";
-    else if (f && f.err && !f.r) t = /not published/.test(f.err) ? "This hour isn't published yet" : "This map isn't available for this hour";
+    var hs = hours(), f = frames[fkey(hs[cur.k])], loading = Q.length + busy, t = "", fail = false;
+    if (Date.now() < retryTill) { t = "Retrying…"; clearTimeout(retryT); retryT = setTimeout(status, retryTill - Date.now() + 20); } // busy for at least 0.6 s
+    else if (!R()) { t = !runs[cur.model] ? "Loading model runs…" : runs[cur.model].fail ? "Model data couldn't load right now" : "No recent " + MODELS[cur.model].name + " runs found"; fail = !!(runs[cur.model] && runs[cur.model].fail); }
+    else if (f && f.err && !f.r) { fail = !/not published/.test(f.err); t = fail ? "This map isn't available for this hour" : "This hour isn't published yet"; }
     else if (!f || !f.r) t = "Loading…";
     else if (playing && loading) { var n = hs.filter(function (h) { var x = frames[fkey(h)]; return x && x.r; }).length; t = "Loading loop " + n + "/" + hs.length; }
-    if (ui.st.textContent !== t) { ui.st.textContent = t; ui.st.hidden = !t; }
+    var k = t + (fail ? "|r" : "");
+    if (stKey !== k) { // (rewrite only on change, so the Retry button isn't replaced under a tap)
+      stKey = k; ui.st.hidden = !t; ui.st.classList.toggle("fail", fail);
+      ui.st.innerHTML = fail ? '<span></span><button type="button" class="mretry">Retry</button>' : ""; (fail ? ui.st.firstChild : ui.st).textContent = t;
+    }
+  }
+  // Retry on a failed load: list runs again (if that failed) or re-request the failed hours; the pill shows "Retrying…"
+  var stKey = null, retryTill = 0, retryT = 0;
+  function retry() {
+    if (Date.now() < retryTill) return;
+    retryTill = Date.now() + 600; status();
+    var m = cur.model;
+    if (!R()) { runs[m] = null; findRuns(m).then(function (L) { if (cur.model !== m) return; var x = pickRun(L); if (x) setRun(x.run); else { uiRuns(); status(); } }); return; }
+    Object.keys(frames).forEach(function (k) { var x = frames[k]; if (x && x.err && !/not published/.test(x.err)) x.err = null; });
+    loadAround();
   }
 
   // ---------- drawing ----------
@@ -842,6 +857,7 @@
       play: box.querySelector("#mplay"), prev: box.querySelector("#mprev"), next: box.querySelector("#mnext"), range: box.querySelector("#mrange"), time: box.querySelector("#mtime"),
       leg: box.querySelector("#mleg"), src: document.getElementById("msrc"), note: document.getElementById("mnote"), title: box.querySelector("#mtitle"), quick: box.querySelector("#mquick")
     };
+    ui.st.addEventListener("click", function (e) { if (e.target.closest(".mretry")) retry(); });
     if (ui.quick) ui.quick.addEventListener("click", function (e) { var b = e.target.closest("[data-q]"); if (!b || b.disabled) return; setParam(b.dataset.q); });
     ui.st.hidden = true; ui.ro.hidden = true;
     ui.reg.innerHTML = '<button type="button" data-z="7.4">Local</button><button type="button" data-z="5.7">Region</button><button type="button" data-z="us">U.S.</button>';

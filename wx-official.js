@@ -478,6 +478,7 @@
   root.WXOfficial = {
     show: show, caption: caption, legend: legend, probabilities: probabilities,
     hide: function () { on = false; },
+    theme: function () { return SET.theme; }, // Map colors (auto/light/dark), so the page's failure panel can match it
     // for check.html: fetch and parse one product without drawing it
     _probe: function (s) { return loadProduct(layerOf(s)).then(function (d) { return { start: d.start, end: d.end, issue: d.issue }; }); },
     _value: function (lat, lon) { return valueAt(lat, lon); },

@@ -35,12 +35,7 @@
 .rsrc{font-size:11px;line-height:1.4;color:var(--muted);padding:0 2px}.rnow{font-size:12.5px;line-height:1.4;color:var(--ink2);padding:8px 2px 6px}.rnow:empty{display:none}.rnow b{font-weight:600;color:var(--ink)}.rnow.warn{color:#d9932b}
 </style>
 <title>Weather</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://api.weather.gov" crossorigin>
-<!-- fonts load without blocking the first paint (system fonts show until they arrive) -->
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" media="print" onload="this.media='all'">
-<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap"></noscript>
 <style>
 :root{
   --ground:#EEF2F5; --surface:#FFFFFF; --sunk:#F5F7F9; --ink:#15202B; --ink2:#44525F; --muted:#6B7988; --line:#DCE3E9; --grid:#E7ECF0;
@@ -50,9 +45,9 @@
   --rain:#1846A3; --thunder:#C0392B; --snow:#6BB8DC; --fzra:#8E4DB8; --sleet:#E0B000; --hail:#E0701F; --fog:#7D8793;
   --now:#E8590C; --nowg:#3FAF62; --fogl:#7D8793; --uv:#8E44AD; --daydiv:#DCE2E8; --nowtxt:#15202B; --ok:#2E7D4F; --warn:#B7791F; --crit:#C0392B;
   --sev-ext:#8E1B3C; --sev-sev:#C0392B; --sev-mod:#C77A12; --sev-min:#9A8A2B;
-  --sans:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-  --cond:"IBM Plex Sans Condensed","IBM Plex Sans",-apple-system,"Arial Narrow",sans-serif;
-  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  --cond:-apple-system,"Arial Narrow",sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
   overscroll-behavior-y:none;
 }
 /* no browser pull-to-refresh or rubber-band at the top; refresh is the header button */
@@ -466,6 +461,9 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
 .mmreg button:active{background:var(--accent);color:#fff}
 .mmstat{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);border-radius:999px;padding:5px 12px;font-size:12px;color:var(--ink2);white-space:nowrap;pointer-events:none;background:color-mix(in srgb,var(--surface) 82%,transparent);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border:1px solid color-mix(in srgb,var(--line) 75%,transparent)}
 .mmstat[hidden],.mmro[hidden]{display:none}
+.mmstat.fail{display:flex;align-items:center;gap:10px;padding:5px 5px 5px 14px;font-size:13px;color:var(--muted);background:var(--sunk);-webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:0 2px 10px rgba(0,0,0,.18)}
+.mmstat.fail .mretry{pointer-events:auto;min-height:32px;padding:0 14px;font-size:13px}
+.mmstat.fail .mretry::before{inset:-6px -4px}
 .mmro{position:absolute;padding:4px 9px;border-radius:8px;font:600 12.5px var(--sans);color:var(--ink);background:var(--surface);border:1px solid var(--line);box-shadow:0 3px 12px rgba(0,0,0,.2);pointer-events:none;white-space:nowrap}
 .mtitle{padding:8px 12px 0;font-size:12.5px;font-weight:600;color:var(--ink)}
 .mctl{display:flex;align-items:center;gap:8px;padding:6px 10px 2px}
@@ -491,7 +489,7 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
 /* official NWS precipitation (Forecast tab) */
 .offq{padding:10px 0 8px;overflow:hidden}
 .offq .oqh{display:flex;gap:6px;padding:0 10px 8px}
-.offq .oqimg{position:relative;background:#fff;cursor:zoom-in;min-height:160px}
+.offq .oqimg{position:relative;background:var(--sunk);cursor:zoom-in;min-height:160px}
 .offq .oqimg img{display:block;width:100%;height:auto}
 .offq .oqimg .mfr{left:6px;top:6px}
 .oqamt{display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:6px;padding:10px 12px 0}
@@ -509,8 +507,12 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
 /* landscape maps (about 4:3) so the Forecast tab scrolls past them easily */
 .mm{height:min(calc(100svh - var(--toph,96px) - 250px),78vw,520px);min-height:260px}
 .oqwrap .mm{height:min(72vw,400px);min-height:240px}
-/* the radar map: a little taller than the Forecast tab's maps */
-.rmap{height:min(88vw,480px)!important;min-height:280px!important;max-height:none!important}
+/* the radar map fills the screen: the section spans from its top (--rtop, measured by radarFit() in app.js) to ~10 px above
+   the floating tab dock (52 px bar + its bottom inset), and the map takes whatever the attribution line leaves; the safety
+   notice falls below the fold. Min 280 px (landscape phones scroll); wide screens cap it at 70% of the window height. */
+#radar:not([hidden]){min-height:calc(100vh - var(--rtop,120px) - 62px - max(env(safe-area-inset-bottom,0px) - 12px,8px));min-height:calc(100dvh - var(--rtop,120px) - 62px - max(env(safe-area-inset-bottom,0px) - 12px,8px));box-sizing:border-box}
+.rmap{flex:1 1 0;height:auto!important;min-height:280px!important;max-height:none!important}
+@media (min-width:900px){#radar:not([hidden]){min-height:0}.rmap{flex:none;height:min(70vh,calc(100vh - var(--rtop,120px) - 110px))!important;height:min(70dvh,calc(100dvh - var(--rtop,120px) - 110px))!important}}
 /* the card's filters on one compact row of small segmented groups */
 .offq .oqrow{display:flex;flex-wrap:wrap;gap:5px;padding:0 10px 8px;align-items:center}
 .oqseg{display:inline-flex;gap:0;padding:2px;border-radius:999px;background:var(--sunk)}
@@ -535,10 +537,22 @@ h2{font:600 12px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;col
 @supports (margin:max(1px,2px)){.wrap .mcats{margin-inline:calc(-1 * clamp(12px,4vw,24px));padding-inline:clamp(12px,4vw,24px)}}
 .marea{display:flex;gap:4px;flex:none}
 .marea .chip{padding:5px 9px}
-.mimg{position:relative;background:#fff;min-height:200px;display:flex;align-items:center;justify-content:center;cursor:zoom-in}
+.mimg{position:relative;background:var(--sunk);min-height:200px;display:flex;align-items:center;justify-content:center;cursor:zoom-in}
 .mimg img{display:block;width:100%;height:auto}
 .mimg img.ld{opacity:.55}
-.mmsg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px;font-size:13px;color:#555;background:#fff}
+.mmsg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px;font-size:13px;color:var(--muted);background:var(--sunk)}
+/* a map that couldn't load: card-toned (follows the theme, or the NWS map's own Map colors), muted text, accent Retry pill */
+.mmsg.mfail{flex-direction:column;gap:10px;cursor:default}
+.oqimg:has(.mfail){cursor:default}
+.mfail p{margin:0;font-size:13.5px;line-height:1.4;color:inherit}
+.mretry{position:relative;min-height:34px;padding:0 18px;border:0;border-radius:999px;font:600 14px var(--sans);color:var(--accent);background:color-mix(in srgb,var(--accent) 18%,transparent);cursor:pointer;touch-action:manipulation}
+.mretry::before{content:"";position:absolute;inset:-5px -4px}
+.mretry:disabled{cursor:default;opacity:.7}
+.mretry.busy::after{content:"";display:inline-block;width:11px;height:11px;margin-left:7px;vertical-align:-1px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:mspin .8s linear infinite}
+@keyframes mspin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){.mretry.busy::after{animation:none;border-right-color:currentColor;opacity:.5}}
+.mfail.tdark{background:#2C2C2E;color:#A1A1A6}.mfail.tdark .mretry{color:#0A84FF;background:rgba(10,132,255,.2)}
+.mfail.tlight{background:#F2F2F7;color:#6C6C70}.mfail.tlight .mretry{color:#007AFF;background:rgba(0,122,255,.12)}
 .mfr{position:absolute;left:6px;top:6px;font:600 12px var(--sans);background:rgba(0,0,0,.62);color:#fff;border-radius:6px;padding:3px 7px;pointer-events:none}
 .mhint{position:absolute;right:6px;bottom:6px;font-size:10.5px;background:rgba(0,0,0,.55);color:#fff;border-radius:6px;padding:2px 6px;pointer-events:none}
 #mfull{position:fixed;inset:0;width:100vw;height:100dvh;max-width:none;max-height:none;margin:0;padding:0;border:0;z-index:70;background:#000;display:flex;flex-direction:column}
@@ -782,6 +796,14 @@ h2{font-weight:700;letter-spacing:.08em}
 .foot{margin-top:auto;padding-top:28px}
 .foot .notice{font-size:10.5px!important;line-height:1.45;color:var(--muted);opacity:.55}
 .foot .notice b{color:inherit;font-weight:600}
+/* one faint line ("Not an official warning source. More"); the rest of the notice opens inline. The summary is a 44 px tap
+   row with the text centred in it, so the foot's top padding drops by the row's extra height and the line stays put */
+.foot:has(.notice-d){padding-top:17px}
+.notice-d summary{list-style:none;cursor:pointer;display:flex;align-items:center;flex-wrap:wrap;gap:0 5px;min-height:44px;margin:0!important}
+.notice-d summary::-webkit-details-marker{display:none}
+.notice-d .nmore,.notice-d .nless{text-decoration:underline;text-underline-offset:2px}
+.notice-d[open] .nmore,.notice-d:not([open]) .nless{display:none}
+.notice-d > p.notice{margin:0!important}
 .past .pn{font-size:12.5px}
 .rsrc{font-size:12px}
 /* ===== auto-fit: sizes scale smoothly with the screen width (clamp), and fitTop() in app.js trims the place name
@@ -1009,6 +1031,38 @@ html.scrolled .top #fresh{display:inline-flex;max-height:0;opacity:0;visibility:
 
 #fresh{border:0;background:none;font-family:inherit;padding:0;cursor:pointer;text-align:left}
 #fresh:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:4px}
+/* Nov 25 polish. Header: bigger tap areas for the place name and "Checked …" from invisible pseudo-elements only (no
+   layout change; full header only). They split the 2 px gap between the lines, reach left into the header padding, stop
+   at the refresh button's column, and "Checked" reaches down past the header edge to 44 px (only to the test banner when it shows) */
+.top-row .place,.top-row #fresh{position:relative}
+html:not(.scrolled) .top-row .place::before{content:"";position:absolute;left:-12px;right:0;top:-10px;bottom:-1px}
+html:not(.scrolled) .top #fresh{overflow:visible}
+html:not(.scrolled) .top #fresh::before{content:"";position:absolute;left:-12px;right:0;top:-1px;height:44px}
+html:not(.scrolled) .top:has(#testbar:not([hidden])) #fresh::before{height:auto;bottom:-10px}
+/* current conditions: the temperature is the hero, condition and "Feels like" beside it */
+#nowcard .now-hero{grid-column:1/-1;display:flex;align-items:center;gap:6px 14px;min-width:0}
+#nowcard .now-hero + .hazs{margin-top:14px}
+.nh-t{flex:none;display:inline-flex;align-items:flex-start;font:800 clamp(44px,13vw,56px)/1 var(--sans);letter-spacing:-.04em;font-variant-numeric:tabular-nums;color:var(--ink)}
+.nh-t small{font-size:.4em;font-weight:700;letter-spacing:0;color:var(--ink2);margin:.2em 0 0 .05em}
+.nh-side{display:flex;flex-direction:column;gap:3px;min-width:0}
+.nh-cond{display:flex;align-items:center;gap:7px;min-width:0;font:700 clamp(16px,4.6vw,19px)/1.2 var(--sans);letter-spacing:-.01em;color:var(--ink)}
+.nh-cond .now-ico{flex:none;display:inline-flex;font-size:1.3em;line-height:1}
+.nh-cond .now-desc{font:inherit;min-width:0;overflow-wrap:anywhere}
+.nh-fl{font-size:14px;color:var(--ink2)}
+/* alerts: one compact tappable row each (name, until …, chevron); tap for issued/expires and the full text */
+#nowcard .haz summary{flex-direction:row;align-items:center;gap:8px;min-height:44px;padding:6px 10px 6px 12px}
+#nowcard .haz .hz-t{flex:1;min-width:0}
+#nowcard .haz .hz-chev{flex:none;color:var(--ink2);opacity:.7;transition:transform .2s ease}
+#nowcard .haz[open] .hz-chev{transform:rotate(90deg)}
+#nowcard .haz > .hz-m{padding:0 11px;margin:0 0 6px}
+@media (prefers-reduced-motion: reduce){#nowcard .haz .hz-chev{transition:none}}
+/* precipitation amount rows: labels on an opaque gutter (--amg) and each box's number held just right of it */
+.gstack{--amg:48px}
+.yax span.aml{left:0;width:var(--amg);height:18px;line-height:18px;padding-left:6px;background:var(--surface);border-radius:0 5px 5px 0;white-space:nowrap}
+.amtl{position:absolute;left:38px;top:0;z-index:1;pointer-events:none}
+.amb{position:absolute;height:16px;display:flex;justify-content:center}
+.amb > span{position:sticky;left:calc(var(--amg) + 3px);right:3px;font:700 10.5px/16px var(--sans);font-variant-numeric:tabular-nums;color:var(--ink);white-space:nowrap}
+.amb > span.amhide{visibility:hidden}
 .data-notice{margin:0 0 14px;padding:10px 12px;border-radius:var(--r-card);background:var(--surface);color:var(--ink2);font-size:13px;line-height:1.45;border:1px solid var(--line)}
 .data-info{box-sizing:border-box;width:min(520px,calc(100% - 24px));max-height:85vh;overflow:auto;border:1px solid var(--line);border-radius:22px;background:var(--surface);color:var(--ink);padding:18px;box-shadow:var(--glass-sh)}
 .data-info::backdrop{background:rgba(0,0,0,.4)}
@@ -1226,15 +1280,11 @@ html.scrolled .top #fresh{display:inline-flex;max-height:0;opacity:0;visibility:
   </div>
 </div>
 
-<script src="wx-normalize.js?v=154"></script>
-<script src="wx-live.js?v=136"></script>
-<script src="wx-scenarios.js?v=136"></script>
-<script src="wx-vmap.js?v=136"></script>
-<script src="wx-radar.js?v=136"></script>
-<script src="wx-models.js?v=144"></script>
-<script src="wx-official.js?v=144"></script>
-<script src="wx-archive.js?v=144"></script>
-<script src="wx-outlook.js?v=144"></script>
-<script src="app.js?v=155"></script>
+<!-- map, archive and test-scenario code loads on demand (app.js `need()`); bump these ?v= numbers here when a file
+     changes. A page that is already open only self-reloads when app.js?v= below is bumped too. -->
+<script>window.WXV={"wx-scenarios.js":136,"wx-vmap.js":136,"wx-radar.js":136,"wx-models.js":156,"wx-official.js":156,"wx-archive.js":144,"wx-outlook.js":144};</script>
+<script src="wx-normalize.js?v=154" defer></script>
+<script src="wx-live.js?v=156" defer></script>
+<script src="app.js?v=156" defer></script>
 </body>
 </html>

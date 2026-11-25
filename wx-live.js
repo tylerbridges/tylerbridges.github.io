@@ -31,9 +31,33 @@
       return { lat: +c.location.y.toFixed(4), lon: +c.location.x.toFixed(4), label: a.City && a.RegionAbbr ? a.City.replace(/^City of /, "") + ", " + a.RegionAbbr : c.address };
     });
   }
+  // The /points lookup (which grid, office and URLs serve a place) gates every other request, but it rarely changes:
+  //   keep the parts read here and in wx-normalize.js per place (same 4-decimal key as the request) for 7 days, 12
+  //   places at most. Not read or saved with ?nostore=1, in test scenarios, or when the live check turns it off.
+  var PKEY = "wx-points", PTTL = 7 * 864e5, PMAX = 12;
+  function pOk() { return root.WXLive.useCache !== false && !/[?&](?:nostore=1|test=)/.test(root.location.search); }
+  function pAll() { try { var a = JSON.parse(localStorage.getItem(PKEY) || "{}"); return a && typeof a === "object" ? a : {}; } catch (e) { return {}; } }
+  function pGet(k) { var e = pOk() && pAll()[k]; return e && e.p && Date.now() - e.t < PTTL ? e.p : null; }
+  function pSet(k, pts) {
+    if (!pOk()) return;
+    var a = pAll(), now = Date.now(), P = pts && pts.properties;
+    if (P) {
+      var rl = (P.relativeLocation && P.relativeLocation.properties) || {};
+      a[k] = { t: now, p: { properties: { cwa: P.cwa, gridId: P.gridId, gridX: P.gridX, gridY: P.gridY, timeZone: P.timeZone, forecastZone: P.forecastZone, county: P.county,
+        forecast: P.forecast, forecastGridData: P.forecastGridData, observationStations: P.observationStations,
+        relativeLocation: { properties: { city: rl.city, state: rl.state } } } } };
+    } else delete a[k];
+    Object.keys(a).filter(function (q) { return !a[q] || !(now - a[q].t < PTTL); }).forEach(function (q) { delete a[q]; });
+    Object.keys(a).sort(function (x, y) { return a[y].t - a[x].t; }).slice(PMAX).forEach(function (q) { delete a[q]; });
+    try { localStorage.setItem(PKEY, JSON.stringify(a)); } catch (e) {}
+  }
   function load(loc) {
-    var lat = +(+loc.lat).toFixed(4), lon = +(+loc.lon).toFixed(4), P, points;
-    return get(API + "/points/" + lat + "," + lon).then(function (pts) {
+    var lat = +(+loc.lat).toFixed(4), lon = +(+loc.lon).toFixed(4), key = lat + "," + lon, hit = pGet(key);
+    // a cached grid that no longer works (NWS moved it: forecast/grid 404) is dropped and the place looked up again, once
+    return run(hit).catch(function (e) { if (!hit) throw e; console.warn("cached grid failed, looking it up again:", e.message); pSet(key, null); return run(null); });
+    function run(cachedPts) {
+    var P, points;
+    return (cachedPts ? Promise.resolve(cachedPts) : get(API + "/points/" + key).then(function (j) { if (j && j.properties && j.properties.forecast) pSet(key, j); return j; })).then(function (pts) {
       points = pts; P = pts.properties;
       var since = new Date(Date.now() - 25 * 3600e3).toISOString().replace(/\.\d+Z$/, "Z");
       var rl = (P.relativeLocation && P.relativeLocation.properties) || {};
@@ -68,6 +92,7 @@
       return root.WXNormalize.normalize({ points: points, forecast: r[0], grid: r[1], station: r[2].station, obs: r[2].obs, alerts: r[3],
         afd: r[4], hwo: r[5], uv: r[6], uvh: r[7], mapclick: r[8], label: loc.label || null, lat: lat, lon: lon, via: "live" });
     });
+    }
   }
   // does weather.gov forecast this point? (US only)
   function covers(lat, lon) { return fetch(API + "/points/" + lat + "," + lon).then(function (r) { return r.ok; }).catch(function () { return false; }); }

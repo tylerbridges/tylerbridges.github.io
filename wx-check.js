@@ -373,6 +373,7 @@
     $("run").disabled = $("quick").disabled = $("racc").disabled = true; $("copy").disabled = true; $("sum").textContent = "";
     var started = Date.now(), chain = Promise.resolve();
     if (MOCK) WXLive.load = function (loc) { return WXScenario.load("blizzard", loc, null); };
+    WXLive.useCache = false; // always exercise weather.gov's /points lookup, and keep the 13 test places out of the site's grid cache
     line("LIVE CHECK " + new Date().toString().slice(0, 24) + (MOCK ? " · MOCK (test scenario, no network)" : "") + (full === "radar" ? " · radar accuracy only" : full ? "" : " · data only"));
     line(navigator.userAgent); line("");
     (full === "radar" ? [] : LOCS).forEach(function (L, idx) {
