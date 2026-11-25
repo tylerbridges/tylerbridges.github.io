@@ -45,6 +45,8 @@
   }
 
   // weather.gov's names for its observation icon codes (api.weather.gov/icons), for stations that send no text
+  var HWO_QUIET = /^(?:no (?:widespread )?hazardous weather is (?:expected|anticipated|forecast)|hazardous weather is not (?:expected|anticipated)|(?:the )?(?:probability|potential|chance|threat) (?:for|of) (?:widespread )?hazardous weather is (?:very )?(?:low|minimal))(?: at this time)?\.?$/i;
+  function hwoQuiet(t) { return !t || String(t).trim().split(/\.\s+/).every(function (x) { return HWO_QUIET.test(x.trim()); }); }
   var ICON_NAME = { skc: "Clear", few: "A Few Clouds", sct: "Partly Cloudy", bkn: "Mostly Cloudy", ovc: "Overcast",
     wind_skc: "Clear and Windy", wind_few: "A Few Clouds and Windy", wind_sct: "Partly Cloudy and Windy", wind_bkn: "Mostly Cloudy and Windy", wind_ovc: "Overcast and Windy",
     snow: "Snow", rain_snow: "Rain and Snow", rain_sleet: "Rain and Sleet", snow_sleet: "Snow and Sleet", fzra: "Freezing Rain", rain_fzra: "Rain and Freezing Rain",
@@ -255,7 +257,9 @@
       if (seg) {
         var sect = function (re) { var m = re.exec(seg); return m ? m[1].replace(/\s+/g, " ").trim() : ""; };
         var d1 = sect(/\.DAY ONE\.\.\.[^\n]*\n([\s\S]*?)(?=\n\.[A-Z]|$)/), d27 = sect(/\.DAYS TWO THROUGH SEVEN\.\.\.[^\n]*\n([\s\S]*?)(?=\n\.[A-Z]|$)/);
-        var none = function (t) { return !t || /^No hazardous weather is expected/i.test(t); };
+        // quiet wording: every sentence is a stock "nothing expected" line (e.g. ".DAYS TWO THROUGH SEVEN... The probability for
+        //   widespread hazardous weather is low."); any other sentence counts as a real hazard mention
+        var none = hwoQuiet;
         // full segment text verbatim, from "This hazardous weather outlook is for..." on (skips the zone/UGC header)
         var body = /\n(This hazardous weather outlook[\s\S]*)$/i.exec(seg);
         // expiration: the 6-digit DDHHMM (UTC) code ending the header, resolved to the first such moment after the issue time
@@ -295,7 +299,7 @@
     };
   }
 
-  var api = { normalize: normalize, TYPE: TYPE, COV: COV }; // TYPE/COV are exposed for check.html
+  var api = { normalize: normalize, hwoQuiet: hwoQuiet, TYPE: TYPE, COV: COV }; // TYPE/COV are exposed for check.html
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.WXNormalize = api;
 })(typeof window !== "undefined" ? window : globalThis);
