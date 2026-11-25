@@ -193,6 +193,18 @@
     }
     // still nothing (some stations send no text at all): name it from the observation's own icon, as weather.gov does
     if (latest && !latest.desc) latest.desc = iconName(latest.icon);
+    // no text and no icon (seen at KMSP on Nov 25: the Now card showed "—"): name the sky from the station's own cloud
+    //   report (API cloudLayers, else the METAR's FEW/SCT/BKN/OVC/CLR groups), and give the emoji the same code
+    if (latest && !latest.desc) {
+      var lo = null, RANK = { SKC: 0, CLR: 0, NCD: 0, NSC: 0, FEW: 1, SCT: 2, BKN: 3, OVC: 4, VV: 4 }, CODE = ["skc", "few", "sct", "bkn", "ovc"], best = -1;
+      for (i = 0; i < obsF.length; i++) if (Date.parse(obsF[i].timestamp) === latest.ms) { lo = obsF[i]; break; }
+      ((lo && lo.cloudLayers) || []).forEach(function (c) { var r = RANK[c && c.amount]; if (r != null && r > best) best = r; });
+      if (best < 0 && lo && lo.rawMessage) (lo.rawMessage.match(/\b(SKC|CLR|NCD|NSC|FEW|SCT|BKN|OVC|VV)(\d{3})?\b/g) || []).forEach(function (g) {
+        var r = RANK[g.replace(/\d+$/, "")]; if (r != null && r > best) best = r; });
+      if (best >= 0) { latest.icon = [{ c: CODE[best], p: null }]; latest.desc = iconName(latest.icon); }
+    }
+    // last resort: the current forecast period's wording and icon (e.g. "Mostly Sunny")
+    if (latest && !latest.desc && periods[0]) { latest.desc = periods[0].short || ""; if (!latest.icon.length) latest.icon = periods[0].icon || []; }
     var hist = [], seen = {};
     obsF.forEach(function (o) {
       var ms = Date.parse(o.timestamp);

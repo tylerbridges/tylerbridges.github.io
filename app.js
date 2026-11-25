@@ -165,7 +165,8 @@
   }
   function popTxt(x) { return x.popTrend ? x.popTrend[0] + "% → " + x.popTrend[1] + "%" : x.pop ? x.pop + "%" : "&nbsp;"; }
   function hlHtml(hl, a, b) {
-    return (hl[0] != null ? '<span class="hiT">' + a + hl[0] + "°F</span>" : "") + (hl[1] != null ? '<span class="loT">' + b + hl[1] + "°F</span>" : "");
+    // low first, then high (Tyler's order throughout)
+    return (hl[1] != null ? '<span class="loT">' + b + hl[1] + "°F</span>" : "") + (hl[0] != null ? '<span class="hiT">' + a + hl[0] + "°F</span>" : "");
   }
 
   // ---------- current ----------
@@ -184,7 +185,7 @@
       if (gustHour >= 0 && gustHour < grid.s.wg.length) gust = grid.s.wg[gustHour];
     }
     var rows = [];
-    if (hiT != null || loT != null) rows.push(["High / Low", '<span class="hiT">' + (hiT != null ? hiT + "°F" : "–") + '</span> / <span class="loT">' + (loT != null ? loT + "°F" : "–") + "</span>", 1]);
+    if (hiT != null || loT != null) rows.push(["Low / High", '<span class="loT">' + (loT != null ? loT + "°F" : "–") + '</span> / <span class="hiT">' + (hiT != null ? hiT + "°F" : "–") + "</span>", 1]);
     // this hour's chance from the hourly grid; falls back to the current forecast period's chance
     var popNow = null, popK = grid && grid.s && grid.s.pop ? Math.floor((Date.now() - grid.start) / H) : -1;
     if (popK >= 0 && popK < grid.s.pop.length && grid.s.pop[popK] != null) popNow = grid.s.pop[popK];
@@ -203,7 +204,7 @@
     if (c.wc != null && c.t != null && c.wc < c.t) rows.push(["Wind chill", c.wc + "°F"]);
     if (c.hi != null && c.t != null && c.hi > c.t) rows.push(["Heat index", c.hi + "°F"]);
     var d0 = groupDays(p)[0];
-    // today's date above the card, styled like the other days' titles (high / low stay in the card's list)
+    // today's date above the card, styled like the other days' titles (low / high stay in the card's list)
     $("nowtitle").textContent = fmt(d0 ? d0.s : Date.now(), { weekday: "long", month: "short", day: "numeric" });
     $("nowcard").innerHTML =
       // one line, all at the title's size: icon, condition, then temperature
@@ -361,7 +362,7 @@
       var hl = dayHL(p, d);
       // copy = the Now tab's version: no header (the date and high/low are already at the top of that card)
       return (copy ? '<div class="dday nowfc">' : '<div class="card dday" id="d' + k + '"><div class="gt">' + esc(fmt(d.s, { weekday: "long", month: "short", day: "numeric" })) +
-        '<span class="dhl3 num"><span class="hiT">' + (hl[0] != null ? hl[0] + "°F" : "–") + '</span> / <span class="loT">' + (hl[1] != null ? hl[1] + "°F" : "–") + "</span></span></div>") + d.rows.map(function (i) {
+        '<span class="dhl3 num"><span class="loT">' + (hl[1] != null ? hl[1] + "°F" : "–") + '</span> / <span class="hiT">' + (hl[0] != null ? hl[0] + "°F" : "–") + "</span></span></div>") + d.rows.map(function (i) {
         var x = p[i], nt = notes[i] ? '<div class="afdnote"><span>From the forecast discussion</span>' + notes[i].map(esc).join(" ") + "</div>" : "";
         var sub = /^(Today|Tonight|This Afternoon|Overnight|Late Afternoon)$/.test(x.name) ? x.name : x.day ? "Day" : "Night";
         return '<div class="drow"' + (copy ? "" : ' id="p' + i + '"') + '><div class="ccard dc' + (x.day ? "" : " night") + '">' + ccardInner(p, i, true) + '</div><div><div class="dsub">' + esc(sub) + '</div><p>' + esc(x.detail) + "</p>" + nt + "</div></div>";
