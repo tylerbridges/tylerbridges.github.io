@@ -325,9 +325,8 @@
     // today's date above the card, styled like the other days' titles (low / high stay in the card's list)
     $("nowtitle").textContent = fmt(d0 ? d0.s : Date.now(), { weekday: "long", month: "short", day: "numeric" });
     $("nowcard").innerHTML =
-      // the temperature is the hero; icon + condition beside it, and "Feels like" when wind chill / heat index differ
-      '<div class="now-hero"><span class="nh-t num">' + (c.t == null ? "—" : c.t + "°<small>F</small>") + '</span><span class="nh-side"><span class="nh-cond"><span class="now-ico">' + iconHtml(c.icon, isDay(c.ms)) + '</span><span class="now-desc">' + esc(c.desc || "—") + "</span></span>" +
-        (feels != null ? '<span class="nh-fl num">Feels like ' + feels + "°</span>" : "") + "</span></div>" +
+      // one line, one size: temperature • icon and condition ("Feels like" lives in the rows below, not here)
+      '<div class="now-hero num"><span class="nh-t">' + (c.t == null ? "—" : c.t + "°F") + '</span><span class="nh-dot" aria-hidden="true">•</span><span class="nh-cond"><span class="now-ico">' + iconHtml(c.icon, isDay(c.ms)) + '</span><span class="now-desc">' + esc(c.desc || "—") + "</span></span></div>" +
       (nextTxt ? '<p class="nextup num" id="nownext-line" title="' + esc(nextTxt) + '">' + esc(nextTxt) + "</p>" : "") + hazHtml() +
       '<dl class="kv num">' + rows.map(function (r) { return "<div><dt>" + r[0] + "</dt><dd>" + (r[2] ? r[1] : esc(r[1])) + "</dd></div>"; }).join("") + "</dl>" +
       '<div id="nownext" class="gstack" hidden></div>' +
