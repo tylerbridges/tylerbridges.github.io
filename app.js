@@ -372,7 +372,9 @@
   }
   function renderNext() {
     var host = $("nownext"); GX = null; if (!host) return;
-    host.hidden = false; GX = renderGraph(host, "next"); host.hidden = !GX; // shown first so it can measure its width
+    // Off (owner's call, Nov 26): the Precipitation card already appears in the Now card when precipitation is on the
+    //   way, so a second graph duplicated it. The "next" renderer is kept for reuse; nothing draws it.
+    host.hidden = true; host.innerHTML = "";
   }
 
   // ---------- 7-day ----------
