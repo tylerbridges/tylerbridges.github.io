@@ -657,8 +657,8 @@
     //   15% and the full Precipitation card isn't showing right under it. Missing hours stay gaps / "–", never 0.
     if (only === "next") {
       var NT = [["rain", "Rain"], ["snow", "Snow"], ["fzra", "Freezing rain"], ["sleet", "Sleet"]], nUsed = {};
-      var showP = !nowPrecipOn() && s.pop.some(function (v) { return v >= 15; });
-      var nWc = s.wc.filter(function (v, k) { return v != null && s.t[k] != null && s.t[k] - v >= 3; }).length >= 2, nHi = s.hi.filter(function (v, k) { return v != null && s.t[k] != null && v - s.t[k] >= 3; }).length >= 2; // 3°+ apart for 2+ hours
+      var showP = s.pop.some(function (v) { return v >= 15; }); // the chance row shows whenever any of the 12 hours has a 15%+ chance
+      var nWc = false, nHi = false; // temperature only: "Feels like" is already in the rows above (owner's call)
       var tvn = s.t.concat(nWc ? s.wc : [], nHi ? s.hi : []).filter(function (v) { return v != null; });
       // tightest scale with at most 4 labels on round steps
       var nlo = Math.min.apply(null, tvn), nhi = Math.max.apply(null, tvn), ntt = null;
@@ -685,7 +685,7 @@
         // value on the line every 3 hours, clear of the now line's time and value labels (right of the line) and the edges;
         //   on the side away from a heat-index line (above it), else above; never into the emoji row (.nxl: hidden while holding)
         var tvi = s.t[i];
-        if (tvi != null && !(X(i) > nnx - 16 && X(i) < nnx + 52) && X(i) > 12 && X(i) < W - 12) {
+        if (tvi != null && !(X(i) > nnx - 34 && X(i) < nnx + 20) && X(i) > 12 && X(i) < W - 12) { // none beside the now line: it would read as the current temperature
           var py = yN(tvi), ly = nHi && s.hi[i] != null && py + 16 <= hT ? py + 16 : py - 7;
           nb += '<text class="nxl" x="' + X(i) + '" y="' + ly.toFixed(1) + '" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--ink)" stroke="var(--surface)" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">' + tvi + "°</text>";
         }
@@ -717,7 +717,7 @@
       var nAxis = '<div class="yax" style="height:' + nH2 + "px;margin-bottom:-" + nH2 + 'px">' + ntt.map(function (t) { return '<span style="top:' + yo(t).toFixed(1) + 'px">' + t + "°</span>"; }).join("") +
         (showP ? '<span class="mkl" style="top:' + (HD + bBase - 7) + 'px">Precip</span>' : "") + "</div>";
       out.push(wrap("Next 12 hours", nLegend, nAxis, '<svg class="gsvg plot" width="' + W + '" height="' + nH2 + '" viewBox="0 0 ' + W + " " + nH2 + '">' +
-        (function (v) { return '<g transform="translate(0,' + HD + ')">' + hgrid(ntt, yN, hT) + "</g>" + v[0] + '<g transform="translate(0,' + HD + ')">' + nb + "</g>" + v[1] + nowVals(nMarks, HD, yTop + HD - 18, HD + hT); })(vlines(nH2, yTop + HD - 18, yTop + HD)) + "</svg>",
+        (function (v) { return '<g transform="translate(0,' + HD + ')">' + hgrid(ntt, yN, hT) + "</g>" + v[0] + '<g transform="translate(0,' + HD + ')">' + nb + "</g>" + v[1]; })(vlines(nH2, yTop + HD - 18, yTop + HD)) /* no value at the now line: the card above shows the current temperature */ + "</svg>",
         nMarks.concat(showP ? [{ a: s.pop, y: yPn, c: "var(--ink2)", u: "%", n: "Precip" }] : []), yTop + HD - 18, HD));
     }
 
@@ -1598,7 +1598,7 @@
     if (document.hidden) { touchTab(); return; }
     checkVersion();
     if (tabStale() && tab !== "daily") showTab("daily"); // reopened hours later (an installed app resumes without reloading)
-    if (follow && Date.now() - lastFix > 10 * 60000) locateQuietly();
+    if (follow && !urlLoc) locateQuietly(); // every return to the app re-checks the position and restarts the watch
     else touchTab();
     if (Date.now() - lastCheck > 5 * 60000) refresh(false);
   });
@@ -1927,10 +1927,10 @@
   var loc = store("wx-loc") || HOME, recents = store("wx-recents") || [HOME], favs = store("wx-favs") || [];
   function curLoc() { return loc; }
   // "Use my current location" turns on following (like a weather app's My Location): on every later open, and on
-  //   returning to the app after 10+ minutes, the site quietly re-checks the phone's position (only if location
-  //   permission is already granted, so it never prompts on open) and switches when it has moved ~2 km or more. Picking any other place turns it off.
+  //   every return to the app, the site re-checks the phone's position, and while the page is visible a position
+  //   watch keeps following; it switches when the phone has moved ~2 km or more. Picking any other place turns it off.
   var follow = !!store("wx-follow"), lastFix = 0;
-  function setFollow(on) { follow = !!on; store("wx-follow", follow); markFollow(); }
+  function setFollow(on) { follow = !!on; store("wx-follow", follow); markFollow(); if (follow) followWatch(); else followStop(); }
   function markFollow() {
     if ($("pgps")) $("pgps").toggleAttribute("hidden", !follow || !!urlLoc); // an SVG has no .hidden property
     var g = $("lsgps"); if (g) { g.classList.toggle("on", follow); var sm = g.querySelector("small"); if (sm) sm.textContent = follow ? "On" : ""; }
@@ -1947,13 +1947,40 @@
           if (label === false || !follow) return;
           whenIdle(function () { useLoc({ lat: here.lat, lon: here.lon, label: label || "Current location" }); });
         }).catch(function () {});
-      }, function () {}, { enableHighAccuracy: false, timeout: 15000, maximumAge: 600000 });
+      }, function () {}, { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 });
     }
-    // only when the browser already holds permission: an installed iPhone app forgets it between launches and would
-    //   otherwise pop the location prompt on every open; then the last current-location fix stays in use (still
-    //   following) until the location is shared again from the Location sheet or the browser keeps the permission
-    try { navigator.permissions.query({ name: "geolocation" }).then(function (st) { if (st.state === "granted") ask(); }, function () {}); } catch (e) {}
+    // Following means following at all times (owner's call, Nov 26): ask whenever the browser hasn't refused, even
+    //   if that shows the system's location prompt in an installed iPhone app that forgot the permission. A refusal
+    //   keeps the last current-location fix in use. While the page is visible a position watch keeps it current.
+    var go = function () { ask(); followWatch(); };
+    try { navigator.permissions.query({ name: "geolocation" }).then(function (st) { if (st.state !== "denied") go(); }, go); } catch (e) { go(); }
   }
+  var followW = null, followWAt = 0;
+  function followWatch() {
+    if (followW != null || !follow || TEST || urlLoc || document.hidden || !navigator.geolocation || !navigator.geolocation.watchPosition) return;
+    followW = navigator.geolocation.watchPosition(function (p) {
+      lastFix = Date.now();
+      followHere = { lat: +p.coords.latitude.toFixed(4), lon: +p.coords.longitude.toFixed(4) };
+      if (!follow) { followStop(); return; }
+      followMove();
+    }, function () {}, { enableHighAccuracy: false, maximumAge: 60000 });
+  }
+  // switch to the newest watched position once it is ~2 km+ from the shown place; at most one switch per 30 s, and a
+  //   position that arrives inside that window is applied when the window ends rather than dropped
+  var followHere = null, followT = 0;
+  function followMove() {
+    clearTimeout(followT); followT = 0;
+    var here = followHere; if (!follow || !here || same(here, loc)) return;
+    var wait = 30000 - (Date.now() - followWAt);
+    if (wait > 0) { followT = setTimeout(followMove, wait + 50); return; }
+    followWAt = Date.now();
+    WXLive.place(here.lat, here.lon).then(function (label) {
+      if (label === false || !follow) return;
+      whenIdle(function () { if (follow && !same(here, loc)) useLoc({ lat: here.lat, lon: here.lon, label: label || "Current location" }); });
+    }).catch(function () {});
+  }
+  function followStop() { clearTimeout(followT); followT = 0; if (followW != null) { try { navigator.geolocation.clearWatch(followW); } catch (e) {} followW = null; } }
+  document.addEventListener("visibilitychange", function () { if (document.hidden) followStop(); });
   function saveCache(d) { store("wx-cache", d); }
   function same(a, b) { return a && b && Math.abs(a.lat - b.lat) < 0.02 && Math.abs(a.lon - b.lon) < 0.02; }
   function isFav(l) { return favs.some(function (f) { return same(f, l); }); }
