@@ -242,7 +242,7 @@
     if (data.qpf) return (b ? num(QL[b - 1]) + (QL[b] != null ? "–" + num(QL[b]) : "+") + " in" : "Under 0.01 in") + nm;
     return (b ? CATLONG[Math.min(3, b)] : "Under 10%") + " chance" + nm;
   }
-  function inspect() { if (!iro) return; if (!insp || !on || !W) { iro.hidden = true; return; } var v = pointVal(latOf(view.y), lonOf(view.x)); iro.textContent = v == null ? "Loading…" : v; iro.hidden = false; }
+  function inspect() { if (!iro) return; if (!insp || !on || !W) { iro.hidden = true; return; } var v = pointVal(latOf(view.y), lonOf(view.x)), t = v == null ? "Loading…" : v; if (iro.textContent !== t) iro.textContent = t; iro.hidden = false; }
   function mk(t, c, p) { var e = document.createElement(t); e.className = c; p.appendChild(e); return e; }
   function setup() {
     el = document.createElement("div"); el.className = "mm oqmap";
@@ -278,7 +278,8 @@
     W = Math.round(r.width); HH = Math.round(r.height); M = Math.round(Math.max(W, HH) * 0.2); SW = W + 2 * M; SH = HH + 2 * M; dpr = Math.min(2, root.devicePixelRatio || 1);
     stage.style.cssText = "left:" + -M + "px;top:" + -M + "px;width:" + SW + "px;height:" + SH + "px";
     cv.width = cvB.width = Math.round(SW * dpr); cv.height = cvB.height = Math.round(SH * dpr);
-    tdpr = Math.min(3, root.devicePixelRatio || 1); cvT.width = Math.round(SW * tdpr); cvT.height = Math.round(SH * tdpr); // sharp labels
+    // labels as sharp as the screen, within the radar's labels budget (3.6 megapixels; never below 2x)
+    var D = root.devicePixelRatio || 1; tdpr = Math.min(3, D, Math.max(Math.min(D, 2), Math.sqrt(3.6e6 / (SW * SH)))); cvT.width = Math.round(SW * tdpr); cvT.height = Math.round(SH * tdpr); // sharp labels
     drawn = null; paint();
   }
   var tdpr = 1;
@@ -371,7 +372,7 @@
   function status(t) { stat.textContent = t || ""; stat.hidden = !t; }
 
   // ---------- gestures (CSS transform while moving, redraw at the end) ----------
-  var pts = new Map(), g0 = null, moved = false, tween = 0, lastTap = 0, settleT = 0;
+  var pts = new Map(), g0 = null, moved = false, tween = 0, lastTap = 0, settleT = 0, gRaf = 0, box0 = null;
   function at(sx, sy) { var s = scaleZ(view.z); return { x: view.x + (sx - W / 2) / s, y: view.y + (sy - HH / 2) / s }; }
   function setView(x, y, z) {
     view.z = Math.max(2.5, Math.min(11, z)); view.x = x; var s = scaleZ(view.z), hh2 = HH / 2 / s; view.y = Math.max(hh2 - 0.02, Math.min(1.02 - hh2, y));
@@ -389,28 +390,36 @@
   function snap() {
     var a = Array.from(pts.values()), n = a.length; if (!n) return null;
     var cx0 = a.reduce(function (s, p) { return s + p.x; }, 0) / n, cy0 = a.reduce(function (s, p) { return s + p.y; }, 0) / n;
-    var d = n > 1 ? Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y) : 0, r = el.getBoundingClientRect();
+    var d = n > 1 ? Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y) : 0, r = box0 || el.getBoundingClientRect();
     return { n: n, cx: cx0, cy: cy0, d: d, z: view.z, w: at(cx0 - r.left, cy0 - r.top) };
   }
   function gestures() {
     el.addEventListener("pointerdown", function (e) {
       if (e.target.closest("button") || e.target.closest(".oqset")) return;
       if (!setEl.hidden) { setEl.hidden = true; return; } // a tap on the map closes the menu
+      if (!pts.size) box0 = el.getBoundingClientRect(); // read once per gesture, not on every move
       el.setPointerCapture(e.pointerId); pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); cancelAnimationFrame(tween);
       g0 = snap(); moved = false; ro.hidden = true;
     });
+    // moves only record the finger; the map follows once per display frame (gMove), so a burst of events costs one update
     el.addEventListener("pointermove", function (e) {
       if (!pts.has(e.pointerId)) return; pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (!gRaf) gRaf = requestAnimationFrame(gMove);
+    });
+    function gMove() {
+      gRaf = 0; if (!pts.size) return;
       var g = snap(); if (!g0 || g.n !== g0.n) { g0 = g; return; }
       if (Math.abs(g.cx - g0.cx) + Math.abs(g.cy - g0.cy) > 4 || g.n > 1) moved = true;
       if (!moved) return;
-      var z = g0.z + (g.n > 1 && g0.d > 0 ? Math.log2(g.d / g0.d) : 0), s = scaleZ(z), r = el.getBoundingClientRect();
+      var z = g0.z + (g.n > 1 && g0.d > 0 ? Math.log2(g.d / g0.d) : 0), s = scaleZ(z), r = box0;
       setView(g0.w.x - (g.cx - r.left - W / 2) / s, g0.w.y - (g.cy - r.top - HH / 2) / s, z);
-    });
+    }
     var end = function (e) {
-      if (!pts.has(e.pointerId)) return; pts.delete(e.pointerId);
+      if (!pts.has(e.pointerId)) return;
+      if (gRaf) { cancelAnimationFrame(gRaf); gMove(); } // apply the last move before the finger counts as lifted
+      pts.delete(e.pointerId);
       if (pts.size) { g0 = snap(); return; }
-      var r = el.getBoundingClientRect(), sx = e.clientX - r.left, sy = e.clientY - r.top;
+      var r = box0 || el.getBoundingClientRect(), sx = e.clientX - r.left, sy = e.clientY - r.top;
       if (!moved && e.type === "pointerup") {
         var now = Date.now();
         if (now - lastTap < 300) { var w = at(sx, sy); fly(view.x + (w.x - view.x) * 0.5, view.y + (w.y - view.y) * 0.5, view.z + 1); lastTap = 0; return; }

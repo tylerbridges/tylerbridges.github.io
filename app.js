@@ -1506,7 +1506,8 @@
   // Block the browser's own pull-to-refresh (iOS Safari ignores overscroll-behavior for it): a downward drag that
   //   starts with the page already at the top is cancelled. Sideways drags (graphs, maps) and scrollable panels are left alone.
   var pt0 = null;
-  window.addEventListener("touchstart", function (e) { pt0 = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null; }, { passive: true });
+  // (a touch that starts on a map is that map's pan: no per-move work at all, so a drag never waits on this listener)
+  window.addEventListener("touchstart", function (e) { var t = e.target; pt0 = e.touches.length === 1 && !(t.closest && t.closest(".rmap,.mm,#mmap,.model-map")) ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null; }, { passive: true });
   function noPull(e) {
     if (!pt0 || e.touches.length !== 1 || window.scrollY > 0) return;
     var dx = e.touches[0].clientX - pt0.x, dy = e.touches[0].clientY - pt0.y;

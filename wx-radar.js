@@ -367,7 +367,8 @@
   function radarGet(f, k) {
     return function (z, x, y, request) { var key = rkey(f, k, z, x, y); return request === 2 ? lowGet(key, radarUrl(f, k, z, x, y)) : request ? get(key, radarUrl(f, k, z, x, y), true) : peek(key); };
   }
-  function rkey(f, k, z, x, y) { return "r" + f.src + (f.src === "s3" ? boxVer + "|" + (f.flags[k] ? keyTime(f.flags[k]) : "") + "|" : "") + (f.times ? f.times[k] : f.bucket + ":" + k) + ":" + z + "/" + x + "/" + y; }
+  // (the flag times are parsed once per frame list: keys are built thousands of times a second while panning)
+  function rkey(f, k, z, x, y) { return "r" + f.src + (f.src === "s3" ? boxVer + "|" + (f.kt || (f.kt = f.flags.map(function (q) { return q ? keyTime(q) : ""; })))[k] + "|" : "") + (f.times ? f.times[k] : f.bucket + ":" + k) + ":" + z + "/" + x + "/" + y; }
   function tz() { return Math.max(0, Math.min(16, Math.round(rv.z))); }
   // radar one level coarser than the map (smoother, and MRMS/NEXRAD mosaics are ~1 km anyway), native in NWS colours
   //   (MRMS from NOAA's archive is drawn from the exact 1 km grid, so it can be requested sharper when zoomed in)
@@ -388,8 +389,7 @@
   function drawLabels() {
     cxL.setTransform(1, 0, 0, 1, 0, 0); cxL.clearRect(0, 0, cvL.width, cvL.height);
     if (vec()) { drawWarn(cxL, ldpr); VM.drawTop(cxL, visible(VM.tileZoom(rv.z), ldpr), { dark: dark(), dpr: ldpr, z: rv.z, w: SW, h: SH }); }
-    else if (!VM || VM.failed()) { var g = layerGet("Reference"); visible(tz(), ldpr).forEach(function (v) { drawTile(cxL, v, g); }); }
-    drawWarn(cxL, ldpr);
+    else { if (!VM || VM.failed()) { var g = layerGet("Reference"); visible(tz(), ldpr).forEach(function (v) { drawTile(cxL, v, g); }); } drawWarn(cxL, ldpr); }
     // markers: the blue dot is the device's own position (or the forecast location when it follows the device);
     //   any other forecast location gets a small neutral pin-dot
     var s = rscale(), d = ldpr;
@@ -429,7 +429,7 @@
     });
     cxR.globalCompositeOperation = "source-over"; cxR.globalAlpha = 1;
   }
-  var miss = 0; // tiles drawn from one scan only because the other wasn't loaded yet (tests)
+  var miss = 0, cpT = 0, movedF = false, aheadT = 0; // tiles drawn from one scan only because the other wasn't loaded yet (tests)
   function shift(v, ox, oy) { return { i: v.i, j: v.j, n: v.n, z: v.z, x0: v.x0 + ox, y0: v.y0 + oy, x1: v.x1 + ox, y1: v.y1 + oy }; }
 
   // ---------- storm motion between consecutive frames ----------
@@ -522,29 +522,34 @@
     //   half used. Stale layers are redrawn one per frame so no single frame does all the work. While playing, the
     //   radar is redrawn every frame anyway, so it simply follows the view.
     var gest = pts.size > 0 || inertia || tween, stale = 0, pick = null, worst = -1, sv = scale();
+    // (moves are only recorded by the handlers; tile requests for what's coming run as their own task after this frame)
+    if (movedF) { movedF = false; if (!aheadT) aheadT = setTimeout(function () { aheadT = 0; ahead(); }, 0); clearTimeout(moved.t); moved.t = setTimeout(preload, 150); }
     LAYERS.forEach(function (L) {
       var v = RV[L.k], dx = view.x - v.x; dx -= Math.round(dx);
       var k = Math.pow(2, view.z - v.z), tx = -dx * sv, ty = (v.y - view.y) * sv, off = dx || view.y !== v.y || view.z !== v.z;
       L.tf = off ? "translate3d(" + tx.toFixed(2) + "px," + ty.toFixed(2) + "px,0) scale(" + k.toFixed(5) + ")" : "";
-      if (dirty & L.b && !(need & L.b) && worst < 2) { worst = 2; pick = L; } // new tiles arrived mid-gesture
+      if (dirty & L.b && !(need & L.b) && worst < 2 && !(gest && L.b === 4)) { worst = 2; pick = L; } // new tiles arrived mid-gesture (labels wait for the margin or the end)
       if (!off) return;
       stale |= L.b;
       var use = Math.max(Math.abs(tx) + W / 2 * Math.abs(1 - k), Math.abs(ty) + HH / 2 * Math.abs(1 - k)) / MG + (k < 0.8 || k > 1.6 ? 1 : 0);
       if (need & L.b) return; // redrawn below anyway
-      if ((!gest || use > 0.65) && use > worst) { worst = use; pick = L; }
+      if ((!gest || use > (L.b === 4 ? 0.85 : 0.65)) && use > worst) { worst = use; pick = L; } // (lines/labels: the costliest redraw, and a late one only leaves the outer edge without lines)
     });
     if (pick) { need |= pick.b; dirty &= ~pick.b; if (worst < 2) redraws++; }
+    // a layer redrawn mid-pan is drawn half a margin ahead in the direction of travel, so it lasts about twice as far
+    //   before the next redraw (it is redrawn exactly at the view once the map stops)
+    var lead = pick && worst < 2 && gest && !tween && (inertia || g0 && g0.n === 1) ? 0.5 * MG / sv : 0;
     if (need) {
       LAYERS.forEach(function (L) {
         if (!(need & L.b)) return;
-        var v = RV[L.k]; v.x = view.x; v.y = view.y; v.z = view.z; L.tf = "";
+        var v = RV[L.k], ld = L === pick ? lead : 0; v.x = view.x + dir.x * ld; v.y = view.y + dir.y * ld; v.z = view.z; L.tf = "";
         at(v, L.draw);
       });
       if (need & stale) { clearTimeout(moved.t); moved.t = setTimeout(preload, 120); }
       dirty &= ~need; need = 0; timeUi();
     }
     LAYERS.forEach(function (L) { if (L.c.style.transform !== L.tf) L.c.style.transform = L.tf; });
-    checkPending();
+    if (!gest || ts - cpT > 250) { cpT = ts; checkPending(); } // (walks every frame's tiles: a few times a second is plenty mid-gesture)
     var left = LAYERS.some(function (L) { return L.tf; });
     if (playing || gest || left || dirty) raf = requestAnimationFrame(frame); else lastT = 0;
   }
@@ -1055,8 +1060,10 @@
     var s = scale(); view.x = w.x - (sx - W / 2) / s; view.y = w.y - (sy - HH / 2) / s; clampView();
   }
   function clampView() { view.y = Math.max(0.05, Math.min(0.95, view.y)); view.x = ((view.x % 1) + 1) % 1; }
-  function moved() { paint(0); ahead(); clearTimeout(moved.t); moved.t = setTimeout(preload, 150); }
-  function local(e) { var r = el.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+  function moved() { movedF = true; paint(0); }
+  // the map's box is read once when a gesture starts (a fresh read per move would be a layout query on every event)
+  var box0 = null;
+  function local(e, fresh) { var r = !fresh && box0 || (box0 = el.getBoundingClientRect()); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
   function gesture() {
     var p = Array.from(pts.values());
     if (p.length === 1) g0 = { n: 1, x: p[0].x, y: p[0].y, vx: view.x, vy: view.y };
@@ -1066,7 +1073,7 @@
   function wire() {
     var t = stage;
     t.addEventListener("pointerdown", function (e) {
-      t.setPointerCapture(e.pointerId); var p = local(e); pts.set(e.pointerId, p); inertia = null; tween = null; t._lock = gpsMode === "locked";
+      t.setPointerCapture(e.pointerId); var p = local(e, !pts.size); pts.set(e.pointerId, p); inertia = null; tween = null; t._lock = gpsMode === "locked";
       if (pts.size === 1) { samples = [{ x: p.x, y: p.y, t: e.timeStamp }]; t._down = { x: p.x, y: p.y, t: e.timeStamp }; }
       gesture();
     });
@@ -1098,13 +1105,13 @@
     }
     t.addEventListener("pointerup", up); t.addEventListener("pointercancel", up);
     t.addEventListener("wheel", function (e) {
-      e.preventDefault(); var p = local(e), k = e.deltaMode === 1 ? 0.05 : e.deltaMode === 2 ? 1 : 0.0022;
+      e.preventDefault(); var p = local(e, true), k = e.deltaMode === 1 ? 0.05 : e.deltaMode === 2 ? 1 : 0.0022;
       zoomAt(p.x, p.y, view.z - e.deltaY * k); moved();
     }, { passive: false });
   }
   function stepInertia(dt) {
     var ms = dt * 1000, s = scale(); view.x -= inertia.vx * ms / s; view.y -= inertia.vy * ms / s; clampView();
-    var k = Math.exp(-ms / 260); inertia.vx *= k; inertia.vy *= k; ahead();
+    var k = Math.exp(-ms / 260); inertia.vx *= k; inertia.vy *= k; movedF = true;
     if (Math.hypot(inertia.vx, inertia.vy) < 0.02) { inertia = null; preload(); }
   }
   function zoomTo(sx, sy, z) { tween = { sx: sx, sy: sy, z0: view.z, z1: Math.max(MINZ, Math.min(MAXZ, z)), t0: 0 }; paint(0); }
@@ -1204,8 +1211,13 @@
     // the stage is the view plus a spare margin on every side, so a drag shows already-drawn map until it is redrawn
     // map and radar at up to 2x; the lines-and-labels layer at the screen's full resolution (up to 3x) for sharp text
     // radar at 1.5x: the smoothed radar has about one source pixel per CSS pixel, so more only costs time per frame
-    W = r.width; HH = r.height; dpr = Math.min(2, root.devicePixelRatio || 1); rdpr = Math.min(1.5, root.devicePixelRatio || 1); ldpr = Math.min(3, root.devicePixelRatio || 1); MG = Math.round(Math.max(W, HH) * 0.2);
+    // Each layer also has a pixel budget (what the 480 px map used on a 430 px phone: labels 3.6, base 1.6, radar 0.9
+    //   megapixels), so the one-screen map doesn't grow the canvases (memory, raster and upload per redraw): on a tall
+    //   map the scale drops a little (390 px phone: labels ~2.5x, base ~1.7x, radar ~1.25x), never below 2x for labels
+    W = r.width; HH = r.height; MG = Math.round(Math.max(W, HH) * 0.2);
     SW = W + 2 * MG; SH = HH + 2 * MG;
+    var D = root.devicePixelRatio || 1, bud = function (mx, px, lo) { return Math.min(mx, D, Math.max(Math.min(D, lo), Math.sqrt(px / (SW * SH)))); };
+    dpr = bud(2, 1.6e6, 1); rdpr = bud(1.5, 0.9e6, 1); ldpr = bud(3, 3.6e6, 2);
     stage.style.cssText = "left:" + -MG + "px;top:" + -MG + "px;width:" + SW + "px;height:" + SH + "px";
     ["B", "R", "L"].forEach(function (k) { RV[k].x = view.x; RV[k].y = view.y; RV[k].z = view.z; });
     cvB.width = Math.round(SW * dpr); cvB.height = Math.round(SH * dpr);

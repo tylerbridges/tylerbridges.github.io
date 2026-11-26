@@ -1108,26 +1108,35 @@
     ui.locate.classList.toggle("on", gpsMode === "wait");
     ui.home.hidden = gpsMode === "off" || gpsMode === "wait";
   }
+  var gRaf = 0, box0 = null;
   function gestures() {
     el.addEventListener("pointerdown", function (e) {
       if (e.target.closest("button")) return;
+      if (!pts.size) box0 = el.getBoundingClientRect(); // read once per gesture, not on every move
       el.setPointerCapture(e.pointerId); pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); cancelAnimationFrame(tween);
       g0 = snap(); moved = false; ui.ro.hidden = true;
     });
+    // moves only record the finger; the map follows once per display frame (gMove), so a burst of events costs one update
     el.addEventListener("pointermove", function (e) {
       if (!pts.has(e.pointerId)) return; pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (!gRaf) gRaf = requestAnimationFrame(gMove);
+    });
+    function gMove() {
+      gRaf = 0; if (!pts.size) return;
       var g = snap(); if (!g0 || g.n !== g0.n) { g0 = g; return; }
       if (Math.abs(g.cx - g0.cx) + Math.abs(g.cy - g0.cy) > 4 || g.n > 1) moved = true;
       if (!moved) return;
       unlock();
-      var z = g0.z + (g.n > 1 && g0.d > 0 ? Math.log2(g.d / g0.d) : 0), s = scaleZ(z), r = el.getBoundingClientRect();
+      var z = g0.z + (g.n > 1 && g0.d > 0 ? Math.log2(g.d / g0.d) : 0), s = scaleZ(z), r = box0;
       var wpt = g0.w, x = wpt.x - (g.cx - r.left - W / 2) / s, y = wpt.y - (g.cy - r.top - HH / 2) / s;
       setView(x, y, z);
-    });
+    }
     var end = function (e) {
-      if (!pts.has(e.pointerId)) return; pts.delete(e.pointerId);
+      if (!pts.has(e.pointerId)) return;
+      if (gRaf) { cancelAnimationFrame(gRaf); gMove(); } // apply the last move before the finger counts as lifted
+      pts.delete(e.pointerId);
       if (pts.size) { g0 = snap(); return; }
-      var r = el.getBoundingClientRect(), sx = e.clientX - r.left, sy = e.clientY - r.top;
+      var r = box0 || el.getBoundingClientRect(), sx = e.clientX - r.left, sy = e.clientY - r.top;
       if (!moved && e.type === "pointerup") {
         var now = Date.now();
         if (now - lastTap < 300) { var w = at(sx, sy); fly(view.x + (w.x - view.x) * 0.5, view.y + (w.y - view.y) * 0.5, view.z + 1); lastTap = 0; return; }
@@ -1145,7 +1154,7 @@
   function snap() {
     var a = Array.from(pts.values()), n = a.length; if (!n) return null;
     var cx = a.reduce(function (s, p) { return s + p.x; }, 0) / n, cy = a.reduce(function (s, p) { return s + p.y; }, 0) / n;
-    var d = n > 1 ? Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y) : 0, r = el.getBoundingClientRect();
+    var d = n > 1 ? Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y) : 0, r = box0 || el.getBoundingClientRect();
     return { n: n, cx: cx, cy: cy, d: d, z: view.z, w: at(cx - r.left, cy - r.top) };
   }
   var insp = (function () { try { return !!localStorage.getItem("wx-minsp"); } catch (e) { return false; } })();
@@ -1161,7 +1170,7 @@
   function inspUi() { if (!ui.cross) return; ui.cross.hidden = !insp; if (ui.insp) { ui.insp.classList.toggle("on", insp); ui.insp.setAttribute("aria-pressed", String(insp)); } if (insp) ui.ro.hidden = true; inspect(); }
   function inspect() {
     if (!ui.iro) return; if (!insp || !on) { ui.iro.hidden = true; return; }
-    var v = valueAt(latOf(view.y), lonOf(view.x)); ui.iro.textContent = v == null ? "No data here" : v; ui.iro.hidden = false;
+    var v = valueAt(latOf(view.y), lonOf(view.x)), t = v == null ? "No data here" : v; if (ui.iro.textContent !== t) ui.iro.textContent = t; ui.iro.hidden = false;
   }
   function showRO(lat, lon, sx, sy) {
     var v = valueAt(lat, lon); if (v == null) { ui.ro.hidden = true; return; }
