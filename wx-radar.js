@@ -31,6 +31,26 @@
   var frames = null, pending = null, cur = NF - 1, frac = 0, playing = false, ph = 0, userPaused = false;
   var need = 0, raf = 0, lastT = 0, refreshT = 0, LAYERS = [];
   try { style = localStorage.getItem("wx-radar-style") || "smooth"; } catch (e) {}
+  // Watchdog timings (ms). A backgrounded phone app can freeze a fetch so it never settles, or kill the workers while
+  //   the page lives on; every request gets a deadline and the refresh loop checks itself (see watch()).
+  //   list/back: listings and backup-source requests; dl: one scan file (~1.5 MB) incl. unzip; dec: one decode;
+  //   tile: a backup tile; pend: a newer scan set that hasn't become current; check: a check still out (S3 listing
+  //   and two backups can take 20 s each before it settles); pong: a
+  //   worker that doesn't answer a ping; prog: tiles in view outstanding with nothing arriving; old: newest scan age
+  //   that makes refresh/resume do a hard reset; away: hidden time that counts as a resume
+  var T = { list: 20000, back: 20000, dl: 60000, dec: 90000, tile: 30000, pend: 40000, check: 75000, pong: 20000, prog: 60000, old: 6 * 60000, away: 60000, wd: 5000 };
+  // p, or a rejection after ms (aborting ac's request) if it hasn't settled by then
+  function within(p, ms, what, ac) {
+    var t = 0;
+    return Promise.race([p, new Promise(function (ok, no) { t = setTimeout(function () { try { if (ac) ac.abort(); } catch (x) {} no(new Error(what + " timed out")); }, ms); })])
+      .then(function (v) { clearTimeout(t); return v; }, function (e) { clearTimeout(t); throw e; });
+  }
+  function abortable() { return typeof AbortController !== "undefined" ? new AbortController() : null; }
+  // fetch with a deadline covering the body too; how = "json" | "text"
+  function tfetch(u, ms, how) {
+    var ac = abortable();
+    return within(fetch(u, ac ? { signal: ac.signal } : undefined).then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r[how](); }), ms, "request", ac);
+  }
 
   // ---------- projection (web mercator, x/y in 0..1) ----------
   function mx(lon) { return (lon + 180) / 360; }
@@ -179,8 +199,11 @@
 
   // ---------- tiles ----------
   function get(key, url, radar) {
-    var e = cache.get(key); if (e) { e.t = ++tick; return e; }
-    e = { t: ++tick }; cache.set(key, e); load(e, url, radar, corsOK !== false && radar);
+    var e = cache.get(key);
+    // a NOAA-grid tile that failed (its scan's download timed out or failed) is asked for again after 10 s
+    if (e && e.err && url && url.s3 && Date.now() - e.errAt > 10000) { cache.delete(key); e = null; }
+    if (e) { e.t = ++tick; return e; }
+    e = { t: ++tick, at: Date.now() }; cache.set(key, e); load(e, url, radar, corsOK !== false && radar);
     if (cache.size > 900) { // drop the least recently drawn (room for the loop's tiles plus the ring around the view)
       var all = Array.from(cache.entries()).sort(function (a, b) { return a[1].t - b[1].t; });
       for (var i = 0; i < 200; i++) cache.delete(all[i][0]);
@@ -227,13 +250,28 @@
     WK = false;
     if (!SELF || typeof Worker === "undefined" || typeof OffscreenCanvas === "undefined" || typeof createImageBitmap === "undefined") return WK;
     try { var nw = Math.max(2, Math.min(4, ((typeof navigator !== "undefined" && navigator.hardwareConcurrency) || 2) - 1)); WK = []; for (var q = 0; q < nw; q++) WK.push(q); WK = WK.map(function () { var w = new Worker(SELF); w.onmessage = fromW; w.onerror = wFail; return w; }); cfgW(); } catch (x) { WK = false; }
+    // fresh workers (first start or after a hard reset) need the grid and the area to keep
+    if (WK) WK.forEach(function (w) { w.postMessage({ grid: "dom", dom: dom }); if (box) w.postMessage({ grid: "box", box: box }); });
     return WK;
   }
   function cfgW() { if (WK && REFP) WK.forEach(function (w) { w.postMessage({ cfg: { REFP: REFP, TYPC: TYPC } }); }); }
   function toWi(i, m, cb) { m.id = ++wid; wjobs[m.id] = { cb: cb, m: m }; WK[i % WK.length].postMessage(m); }
   function toW(m, cb, tr) { m.id = ++wid; wjobs[m.id] = { cb: cb, m: m }; WK[wkI++ % WK.length].postMessage(m, tr || []); }
+  // liveness: each worker answers a ping right away (even mid-decode); one silent for T.pong of visible time is dead
+  //   (a phone can kill or freeze a backgrounded app's workers while the page itself survives)
+  var visAt = 0;
+  function wkAlive(now) {
+    if (!WK || !WK.length) return true;
+    var dead = false;
+    WK.forEach(function (w) {
+      if (w._ping && w._ping >= visAt && now - w._ping > T.pong) dead = true;
+      if (!w._ping || w._ping < visAt) { w._ping = now; w.postMessage({ ping: now }); } // a ping sent before a resume doesn't count
+    });
+    return !dead;
+  }
   function fromW(ev) {
-    var r = ev.data; if (r.loaded) { s3Got(r.loaded); return; }
+    var r = ev.data; if (r.pong) { ev.target._ping = 0; return; }
+    if (r.loaded) { s3Got(r.loaded); return; }
     var j = wjobs[r.id]; if (!j) return; delete wjobs[r.id];
     if (r.nosupport) { wFail(); j.cb(null, true); return; }
     j.cb(r);
@@ -247,6 +285,7 @@
   function loadW(e, url) {
     var mrms = Array.isArray(url);
     toW({ kind: "tile", urls: mrms ? url : [url], mrms: mrms }, function (r, redo) {
+      tileAt = Date.now();
       if (redo) return load(e, url, true, true);
       if (r.err) { if (mrms) { e.err = true; soon(0); } else { e.corsFail = true; load(e, url, true, false); } return; }
       e.raw = r.raw; e.sm = r.empty ? EMPTY : r.sm; corsOK = true; e.ok = true; soon(2);
@@ -515,7 +554,7 @@
   //   6-minute steps back; IEM keeps every even minute)
   var LCJ = "https://mesonet.agron.iastate.edu/data/gis/images/4326/mrms/lcref.json";
   function lcrefFrames() {
-    return fetch(LCJ + "?b=" + Math.floor(Date.now() / 60000)).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (j) {
+    return tfetch(LCJ + "?b=" + Math.floor(Date.now() / 60000), T.back, "json").then(function (j) {
       var v = Date.parse(j && j.meta && j.meta.start_valid); if (!isFinite(v) || Date.now() - v > 30 * 60000) throw 0;
       v = Math.floor(v / 120000) * 120000; var times = [];
       for (var k = 10; k >= 0; k--) times.push(v - k * 6 * 60000);
@@ -526,7 +565,7 @@
     var bucket = Math.floor(Date.now() / STEP), layers = [], n = 11;
     for (var k = 0; k < n; k++) { var m = (n - 1 - k) * 5; layers.push("nexrad-n0q-900913" + (m ? "-m" + (m < 10 ? "0" : "") + m + "m" : "")); }
     var f = { src: "iem", n: n, bucket: bucket, layers: layers, valid: null, times: null };
-    fetch(META + "?b=" + bucket).then(function (r) { return r.json(); }).then(function (j) {
+    tfetch(META + "?b=" + bucket, T.back, "json").then(function (j) {
       var v = Date.parse(j && j.meta && j.meta.valid); if (isFinite(v)) { f.valid = v; timeUi(); }
     }).catch(function () {});
     return f;
@@ -573,7 +612,7 @@
     var days = [ymd(since), ymd(Date.now())].filter(function (d, i, a) { return a.indexOf(d) === i; });
     return Promise.all(days.map(function (d) {
       var pre = prod + d + "/", name = prod.split("/")[1], sa = pre + "MRMS_" + name + "_" + (d === ymd(since) ? new Date(since).toISOString().slice(0, 16).replace(/[-:]/g, "").replace("T", "-") : d + "-0000");
-      return fetch(S3 + "?list-type=2&prefix=" + encodeURIComponent(pre) + "&start-after=" + encodeURIComponent(sa)).then(function (r) { if (!r.ok) throw 0; return r.text(); })
+      return tfetch(S3 + "?list-type=2&prefix=" + encodeURIComponent(pre) + "&start-after=" + encodeURIComponent(sa), T.list, "text")
         .then(function (x) { var out = [], re = /<Key>([^<]+)<\/Key>/g, m; while ((m = re.exec(x))) out.push(m[1]); return out; });
     })).then(function (ls) { return [].concat.apply([], ls).map(function (k) { return { k: k, t: keyTime(k) }; }).filter(function (o) { return isFinite(o.t); }).sort(function (a, b) { return a.t - b.t; }); });
   }
@@ -628,16 +667,17 @@
   function loadGT(e, u) {
     if (!WK) { e.err = true; soon(0); return; }
     toWi(s3W[u.t] || 0, { kind: "gtile", t: u.t, z: u.z, x: u.x, y: u.y, v: u.v }, function (r, redo) {
-      if (redo || r.err) { if (r && r.msg) wErr = r.msg; e.err = true; soon(0); return; }
-      e.sm = r.empty ? EMPTY : r.sm; e.raw = e.sm; corsOK = true; e.ok = true; soon(2);
+      tileAt = Date.now();
+      if (redo || r.err) { if (r && r.msg) wErr = r.msg; e.err = true; e.errAt = tileAt; soon(0); return; }
+      e.sm = r.empty ? EMPTY : r.sm; e.raw = e.sm; corsOK = true; e.ok = true; if (/timed out/.test(wErr)) wErr = ""; soon(2);
     });
   }
   // try MRMS (needs NCEP to allow cross-origin reads: legends, capabilities and tile pixels); otherwise the IEM mosaic
   var mrmsOK = null;
   function mrmsFrames() {
     if (mrmsOK === false) return Promise.reject();
-    var leg = function (l) { return fetch(OG + l + "/ows?service=WMS&request=GetLegendGraphic&format=application/json&layer=" + l).then(function (r) { if (!r.ok) throw 0; return r.json(); }); };
-    return Promise.all([leg(REF), leg(TYP), fetch(OG + REF + "/ows?service=WMS&version=1.3.0&request=GetCapabilities&b=" + Math.floor(Date.now() / 120000)).then(function (r) { if (!r.ok) throw 0; return r.text(); })]).then(function (res) {
+    var leg = function (l) { return tfetch(OG + l + "/ows?service=WMS&request=GetLegendGraphic&format=application/json&layer=" + l, T.back, "json"); };
+    return Promise.all([leg(REF), leg(TYP), tfetch(OG + REF + "/ows?service=WMS&version=1.3.0&request=GetCapabilities&b=" + Math.floor(Date.now() / 120000), T.back, "text")]).then(function (res) {
       var re = entries(res[0]).map(function (e) { var c = hex(e.color); return [parseFloat(e.quantity)].concat(c); }).filter(function (e) { return isFinite(e[0]); }).sort(function (a, b) { return a[0] - b[0]; });
       var te = entries(res[1]).map(function (e) { var c = hex(e.color); return c.concat(typeOf(e.label, parseFloat(e.quantity))); });
       var times = mrmsTimes(res[2]);
@@ -647,16 +687,99 @@
     }).catch(function (e) { mrmsOK = false; throw e; });
   }
   // checking: a check (or the new scans it found) is still coming in; upd: when the radar last refreshed
-  var lastLoad = 0, checking = false, upd = 0, tickT = 0;
+  var lastLoad = 0, checking = false, upd = 0, tickT = 0, FAIL = "Radar couldn't load right now";
+  // loadSeq: only the newest check may act (a superseded or abandoned one is ignored when it settles);
+  //   pendAt: when the waiting scan set first appeared; listNew/listAt: newest scan the last good listing found, when
+  var loadSeq = 0, pendAt = 0, listNew = 0, listAt = 0, failAt = 0;
   function loadFrames() {
-    lastLoad = Date.now(); checking = true; timeUi();
+    var my = ++loadSeq; lastLoad = Date.now(); checking = true; timeUi();
     // the backups only cover the lower 48
     s3Frames().catch(function (e) { if (dom.k !== "CONUS") throw e; return mrmsFrames(); }).catch(function () { return iemqOK === false ? Promise.reject() : lcrefFrames(); }).catch(function () { if (dom.k !== "CONUS") throw 0; return iemFrames(); }).then(function (f) {
+      if (my !== loadSeq) return;
       if (f.src === "s3") s3Load(f);
-      if (!frames) { setFrames(f); preload(); paint(2); } else if (f.bucket !== frames.bucket || f.src !== frames.src) { pending = f; preload(); }
-      if (!pending) { checking = false; upd = Date.now(); }
+      listNew = f.valid || 0; listAt = Date.now(); failAt = 0; if (ui.msg === FAIL) { ui.msg = ""; status(statusText()); }
+      if (!frames) { setFrames(f); preload(); paint(2); } else if (f.bucket !== frames.bucket || f.src !== frames.src) { if (!pending || pending.bucket !== f.bucket) pendAt = Date.now(); pending = f; preload(); }
+      if (!pending) { checking = false; upd = Date.now(); if (newestIn(frames) >= 1) stalls = 0; } // a listing alone doesn't prove the workers are fine
       legend(); plan(); timeUi();
-    }).catch(function () { checking = false; lastR = 0; ui.msg = "Radar couldn't load right now"; status(statusText()); plan(60000); timeUi(); });
+    }).catch(function () { if (my !== loadSeq) return; checking = false; failAt = Date.now(); lastR = 0; ui.msg = FAIL; status(statusText()); plan(60000); timeUi(); });
+  }
+  // ---------- watchdog ----------
+  // A home-screen app is rarely reloaded, and a phone may freeze its fetches or kill its workers in the background,
+  //   so the refresh loop must never be able to wait forever. Every request has a deadline (T); every T.wd while the
+  //   tab is showing, watch() checks that the workers answer, that a newer scan set becomes current within T.pend, that
+  //   a listing settles within T.check and that tiles in view keep arriving; each failure is a stall. A dead worker, two
+  //   stalls in a row, or a refresh/resume while the radar is behind does a hard reset (resetRadar).
+  var wdT = 0, wdAt = 0, stalls = 0, nStall = 0, lastStall = "", resets = 0, lastReset = null, rsBack = 0, rsNext = 0, tileAt = 0, hidAt = 0, planDue = 0;
+  function good() { stalls = 0; rsBack = 0; } // new scans became current: the pipeline works
+  function stall(why) { stalls++; nStall++; lastStall = why; if (stalls >= 2) resetRadar("stalls:" + why); }
+  function newest() { return !frames ? 0 : frames.times ? frames.times[frames.n - 1] : frames.valid || 0; }
+  // the radar is behind: the shown newest scan is old (unless a listing just now found nothing newer: NOAA is
+  //   behind, not us), or a waiting scan set or listing is past its deadline
+  function behind(now) {
+    var nt = newest(), old = !!nt && now - nt > (frames.src === "s3" ? 1 : 2) * T.old && !(listNew && listNew <= nt && now - listAt < 90000);
+    return old || !!pending && now - pendAt > T.pend || checking && !pending && now - lastLoad > T.check;
+  }
+  // share of the newest scan's tiles in view that are drawn
+  function newestIn(f) {
+    return at(RV.R, function () { var vs = visible(rz()), ok = 0; vs.forEach(function (v) { var e = cache.get(rkey(f, f.n - 1, v.z, ((v.i % v.n) + v.n) % v.n, v.j)); if (e && e.ok) ok++; }); return vs.length ? ok / vs.length : 1; });
+  }
+  function watch() {
+    var now = Date.now(); if (now - wdAt > 3 * T.wd) visAt = now; wdAt = now; // our own timer was frozen: treat as a resume
+    if (!on || document.hidden) return;
+    if (!wkAlive(now)) { resetRadar("worker"); return; }
+    if (pending) preload(); // re-asks for its failed tiles (after 10 s) even while the map sits still
+    if (pending && now - pendAt > T.pend) {
+      // the newest scan is in: show it (older ones fill in as they can); otherwise drop the set and list again
+      if (newestIn(pending) >= 1) promote(); else { pending = null; checking = false; loadSeq++; }
+      stall("pending"); if (on && !pending && !checking) plan(1000); return;
+    }
+    if (checking && !pending && now - lastLoad > T.check) { checking = false; loadSeq++; timeUi(); stall("check"); if (on) plan(1000); return; }
+    if (frames && frames.src === "s3") { // tiles in view requested long ago and nothing arriving at all
+      var late = at(RV.R, function () { return visible(rz()).some(function (v) { var e = cache.get(rkey(frames, frames.n - 1, v.z, ((v.i % v.n) + v.n) % v.n, v.j)); return e && !e.ok && !e.err && now - e.at > T.prog; }); });
+      if (late && now - tileAt > T.prog) { tileAt = now; stall("tiles"); return; }
+    }
+    if (!frames && failAt && !checking && now - failAt > 60000) { resetRadar("failed"); return; }
+    if (!checking && !pending && (!planDue || now > planDue + 20000)) plan(1000); // the refresh timer got lost
+  }
+  // Hard reset: new workers, nothing waiting on the old ones; keeps the drawn scans (their tiles are plain bitmaps
+  //   here), the view and play/pause, then lists again. At most one per 15 s, backing off to 30 s and 60 s while
+  //   resets keep failing (a good refresh clears that).
+  function resetRadar(why) {
+    var now = Date.now(); if (!on || now < rsNext) return false;
+    rsBack = Math.min(60000, rsBack ? rsBack * 2 : 15000); rsNext = now + rsBack;
+    resets++; lastReset = { at: now, why: why }; stalls = 0; loadSeq++;
+    if (WK) { var old = WK; WK = null; old.forEach(function (w) { try { w.terminate(); } catch (x) {} }); }
+    var js = wjobs; wjobs = {}; Object.keys(js).forEach(function (k) { try { js[k].cb(null, true); } catch (x) {} });
+    if (s3Wait) { clearTimeout(s3Wait.t); s3Wait = null; }
+    s3W = {}; s3Have = {};
+    cache.forEach(function (e, k) { if (!e.ok && k.lastIndexOf("rs3", 0) === 0) cache.delete(k); }); // in flight or failed on the old workers
+    if (s3OK === false) s3OK = null; if (mrmsOK === false) mrmsOK = null; if (iemqOK === false) iemqOK = null; // retry the better sources
+    pending = null; checking = false; tileAt = now; visAt = now;
+    loadFrames();
+    return true;
+  }
+  // header refresh, pull-to-refresh, tapping the time: a real re-check. Behind → hard reset; otherwise a light check.
+  function recheck(force) {
+    if (!on) return;
+    if (behind(Date.now()) && resetRadar(force ? "refresh" : "tap")) return;
+    if (force || !checking) loadFrames();
+  }
+  function promote() { setFrames(pending); pending = null; checking = false; upd = Date.now(); good(); paint(2); }
+  // back from the background (or a frozen page): timers that were due run now, the time block is redrawn at once, and
+  //   a radar that fell behind while away is reset rather than left waiting on whatever the phone froze
+  function wake() {
+    var now = Date.now(), away = hidAt ? now - hidAt : 0; hidAt = 0;
+    visAt = now; tileAt = now; wdAt = now; timeUi(); nowLine();
+    if (!on) return;
+    if (away > T.away && behind(now) && resetRadar("resume")) return;
+    plan(1000);
+  }
+  if (typeof document !== "undefined") {
+    document.addEventListener("visibilitychange", function () { if (document.hidden) { if (!hidAt) hidAt = Date.now(); } else wake(); });
+    root.addEventListener("pagehide", function () { if (!hidAt) hidAt = Date.now(); });
+    root.addEventListener("pageshow", function (ev) { if (ev.persisted || !document.hidden) wake(); });
+    document.addEventListener("freeze", function () { if (!hidAt) hidAt = Date.now(); });
+    document.addEventListener("resume", function () { if (!document.hidden) wake(); });
   }
   // Refresh as soon as new data exists. NOAA scans every 2 minutes and posts each one ~1 minute after its time
   //   (its precipitation type ~1.5 minutes after), so check right then and every 15 s until it shows up; other
@@ -672,10 +795,10 @@
         wait = at.length ? Math.min.apply(null, at) - now : now - t > 10 * 60000 ? 60000 : 15000;
       } else wait = Math.max(15000, lastLoad + STEP - now);
     }
-    refreshT = setTimeout(function () { if (on && !pending) loadFrames(); else plan(15000); }, Math.max(1000, wait));
+    wait = Math.max(1000, wait); planDue = now + wait;
+    refreshT = setTimeout(function () { refreshT = 0; if (on && !pending) loadFrames(); else plan(15000); }, wait);
   }
-  // phones pause timers in the background: catch up as soon as the page is back
-  if (typeof document !== "undefined") document.addEventListener("visibilitychange", function () { if (!document.hidden && on && refreshT) plan(1000); });
+  // phones pause timers in the background: wake() (above) catches up as soon as the page is back
   function setFrames(f) { frames = f; NF = f.n; ui.range.max = NF - 1; if (cur > NF - 1 || !started) cur = NF - 1; }
   // request every frame's visible tiles so playback never waits on the network, then the same for a ring of tiles
   //   just beyond the screen (one tile all round, three ahead of a pan), so panning shows radar that is already
@@ -746,9 +869,12 @@
     if (frames && frames.src === "iemq" && !iemqOK && ready(frames) >= 1) { if (errAll(frames)) { iemqOK = false; setFrames(iemFrames()); preload(); paint(2); legend(); } else iemqOK = true; }
     // last resort: if even the unfiltered mosaic's tiles all fail, say so instead of a blank map with a running clock
     if (frames && frames.src === "iem" && ready(frames) >= 1 && errAll(frames) && !ui.msg) { checking = false; ui.msg = "Radar couldn't load right now"; }
-    if (frames && frames.src === "s3" && !s3OK && ready(frames) >= 1) { if (errAll(frames)) { s3OK = false; s3Why = "couldn't decode NOAA's files" + (wErr ? " (" + wErr + ")" : ""); frames = null; loadFrames(); return; } else s3OK = true; }
+    // (a timed-out download says nothing about decoding: its tiles are asked for again instead)
+    if (frames && frames.src === "s3" && !s3OK && ready(frames) >= 1 && !/timed out/.test(wErr)) { if (errAll(frames)) { s3OK = false; s3Why = "couldn't decode NOAA's files" + (wErr ? " (" + wErr + ")" : ""); frames = null; loadFrames(); return; } else s3OK = true; }
     nowLine();
-    if (pending && ready(pending) >= 1) { setFrames(pending); pending = null; checking = false; upd = Date.now(); paint(2); }
+    // (not while every tile of its newest scan failed: that would show the new time over a blank map; those tiles are
+    //   asked for again, and the watchdog handles a set that never makes it)
+    if (pending && ready(pending) >= 1 && !errAll(pending)) promote();
     var r = frames ? ready(frames) : 0;
     lastR = r; status(statusText());
     if (r >= 1) at(RV.R, planMotion);
@@ -1049,7 +1175,7 @@
     // like RadarScope's product time: tap to jump to the newest scan and check for a newer one now
     ui.time.addEventListener("click", function () {
       playing && play(false); userPaused = true; started = true; if (frames) { cur = NF - 1; frac = 0; } paint(2);
-      if (on && !checking) loadFrames();
+      recheck(false);
     });
     ui.loc = el.querySelector(".rloc:not(.rhome)"); ui.home = el.querySelector(".rhome"); ui.msg = "";
     ui.loc.addEventListener("click", locate); ui.home.addEventListener("click", toForecast);
@@ -1103,18 +1229,20 @@
         dom = D; frames = null; pending = null; s3W = {}; s3Have = {}; box = null; boxVer++; s3OK = null; s3Why = "";
         if (workers()) WK.forEach(function (w) { w.postMessage({ grid: "dom", dom: D }); });
       }
-      on = true; size();
-      if (!frames || Math.floor(Date.now() / STEP) !== frames.bucket) loadFrames();
+      on = true; size(); visAt = wdAt = tileAt = Date.now();
+      if (frames && behind(Date.now()) && resetRadar("show")) {} // back on the tab with a radar that fell behind
+      else if (!frames || Math.floor(Date.now() / STEP) !== frames.bucket) loadFrames();
       else plan();
+      clearInterval(wdT); wdT = setInterval(watch, T.wd);
       // keeps "Updated" and the late colour current between scans
       clearInterval(tickT); tickT = setInterval(function () { timeUi(); nowLine(); wPrune(); }, 15000);
       if (!warnAC && Date.now() - WARN.at > 110000) warnFetch(); else if (!warnAC && !warnT) warnT = setTimeout(warnFetch, Math.max(1000, 120000 - (Date.now() - WARN.at)));
       paint(7);
     },
-    hide: function () { warnStop(); tipHide(); stopWatch(); if (gpsMode === "wait") gpsMode = "off"; on = false; playing && play(false); started = false; userPaused = false; clearTimeout(refreshT); clearInterval(tickT); if (raf) cancelAnimationFrame(raf); raf = 0; },
-    refresh: function () { if (on) { loadFrames(); warnFetch(); } },
+    hide: function () { warnStop(); tipHide(); stopWatch(); if (gpsMode === "wait") gpsMode = "off"; on = false; playing && play(false); started = false; userPaused = false; clearTimeout(refreshT); clearInterval(tickT); clearInterval(wdT); if (raf) cancelAnimationFrame(raf); raf = 0; },
+    refresh: function () { if (on) { recheck(true); warnFetch(); } },
     // for the live data check
-    _state: function () { return { why: s3Why, dom: dom.k, rvR: RV.R, rdpr: rdpr, SW: SW, SH: SH, times: frames && frames.times, refs: frames && frames.refs, flags: frames && frames.flags, s3OK: s3OK, box: box, wk: !!WK, mv: (MV[mvKey] || []).map(function (m) { return m ? [+(m.x * rscale()).toFixed(1), +(m.y * rscale()).toFixed(1)] : null; }), redraws: redraws, tf: cvL && cvL.style.transform, tfs: LAYERS.map(function (L) { return L.c.style.transform; }), src: frames && frames.src, mrmsOK: mrmsOK, corsOK: corsOK, frames: frames && frames.n, valid: frames && frames.valid, ready: frames ? ready(frames) : 0, ring: frames ? ringReady() : 0, miss: miss, view: view, playing: playing, cur: cur, frac: frac, warn: { n: WARN.list.length, at: WARN.at, ok: WARN.ok, err: WARN.err } }; },
+    _state: function () { return { why: s3Why, dom: dom.k, rvR: RV.R, rdpr: rdpr, SW: SW, SH: SH, times: frames && frames.times, refs: frames && frames.refs, flags: frames && frames.flags, s3OK: s3OK, box: box, wk: !!WK, mv: (MV[mvKey] || []).map(function (m) { return m ? [+(m.x * rscale()).toFixed(1), +(m.y * rscale()).toFixed(1)] : null; }), redraws: redraws, tf: cvL && cvL.style.transform, tfs: LAYERS.map(function (L) { return L.c.style.transform; }), src: frames && frames.src, mrmsOK: mrmsOK, corsOK: corsOK, frames: frames && frames.n, valid: frames && frames.valid, ready: frames ? ready(frames) : 0, ring: frames ? ringReady() : 0, miss: miss, stalls: nStall, stallRun: stalls, lastStall: lastStall, resets: resets, lastReset: lastReset, pendingAge: pending ? Date.now() - pendAt : 0, checkingAge: checking ? Date.now() - lastLoad : 0, checking: checking, upd: upd, wkAlive: !!WK && WK.every(function (w) { return !w._ping || Date.now() - w._ping < T.pong; }), view: view, playing: playing, cur: cur, frac: frac, warn: { n: WARN.list.length, at: WARN.at, ok: WARN.ok, err: WARN.err } }; },
     // warning outlines for tests: [{ev, until, pts: [[sx, sy], …] first ring of each polygon in map CSS px}]
     _warn: function () { var s = scale(); return WARN.list.map(function (w) { var off = Math.round(view.x - (w.bb[0] + w.bb[2]) / 2); return { ev: w.ev, until: w.until, end: w.end, pts: w.polys.map(function (pr) { var a = pr[0], o = []; for (var i = 0; i < a.length; i += 2) o.push([(a[i] + off - view.x) * s + W / 2, (a[i + 1] - view.y) * s + HH / 2]); return o; }) }; }); },
     _pal: function () { return pal(); },
@@ -1125,13 +1253,16 @@
         t = t || frames.times[frames.n - 1];
         toWi(s3W[t] || 0, { kind: "probe", t: t, pts: pts }, function (r, redo) { if (redo || !r || r.err) no(new Error(r && r.msg || "probe failed")); else ok(r.vals); });
       });
-    }, _dbz: toDbz, _iem: iemDbz, _test: function (im) { return recolor(im); }
+    }, _dbz: toDbz, _iem: iemDbz, _test: function (im) { return recolor(im); },
+    // watchdog test hooks (inert unless called): timings, and workers that die or stop answering without telling us
+    _wd: { T: T, kill: function () { if (WK) WK.forEach(function (w) { w.terminate(); }); }, freeze: function () { if (WK) WK.forEach(function (w) { w.postMessage({ freeze: 1 }); }); } }
   };
   if (!INW) { root.WXRadar = api; return; }
   // ---------- worker side ----------
   var can2d = false; try { can2d = !!new OffscreenCanvas(1, 1).getContext("2d"); } catch (x) {}
   function fetchBitmap(u) {
-    return fetch(u, { mode: "cors", credentials: "omit" }).then(function (r) { if (!r.ok) throw 0; return r.blob(); })
+    var ac = abortable();
+    return within(fetch(u, { mode: "cors", credentials: "omit", signal: ac ? ac.signal : undefined }).then(function (r) { if (!r.ok) throw 0; return r.blob(); }), T.tile, "tile", ac)
       .then(function (b) { return createImageBitmap(b, { colorSpaceConversion: "none" }); });
   }
   // ----- MRMS grids from NOAA's archive (GRIB2, PNG-packed) -----
@@ -1229,8 +1360,8 @@
   }
   // NOAA's file names never change, so downloaded scans are kept for 2 hours (reopening only fetches new ones)
   var CK = "wx-mrms-1";
-  function getFile(url) {
-    var net = function () { return fetch(url).then(function (r) { if (!r.ok) throw new Error("download failed (" + r.status + ")"); return r; }); };
+  function getFile(url, ac) {
+    var net = function () { return fetch(url, ac ? { signal: ac.signal } : undefined).then(function (r) { if (!r.ok) throw new Error("download failed (" + r.status + ")"); return r; }); };
     if (typeof caches === "undefined") return net();
     return caches.open(CK).then(function (c) {
       return c.match(url).then(function (r) { return r || net().then(function (r) { c.put(url, r.clone()).catch(function () {}); return r; }); });
@@ -1240,7 +1371,8 @@
     if (typeof caches === "undefined") return;
     caches.open(CK).then(function (c) { return c.keys().then(function (ks) { ks.forEach(function (q) { var t = keyTime(q.url); if (!(t > Date.now() - 2 * 3600000)) c.delete(q); }); }); }).catch(function () {});
   }
-  function fetchGz(url) { return getFile(url).then(function (r) { return r.arrayBuffer(); }).then(function (b) { return gunzip(b, "gzip").arrayBuffer(); }).then(function (b) { return new Uint8Array(b); }); }
+  // one deadline for cache read, download and unzip: a fetch frozen by the phone fails instead of blocking the chain
+  function fetchGz(url) { var ac = abortable(); return within(getFile(url, ac).then(function (r) { return r.arrayBuffer(); }).then(function (b) { return gunzip(b, "gzip").arrayBuffer(); }), T.dl, "download", ac).then(function (b) { return new Uint8Array(b); }); }
   // frames load one after another (newest first), so the current radar shows as soon as possible; downloads run
   //   ahead in their own chain, so the next file is already arriving while this one is being decoded
   function gridFrame(f, after, dlAfter) {
@@ -1254,7 +1386,7 @@
     fr.dl = (dlAfter || Promise.resolve()).then(function () { return Promise.all([fetchGz(f.base + f.ref), f.flag ? fetchGz(f.base + f.flag).catch(function () { return null; }) : null]); });
     fr.p = Promise.all([fr.dl, after]).then(function (r) { return r[0]; }).then(function (b) {
       fr.raw = b[0]; fr.rawF = b[1];
-      return Promise.all([decodeRef(b[0], fr), b[1] ? decodeFlag(b[1], fr) : null]);
+      return within(Promise.all([decodeRef(b[0], fr), b[1] ? decodeFlag(b[1], fr) : null]), T.dec, "decode");
     }).then(function () { root.postMessage({ loaded: f.t }); return fr; });
     fr.p.catch(function (e) { delete G[f.t]; GERR[f.t] = String(e && e.message || e); });
     return fr;
@@ -1325,8 +1457,12 @@
     var r = Math.round((LAT0 - bx.lat) / DEG) - FB / 2, c = Math.round((bx.lon - LON0) / DEG) - FB / 2;
     return { r0: Math.max(0, Math.min(NJ - FB, r)), c0: Math.max(0, Math.min(NI - FB, c)), v: bx.v };
   }
+  var FROZEN = false; // test hook: a worker that has stopped answering
   root.onmessage = function (ev) {
     var m = ev.data;
+    if (m.freeze) FROZEN = true;
+    if (FROZEN) return;
+    if (m.ping) { root.postMessage({ pong: m.ping }); return; }
     if (m.grid === "dom") { var D = m.dom; NI = D.ni; NJ = D.nj; LAT0 = D.lat0; LON0 = D.lon0; DEG = D.d; G = {}; FR = {}; LASTK = {}; GERR = {}; GBOX = null; return; }
     if (m.grid === "go") { if (GATE) { GATE.open(); GATE = null; } return; }
     if (m.grid === "box") { GBOX = boxFor(m.box); return; }
@@ -1346,7 +1482,8 @@
     }
     if (m.kind === "gtile") {
       if (!can2d) { root.postMessage({ id: m.id, nosupport: true }); return; }
-      var fr = G[m.t]; (fr ? fr.p : Promise.reject(new Error(GERR[m.t] || "frame not loaded"))).then(function () { return gtile(m); }).then(function (r) { r.id = m.id; root.postMessage(r, r.sm ? [r.sm] : []); }, function (e) { root.postMessage({ id: m.id, err: true, msg: String(e && e.message || e || "error").slice(0, 80) }); });
+      var fr = G[m.t] || FR[m.t] && gridFrame(FR[m.t], Promise.resolve(), null); // a scan whose download failed is tried again
+      (fr ? fr.p : Promise.reject(new Error(GERR[m.t] || "frame not loaded"))).then(function () { return gtile(m); }).then(function (r) { r.id = m.id; root.postMessage(r, r.sm ? [r.sm] : []); }, function (e) { root.postMessage({ id: m.id, err: true, msg: String(e && e.message || e || "error").slice(0, 80) }); });
       return;
     }
     if (m.cfg) { REFP = m.cfg.REFP; TYPC = m.cfg.TYPC; LREF.clear(); LTYP.clear(); return; }
