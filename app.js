@@ -352,10 +352,22 @@
   // While it is precipitating or about to (see above), show the Precipitation card from the Hourly tab (same card, same
   //   hold-to-read) on the Now tab, between the current conditions and today/tonight.
   function nowPrecipOn() { return !!(doc && doc.grid && doc.grid.n && (precipNow(doc.cur) || precipSoon(doc.grid))); }
+  // With no precipitation on the way but strong wind (now or in the next six hours: sustained 25 mph+ or gusts 40 mph+),
+  //   the same slot shows the Hourly tab's Wind card instead, the same way (owner's call, Nov 26).
+  var WIND_SUS = 25, WIND_GUST = 40;
+  function windSoon(g, c) {
+    if (c && ((c.ws != null && c.ws >= WIND_SUS) || (c.wg != null && c.wg >= WIND_GUST))) return true;
+    if (!g || !g.n || !g.s) return false;
+    var k0 = Math.floor((Date.now() - g.start) / H), k1 = Math.floor((Date.now() + 6 * H - g.start) / H);
+    for (var k = Math.max(0, k0); k <= Math.min(g.n - 1, k1); k++) if ((g.s.ws && g.s.ws[k] >= WIND_SUS) || (g.s.wg && g.s.wg[k] >= WIND_GUST)) return true;
+    return false;
+  }
+  function nowWindOn() { return !nowPrecipOn() && !!(doc && doc.grid && doc.grid.n && windSoon(doc.grid, doc.cur)); }
   function renderNowPrecip() {
     var host = $("nowprecip"); GN = null; if (!host) return;
-    if (!nowPrecipOn()) { host.hidden = true; host.innerHTML = ""; return; }
-    host.hidden = false; GN = renderGraph(host, "precip");
+    var kind = nowPrecipOn() ? "precip" : nowWindOn() ? "wind" : null;
+    if (!kind) { host.hidden = true; host.innerHTML = ""; return; }
+    host.hidden = false; GN = renderGraph(host, kind);
   }
   // Next 12 hours card on Daily (renderGraph(host, "next"), instance GX, hold-to-read like the other graphs): the hourly
   //   grid from the current hour on, 12 hours (fewer if that's all there is, none under 3), each hour as wide as fits the card
@@ -749,7 +761,7 @@
     // 2 wind
     var wmax = Math.max(20, Math.max.apply(null, s.wg.concat(s.ws).filter(function (v) { return v != null; })));
     var wt = nice(0, wmax, wmax > 40 ? 20 : 10), h2 = 92, y2 = scale(wt, h2, 6);
-    if (!only) out.push(panel("Wind (mph)", li("var(--wind)", "", "Sustained") + li("var(--gust)", "", "Gusts"), h2, wt, y2, "",
+    if (!only || only === "wind") out.push(panel("Wind (mph)", li("var(--wind)", "", "Sustained") + li("var(--gust)", "", "Gusts"), h2, wt, y2, "",
       '<path d="' + path(s.wg, y2) + '" fill="none" stroke="var(--gust)" stroke-width="2.25"/>' +
       '<path d="' + path(s.ws, y2) + '" fill="none" stroke="var(--wind)" stroke-width="2.25"/>',
       [{ a: s.ws, y: y2, c: "var(--wind)", u: " mph", n: "Sustained" }, { a: s.wg, y: y2, c: "var(--gust)", u: " mph", n: "Gusts" }]));
@@ -819,7 +831,7 @@
       (AMT.length ? li("var(--line)", "box", "Amounts") : "");
     var pMarks = [{ a: s.pop, y: yP, c: "var(--ink2)", u: "%", n: "Precip chance" }];
     var PK = out.length; // this card leads the Hourly tab
-    if (only !== "next") out.push(wrap("Precipitation", pLegend, pAxis, '<svg class="gsvg plot" width="' + W + '" height="' + pHH + '">' +
+    if (!only || only === "precip") out.push(wrap("Precipitation", pLegend, pAxis, '<svg class="gsvg plot" width="' + W + '" height="' + pHH + '">' +
       (function (v) { return pg + v[0] + pb + v[1] + nowVals(pMarks, 0, 0, pHH); })(vlines(pHH, 0, pTop)) + "</svg>",
       // holding: a compact stack under the time (chance, then the types with their wording, then this block's amounts)
       [{ txt: function (i) {

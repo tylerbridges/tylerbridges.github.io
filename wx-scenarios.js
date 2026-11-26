@@ -1,4 +1,4 @@
-// wx-scenarios.js — built-in test weather (blizzard, ice storm, heat wave, severe storms, arctic cold).
+// wx-scenarios.js — built-in test weather (blizzard, ice storm, heat wave, severe storms, arctic cold, high wind).
 // Each scenario is an hour-by-hour recipe anchored to the current time. It is turned into
 // api.weather.gov-shaped responses (points, gridpoint layers, 12-hour periods, observations,
 // alerts, discussion) and run through wx-normalize.js, so every tab renders it exactly as it
@@ -87,6 +87,16 @@
         var ws = h < 90 ? 14 : 8;
         return { t: t, td: t - 6, ws: ws, wg: ws + 10, wd: 315, sky: fl ? 90 : 5, pop: fl ? 40 : 0, thp: 0,
           wx: fl ? [wx("snow", "chance")] : [], q: fl ? 0.01 : 0, sn: fl ? 0.15 : 0, ice: 0 };
+      }
+    },
+    wind: {
+      name: "High wind", desc: "Dry, west winds 30–40 mph gusting to 60",
+      alerts: [["High Wind Warning", "Severe", 0, 30, "West winds 30 to 40 mph with gusts up to 60 mph.", "Travel will be difficult, especially for high profile vehicles. Secure outdoor objects."]],
+      afd: "A tight pressure gradient behind a departing low brings strong west winds today into tonight, sustained 30 to 40 mph with gusts to 60 mph. Dry air keeps skies mostly clear. Winds ease Tuesday.",
+      f: function (h, lh) {
+        var strong = h < 30, ws = strong ? 30 + Math.round(8 * Math.sin(h / 4)) : 12;
+        return { t: diurnal(lh, 34, 48), td: 18, ws: ws, wg: strong ? ws + 22 : ws + 8, wd: 270, sky: strong ? 20 : 10, pop: 0, thp: 0,
+          wx: [], q: 0, sn: 0, ice: 0 };
       }
     }
   };
