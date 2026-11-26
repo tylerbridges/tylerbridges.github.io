@@ -1258,7 +1258,7 @@
     var t0 = Date.now();
     return (TEST ? WXScenario.load(TEST, curLoc(), doc || store("wx-cache")) : WXLive.load(curLoc())).then(function (d) {
       refreshFailed = false; accept(d); lastCheck = Date.now(); if (!TEST) saveCache(d);
-      if (manual) toast(TEST ? "Test scenario regenerated" : "Updated from weather.gov");
+      // no success toast: the spinning refresh button and the "Checked just now" line already show it (failures still toast)
       return true;
     }).catch(function (e) {
       refreshFailed = true; console.error(e);
