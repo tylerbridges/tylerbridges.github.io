@@ -296,26 +296,30 @@
       if (gustHour >= 0 && gustHour < grid.s.wg.length) gust = grid.s.wg[gustHour];
     }
     var rows = [];
-    if (hiT != null || loT != null) rows.push(["Low / High", '<span class="loT">' + (loT != null ? loT + "°F" : "–") + '</span> / <span class="hiT">' + (hiT != null ? hiT + "°F" : "–") + "</span>", 1]);
     // this hour's chance from the hourly grid; falls back to the current forecast period's chance
     var popNow = null, popK = grid && grid.s && grid.s.pop ? Math.floor((Date.now() - grid.start) / H) : -1;
     if (popK >= 0 && popK < grid.s.pop.length && grid.s.pop[popK] != null) popNow = grid.s.pop[popK];
     var p0 = p[0]; if (popNow == null && p0) popNow = p0.pop || 0;
-    if (popNow != null) rows.push(["Precip", Math.round(popNow) + "%"]);
     // EPA's daily UV forecast is for one calendar day: label it with the day when it isn't today (late evening it's already tomorrow's)
     var uv = doc.uv, uvD = uv && uv.date ? new Date(uv.date.replace(/\//g, " ")) : null, todayD = new Date(fmt(Date.now(), { year: "numeric", month: "short", day: "numeric" }));
     var uvOff = uvD ? Math.round((uvD - todayD) / 864e5) : null;
     // UV right now (EPA hourly forecast for this hour; 0 overnight)
     var nowUV = uvAt(Date.now());
     if (nowUV == null && uv && uv.hourly && uv.hourly.length && !isDay(Date.now())) nowUV = 0;
-    if (nowUV != null) rows.push(["UV index", nowUV + " · " + uvCat(nowUV) + (uv && uv.alert ? " · UV alert" : "")]);
     // no gust (or one not above the sustained wind): just "Wind 10 mph"; "Calm" and "–" never get a unit
     var hasGust = gust != null && !(c.ws != null && gust <= c.ws);
-    rows.push(["Humidity", c.rh != null ? c.rh + "%" : "–"],
+    // a fixed set of eight rows in a fixed order, so the list never changes length or shape between visits and the
+    //   two-column layout (wider than 420 px) is always even; a value that isn't known shows "–", never 0
+    var feelsRow = c.t == null ? null : c.wc != null && c.wc < c.t ? c.wc : c.hi != null && c.hi > c.t ? c.hi : c.t;
+    rows.push(
+      ["Low / High", '<span class="loT">' + (loT != null ? loT + "°F" : "–") + '</span> / <span class="hiT">' + (hiT != null ? hiT + "°F" : "–") + "</span>", 1],
+      ["Feels like", feelsRow != null ? feelsRow + "°F" : "–"],
+      ["Precip", popNow != null ? Math.round(popNow) + "%" : "–"],
+      ["Humidity", c.rh != null ? c.rh + "%" : "–"],
       hasGust ? ["Wind/Gusts", (c.ws == null ? "–" : c.ws === 0 ? "Calm" : c.ws) + " / " + gust + " mph"] : ["Wind", c.ws == null ? "–" : c.ws === 0 ? "Calm" : c.ws + " mph"],
-      ["Visibility", c.vis != null ? (c.vis >= 10 ? "10.00" : c.vis.toFixed(2)) + " mi" : "–"]);
-    if (c.wc != null && c.t != null && c.wc < c.t) rows.push(["Wind chill", c.wc + "°F"]);
-    if (c.hi != null && c.t != null && c.hi > c.t) rows.push(["Heat index", c.hi + "°F"]);
+      ["Dew point", c.td != null ? c.td + "°F" : "–"],
+      ["Visibility", c.vis != null ? (c.vis >= 10 ? "10.00" : c.vis.toFixed(2)) + " mi" : "–"],
+      ["UV index", nowUV != null ? nowUV + " · " + uvCat(nowUV) + (uv && uv.alert ? " · UV alert" : "") : "–"]);
     var feels = c.t == null ? null : c.wc != null && c.wc < c.t ? c.wc : c.hi != null && c.hi > c.t ? c.hi : null;
     var d0 = groupDays(p)[0], nextTxt = nextUp(grid, Date.now(), fmt);
     // today's date above the card, styled like the other days' titles (low / high stay in the card's list)
