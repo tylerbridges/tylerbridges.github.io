@@ -643,7 +643,7 @@
   function paint(bits) { need |= bits == null ? 15 : bits; if (on && !raf) raf = requestAnimationFrame(frame); }
   function frame() {
     raf = 0; if (!on || !W) return;
-    if (need & 16 || !drawn) { drawn = { x: view.x, y: view.y, z: view.z }; need |= 15; stage.style.transform = ""; }
+    if (need & 16 || !drawn) { drawn = { x: view.x, y: view.y, z: view.z }; need |= 15; stage.style.transform = ""; if (LB) { LB.fit(drawn); LT.fit(drawn); } }
     var n = need; need = 0;
     if (n & 1) drawBase();
     if (n & 2) drawField();
@@ -660,14 +660,17 @@
     return out;
   }
   function vec() { return VM && VM.ok(); }
+  // the vector base map and its lines/labels are drawn off the page's thread (wx-vmap.js) and swapped in when ready;
+  //   until then the last drawing stays, fitted to the stage (LB/LT.fit)
+  var LB = null, LT = null;
   function drawBase() {
-    cxB.setTransform(1, 0, 0, 1, 0, 0);
-    if (vec()) VM.drawBase(cxB, slots(VM.tileZoom(drawn.z), dpr), { dark: dark(), dpr: dpr, z: drawn.z });
-    else { cxB.fillStyle = dark() ? "#000" : "#f3f3f1"; cxB.fillRect(0, 0, cvB.width, cvB.height); }
+    if (vec()) { LB.ask({ layer: "base", w: SW * dpr, h: SH * dpr, slots: slots(VM.tileZoom(drawn.z), dpr), o: { dark: dark(), dpr: dpr, z: drawn.z } }, drawn); return; }
+    cxB = (LB ? LB.cv : cvB).getContext("2d"); if (!cxB) return;
+    cxB.setTransform(1, 0, 0, 1, 0, 0); cxB.fillStyle = dark() ? "#000" : "#f3f3f1"; cxB.fillRect(0, 0, cvB.width, cvB.height);
   }
   function drawTop() {
-    cxT.setTransform(1, 0, 0, 1, 0, 0); cxT.clearRect(0, 0, cvT.width, cvT.height);
-    if (vec()) VM.drawTop(cxT, slots(VM.tileZoom(drawn.z), dpr), { dark: dark(), dpr: dpr, z: drawn.z, w: SW, h: SH });
+    if (vec()) { LT.ask({ layer: "top", w: SW * dpr, h: SH * dpr, slots: slots(VM.tileZoom(drawn.z), dpr), o: { dark: dark(), dpr: dpr, z: drawn.z, w: SW, h: SH } }, drawn); return; }
+    cxT = (LT ? LT.cv : cvT).getContext("2d"); if (cxT) { cxT.setTransform(1, 0, 0, 1, 0, 0); cxT.clearRect(0, 0, cvT.width, cvT.height); }
   }
   // field samples: one per CSS pixel (the fields are smooth; the canvas upscales)
   var FV = { key: "" }, img = null;
@@ -681,7 +684,30 @@
     if (FV.pk[P.k]) return FV.pk[P.k];
     var n = FW * FH, gi = new Float32Array(n), gj = new Float32Array(n), s = scaleZ(drawn.z), o = [0, 0], lat = new Float32Array(FH);
     for (var y = 0; y < FH; y++) lat[y] = latOf(drawn.y + ((y + 0.5) / f - SH / 2) / s);
-    for (y = 0; y < FH; y++) for (var x = 0; x < FW; x++) { P.p.fwd(lat[y], lonOf(drawn.x + ((x + 0.5) / f - SW / 2) / s), o); gi[y * FW + x] = o[0]; gj[y * FW + x] = o[1]; }
+    var lonAt = function (x) { return lonOf(drawn.x + ((x + 0.5) / f - SW / 2) / s); };
+    // The projection is smooth, so it is computed exactly every B pixels and interpolated in between (16x fewer
+    //   trig-heavy projections: it was most of a redraw's time, and redraws happen mid-pan); a block whose corners
+    //   straddle a seam (a lat/lon grid's wrap) is computed exactly.
+    var B = 4, cw = Math.ceil((FW - 1) / B) + 1, ch = Math.ceil((FH - 1) / B) + 1, CI = new Float64Array(cw * ch), CJ = new Float64Array(cw * ch), cx = new Int32Array(cw), cy = new Int32Array(ch);
+    for (var u = 0; u < cw; u++) cx[u] = Math.min(FW - 1, u * B);
+    for (var w = 0; w < ch; w++) cy[w] = Math.min(FH - 1, w * B);
+    for (w = 0; w < ch; w++) for (u = 0; u < cw; u++) { P.p.fwd(lat[cy[w]], lonAt(cx[u]), o); CI[w * cw + u] = o[0]; CJ[w * cw + u] = o[1]; }
+    for (w = 0; w + 1 < ch; w++) for (u = 0; u + 1 < cw; u++) {
+      var k00 = w * cw + u, k10 = k00 + 1, k01 = k00 + cw, k11 = k01 + 1, xa = cx[u], xb = cx[u + 1], ya = cy[w], yb = cy[w + 1];
+      var seam = Math.max(Math.abs(CI[k10] - CI[k00]), Math.abs(CI[k01] - CI[k00]), Math.abs(CI[k11] - CI[k00]), Math.abs(CJ[k10] - CJ[k00]), Math.abs(CJ[k01] - CJ[k00]), Math.abs(CJ[k11] - CJ[k00])) > 50;
+      var y1 = w + 2 < ch ? yb : yb + 1, x1 = u + 2 < cw ? xb : xb + 1; // (the last block row/column includes its far edge)
+      for (y = ya; y < y1; y++) {
+        var ty = yb > ya ? (y - ya) / (yb - ya) : 0;
+        for (var x = xa; x < x1; x++) {
+          var q = y * FW + x;
+          if (seam) { P.p.fwd(lat[y], lonAt(x), o); gi[q] = o[0]; gj[q] = o[1]; continue; }
+          var tx = xb > xa ? (x - xa) / (xb - xa) : 0;
+          gi[q] = (CI[k00] * (1 - tx) + CI[k10] * tx) * (1 - ty) + (CI[k01] * (1 - tx) + CI[k11] * tx) * ty;
+          gj[q] = (CJ[k00] * (1 - tx) + CJ[k10] * tx) * (1 - ty) + (CJ[k01] * (1 - tx) + CJ[k11] * tx) * ty;
+        }
+      }
+    }
+    if (cw === 1 || ch === 1) for (y = 0; y < FH; y++) for (x = 0; x < FW; x++) { P.p.fwd(lat[y], lonAt(x), o); gi[y * FW + x] = o[0]; gj[y * FW + x] = o[1]; }
     return (FV.pk[P.k] = { gi: gi, gj: gj });
   }
   var LUTS = {};
@@ -848,6 +874,7 @@
     stage = document.createElement("div"); stage.className = "mmst"; el.appendChild(stage);
     [cvB, cvF, cvT, cvO] = [0, 1, 2, 3].map(function (i) { var c = document.createElement("canvas"); c.className = "mml" + (i === 1 ? " mmf" : ""); stage.appendChild(c); return c; });
     cxB = cvB.getContext("2d"); cxF = cvF.getContext("2d"); cxT = cvT.getContext("2d"); cxO = cvO.getContext("2d");
+    if (VM && VM.layer) { LB = VM.layer("mB", cvB); LT = VM.layer("mT", cvT); LB.onShow = function (c) { cvB = c; }; LT.onShow = function (c) { cvT = c; }; }
     var box = el.closest(".mview") || el.parentNode;
     ui = {
       st: mk("div", "mmstat", el), ro: mk("div", "mmro", el), reg: mk("div", "mmreg", el), hdr: mk("div", "mhdr num", el),
@@ -890,7 +917,8 @@
     var r = el.getBoundingClientRect(); if (!r.width) return;
     W = Math.round(r.width); HH = Math.round(r.height); M = Math.round(Math.max(W, HH) * 0.2); SW = W + 2 * M; SH = HH + 2 * M; dpr = Math.min(2, root.devicePixelRatio || 1);
     stage.style.cssText = "left:" + -M + "px;top:" + -M + "px;width:" + SW + "px;height:" + SH + "px";
-    [cvB, cvT, cvO].forEach(function (c) { c.width = Math.round(SW * dpr); c.height = Math.round(SH * dpr); });
+    // (vector layers keep their last drawing, stretched, until the redraw at the new size: resizing would blank them)
+    (vec() ? [cvO] : [cvB, cvT, cvO]).forEach(function (c) { c.width = Math.round(SW * dpr); c.height = Math.round(SH * dpr); });
     paint(31);
   }
   function modelOk(m) { var Mo = MODELS[m]; return !loc || (Mo.covers ? Mo.covers(loc) : !Mo.conus || inConus(loc)); }
@@ -1126,6 +1154,7 @@
       var g = snap(); if (!g0 || g.n !== g0.n) { g0 = g; return; }
       if (Math.abs(g.cx - g0.cx) + Math.abs(g.cy - g0.cy) > 4 || g.n > 1) moved = true;
       if (!moved) return;
+      moving(true);
       unlock();
       var z = g0.z + (g.n > 1 && g0.d > 0 ? Math.log2(g.d / g0.d) : 0), s = scaleZ(z), r = box0;
       var wpt = g0.w, x = wpt.x - (g.cx - r.left - W / 2) / s, y = wpt.y - (g.cy - r.top - HH / 2) / s;
@@ -1142,7 +1171,7 @@
         if (now - lastTap < 300) { var w = at(sx, sy); fly(view.x + (w.x - view.x) * 0.5, view.y + (w.y - view.y) * 0.5, view.z + 1); lastTap = 0; return; }
         lastTap = now; if (insp) return; var w2 = at(sx, sy); showRO(latOf(w2.y), lonOf(w2.x), sx, sy);
       }
-      if (moved) settle();
+      if (moved) { settle(); moving(false); }
       g0 = null;
     };
     el.addEventListener("pointerup", end); el.addEventListener("pointercancel", end);
@@ -1150,6 +1179,13 @@
       e.preventDefault(); var r = el.getBoundingClientRect(), sx = e.clientX - r.left, sy = e.clientY - r.top, w = at(sx, sy), z = view.z - e.deltaY * (e.deltaMode ? 0.05 : 0.0022); unlock();
       var s = scaleZ(Math.max(2.5, Math.min(10, z))); setView(w.x - (sx - W / 2) / s, w.y - (sy - HH / 2) / s, z); clearTimeout(settleT); settleT = setTimeout(settle, 160);
     }, { passive: false });
+  }
+  // the floating controls drop their backdrop blur while the map moves under them (.mapmove, index.html)
+  var mvOn = false, mvT = 0;
+  function moving(go) {
+    var h = el.parentNode; if (!h) return;
+    if (go) { clearTimeout(mvT); mvT = 0; if (!mvOn) { mvOn = true; h.classList.add("mapmove"); } }
+    else if (mvOn && !mvT) mvT = setTimeout(function () { mvT = 0; mvOn = false; h.classList.remove("mapmove"); }, 150);
   }
   function snap() {
     var a = Array.from(pts.values()), n = a.length; if (!n) return null;

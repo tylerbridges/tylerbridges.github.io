@@ -1360,6 +1360,7 @@
     var changed = t !== tab; tab = t;
     document.querySelector(".wrap").classList.toggle("forecast-wide", t === "maps");
     document.documentElement.classList.toggle("on-radar", t === "radar");
+    guardTop(); // (the pull guard covers the page around the maps on the map tabs)
     if (t === "radar" && typeof dockSet === "function") dockSet(false); // nothing scrolls there, so header and dock stay full size
     document.querySelectorAll("#nav .chip").forEach(function (c) { c.classList.toggle("on", c.dataset.tab === t); });
     movePill(changed && !pillSnap);
@@ -1517,13 +1518,24 @@
   }
   // A blocking (non-passive) touch listener makes every scroll wait on script, so it's only attached while the page
   //   sits at the very top, where a pull-to-refresh could start; everywhere else touch scrolling stays fully native.
-  var noPullOn = false;
+  //   On the Radar and Forecast tabs it goes on the elements around the maps rather than the window, so a touch that
+  //   starts on a map is never inside a blocking listener's area (browsers send those touches without waiting).
+  var MAPSEL = ".rmap,.mm,#mmap,.model-map,.oqimg", guarded = [];
+  function cover(n, out) { for (var c = n.firstElementChild; c; c = c.nextElementSibling) { if (c.matches(MAPSEL)) continue; if (c.querySelector(MAPSEL)) cover(c, out); else out.push(c); } }
   function guardTop() {
-    var want = window.scrollY <= 0;
-    if (want === noPullOn) return; noPullOn = want;
-    if (want) window.addEventListener("touchmove", noPull, { passive: false }); else window.removeEventListener("touchmove", noPull, { passive: false });
+    if (!guarded) return; // (showTab can run before this part of the script has)
+    var want = [];
+    if (window.scrollY <= 0) {
+      var mapTab = document.documentElement.classList.contains("on-radar") || document.querySelector(".wrap.forecast-wide");
+      if (mapTab) cover(document.body, want); else want.push(window);
+    }
+    guarded.forEach(function (n) { if (want.indexOf(n) < 0) n.removeEventListener("touchmove", noPull, { passive: false }); });
+    want.forEach(function (n) { if (guarded.indexOf(n) < 0) n.addEventListener("touchmove", noPull, { passive: false }); });
+    guarded = want;
   }
-  window.addEventListener("scroll", guardTop, { passive: true }); guardTop();
+  window.addEventListener("scroll", function () { if ((window.scrollY <= 0) !== (guarded.length > 0)) guardTop(); }, { passive: true }); guardTop();
+  // (the Forecast page builds parts of itself as it loads: re-cover after each touch there, ready for the next one)
+  window.addEventListener("touchend", function () { if (guarded.length && guarded[0] !== window) guardTop(); }, { passive: true });
 
   // Pull to refresh (touch only): from the very top of the page a downward drag pulls a small glass disc out from under the
   //   header (with resistance); let go once it has come PTR_AT px and it runs exactly what the refresh button does (same
@@ -1562,8 +1574,8 @@
     var raw = y - pr.y0; pr.d = raw > 0 ? 110 * (1 - Math.exp(-raw / 130)) : 0;
     ptrShow(pr.d, true);
   }, { passive: true });
-  window.addEventListener("touchend", function () { if (pr && pr.on) ptrEnd(pr.d >= PTR_AT); else pr = null; });
-  window.addEventListener("touchcancel", function () { if (pr && pr.on) ptrEnd(false); else pr = null; });
+  window.addEventListener("touchend", function () { if (pr && pr.on) ptrEnd(pr.d >= PTR_AT); else pr = null; }, { passive: true });
+  window.addEventListener("touchcancel", function () { if (pr && pr.on) ptrEnd(false); else pr = null; }, { passive: true });
 
   // A phone keeps the page in memory for hours, and the refresh button only refetches weather data, so check for a
   //   newer published version (the ?v= number on app.js in index.html) when the page comes back, on manual refresh

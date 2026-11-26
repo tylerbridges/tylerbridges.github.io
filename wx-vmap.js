@@ -86,6 +86,13 @@
   }
 
   // ---------- tiles ----------
+  // Two modes, chosen once at start-up:
+  //   render (OffscreenCanvas 2D in workers: Safari/iOS 16.4+, Chromium, Firefox): the worker keeps the decoded tiles
+  //     and draws whole layers into an OffscreenCanvas; the page only swaps in the finished ImageBitmap
+  //     (render()/present()), so stroking thousands of road and boundary segments never runs on the page's thread.
+  //     The page keeps just each tile's place layer (placeNear) and learns of arrivals for its redraws.
+  //   decode (older browsers): the worker only decodes; the page draws, time-sliced in ~4 ms steps into a back
+  //     buffer that is swapped in when complete (render() with the same callback), so no task blocks a frame for long.
   function init(cb, tileCb) {
     // shared by the radar and the model maps: each registers its own callbacks
     if (tileCb && onTile.indexOf(tileCb) < 0) onTile.push(tileCb);
@@ -93,33 +100,58 @@
     if (cb) onReady.push(cb);
     if (state !== "idle") return;
     state = "loading";
+    // ask the worker whether it can draw (it answers at once) while the tile index loads
+    var hello = new Promise(function (ok) {
+      if (!worker() || INW) return ok(false);
+      var t = setTimeout(function () { ok(false); }, 4000); helloCb = function (r) { clearTimeout(t); ok(r); };
+      WK.postMessage({ hello: 1 });
+    });
     fetch(TILEJSON).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (j) {
       tmpl = j && j.tiles && j.tiles[0]; maxz = Math.min(14, j.maxzoom || 14); if (!tmpl) throw 0;
+      return hello;
+    }).then(function (can) {
+      REND = !!can && !NOREND; if (REND) WK.postMessage({ init: { tmpl: tmpl, maxz: maxz } });
       state = "ok"; onReady.forEach(function (f) { f(true); });
     }).catch(function () { state = "fail"; onReady.forEach(function (f) { f(false); }); });
   }
-  var WK = null, wid = 0, wjobs = {};
+  // ?vmsync=1 forces the page-drawn (decode) mode, for testing the fallback
+  var REND = false, helloCb = null, NOREND = !INW && /[?&]vmsync=1/.test(root.location ? root.location.search : "");
+  var WK = null, wid = 0, wjobs = {}, rjobs = {};
   function worker() {
     if (WK !== null) return WK;
     WK = false; if (!SELF || typeof Worker === "undefined") return WK;
     try {
       WK = new Worker(SELF);
-      WK.onmessage = function (ev) { var r = ev.data, cb = wjobs[r.id]; delete wjobs[r.id]; if (cb) cb(r.err ? null : r.L, r.err); };
-      WK.onerror = function (ev) { ev.preventDefault(); WK.terminate(); WK = false; var js = wjobs; wjobs = {}; Object.keys(js).forEach(function (k) { js[k](null, "redo"); }); };
+      WK.onmessage = function (ev) {
+        var r = ev.data;
+        if (r.hello) { if (helloCb) helloCb(r.can); helloCb = null; return; }
+        if (r.tile) { var e = tiles.get(r.tile) || { t: ++tick }; e.L = { place: r.place }; e.ok = true; tiles.set(r.tile, e); trim(); onTile.forEach(function (f) { f(); }); return; }
+        if (r.rid) { var rj = rjobs[r.rid]; delete rjobs[r.rid]; if (rj) rj(r.skip ? null : { bmp: r.bmp, boxes: r.boxes }); return; }
+        var cb = wjobs[r.id]; delete wjobs[r.id]; if (cb) cb(r.err ? null : r.L, r.err);
+      };
+      WK.onerror = function (ev) {
+        ev.preventDefault(); WK.terminate(); WK = false; if (helloCb) helloCb(false); helloCb = null;
+        var js = wjobs; wjobs = {}; Object.keys(js).forEach(function (k) { js[k](null, "redo"); });
+        // a worker that dies in render mode: draw on the page from now on (tiles are fetched again as needed)
+        if (REND) { REND = false; tiles.clear(); var rs = rjobs; rjobs = {}; Object.keys(rs).forEach(function (k) { rs[k](null); }); onTile.forEach(function (f) { f(); }); }
+      };
     } catch (x) { WK = false; }
     return WK;
   }
   function fetchTile(url, cb) {
-    if (worker()) { var id = ++wid; wjobs[id] = function (L, err) { if (err === "redo") fetchTile(url, cb); else cb(L); }; WK.postMessage({ id: id, url: url }); return; }
+    if (!INW && worker()) { var id = ++wid; wjobs[id] = function (L, err) { if (err === "redo") fetchTile(url, cb); else cb(L); }; WK.postMessage({ id: id, url: url }); return; }
     fetch(url).then(function (r) { if (!r.ok) throw 0; return r.arrayBuffer(); }).then(function (b) { cb(decode(b)); }).catch(function () { cb(null); });
   }
+  function trim() { if (tiles.size > 400) { var all = Array.from(tiles.entries()).sort(function (a, b) { return a[1].t - b[1].t; }); for (var i = 0; i < 120; i++) tiles.delete(all[i][0]); } }
   function get(z, x, y, request) {
     var k = z + "/" + x + "/" + y, e = tiles.get(k);
     if (e) { e.t = ++tick; return e; }
-    if (!request || state !== "ok") return null;
+    if (!request || state !== "ok" || REND && !INW) return null;
     e = { t: ++tick }; tiles.set(k, e);
-    fetchTile(tmpl.replace("{z}", z).replace("{x}", x).replace("{y}", y), function (L) { if (L) { e.L = L; e.ok = true; onTile.forEach(function (f) { f(); }); } else e.err = true; });
-    if (tiles.size > 400) { var all = Array.from(tiles.entries()).sort(function (a, b) { return a[1].t - b[1].t; }); for (var i = 0; i < 120; i++) tiles.delete(all[i][0]); }
+    fetchTile(tmpl.replace("{z}", z).replace("{x}", x).replace("{y}", y), function (L) {
+      if (L) { e.L = L; e.ok = true; if (INW) root.postMessage({ tile: k, place: L.place || null }); else onTile.forEach(function (f) { f(); }); } else e.err = true;
+    });
+    trim();
     return e;
   }
   // Tiles at the view's own zoom (not one lower): OpenMapTiles only includes county lines from tile zoom 7, trunk
@@ -159,37 +191,43 @@
     }
     return any;
   }
-  function eachTile(ctx, slots, cb) {
-    slots.forEach(function (v) {
-      var i = ((v.i % v.n) + v.n) % v.n, e0 = get(v.z, i, v.j, true);
-      if (!(e0 && e0.ok) && v.z < maxz && kids(ctx, v, i, cb, 2)) return;
-      for (var d = 0; d <= 5 && v.z - d >= 0; d++) {
-        var e = get(v.z - d, i >> d, v.j >> d, d === 0);
-        if (!e || !e.ok) continue;
-        var w = v.x1 - v.x0, ext = 4096, s = w * (1 << d) / ext;
-        var ox = v.x0 - (i - ((i >> d) << d)) * w, oy = v.y0 - (v.j - ((v.j >> d) << d)) * w;
-        put(ctx, e.L, v.z - d, v.x0, v.y0, v.x1, v.y1, ox, oy, s, cb);
-        return;
-      }
-    });
+  // one slot (drawn by itself, so a time-sliced redraw can stop between slots)
+  function eachTile(ctx, slots, cb) { slots.forEach(function (v) { slot(ctx, v, cb); }); }
+  function slot(ctx, v, cb) {
+    var i = ((v.i % v.n) + v.n) % v.n, e0 = get(v.z, i, v.j, true);
+    if (!(e0 && e0.ok) && v.z < maxz && kids(ctx, v, i, cb, 2)) return;
+    for (var d = 0; d <= 5 && v.z - d >= 0; d++) {
+      var e = get(v.z - d, i >> d, v.j >> d, d === 0);
+      if (!e || !e.ok) continue;
+      var w = v.x1 - v.x0, ext = 4096, s = w * (1 << d) / ext;
+      var ox = v.x0 - (i - ((i >> d) << d)) * w, oy = v.y0 - (v.j - ((v.j >> d) << d)) * w;
+      put(ctx, e.L, v.z - d, v.x0, v.y0, v.x1, v.y1, ox, oy, s, cb);
+      return;
+    }
   }
   // one path per style (all features batched): far fewer draw calls, and overlapping segments don't double up
   function add(ctx, g, close) { g.forEach(function (r) { ctx.moveTo(r[0], r[1]); for (var k = 2; k < r.length; k += 2) ctx.lineTo(r[k], r[k + 1]); if (close) ctx.closePath(); }); }
   function strokeAll(ctx, list) { if (!list.length) return; ctx.beginPath(); list.forEach(function (f) { add(ctx, f.g); }); ctx.stroke(); }
+  function run(g) { var r; do { r = g.next(); } while (!r.done); return r.value; }
 
   // land and water, under the radar
-  function drawBase(ctx, slots, o) {
+  function drawBase(ctx, slots, o) { return run(genBase(ctx, slots, o)); }
+  function* genBase(ctx, slots, o) {
     var P = o.dark ? PAL.dark : PAL.light;
     ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = P.bg; ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-    eachTile(ctx, slots, function (L, s) {
-      if (L.water) { ctx.fillStyle = P.water; ctx.beginPath(); L.water.f.forEach(function (f) { if (f.t === 3) add(ctx, f.g, true); }); ctx.fill(); }
-      if (L.waterway && o.z >= 8) { ctx.strokeStyle = P.waterway; ctx.lineWidth = 1.2 * o.dpr / s; ctx.lineJoin = ctx.lineCap = "round"; strokeAll(ctx, L.waterway.f.filter(function (f) { return f.t === 2; })); }
-    });
+    for (var q = 0; q < slots.length; q++) {
+      slot(ctx, slots[q], function (L, s) {
+        if (L.water) { ctx.fillStyle = P.water; ctx.beginPath(); L.water.f.forEach(function (f) { if (f.t === 3) add(ctx, f.g, true); }); ctx.fill(); }
+        if (L.waterway && o.z >= 8) { ctx.strokeStyle = P.waterway; ctx.lineWidth = 1.2 * o.dpr / s; ctx.lineJoin = ctx.lineCap = "round"; strokeAll(ctx, L.waterway.f.filter(function (f) { return f.t === 2; })); }
+      });
+      yield;
+    }
   }
   // county/state lines and roads over the radar, then place names
-  function drawTop(ctx, slots, o) {
+  function drawTop(ctx, slots, o) { return run(genTop(ctx, slots, o)); }
+  function* genTop(ctx, slots, o) {
     var P = o.dark ? PAL.dark : PAL.light, z = o.z, d = o.dpr, places = [];
-    eachTile(ctx, slots, function (L, s) {
+    for (var q = 0; q < slots.length; q++) { slot(ctx, slots[q], function (L, s) {
       ctx.lineJoin = ctx.lineCap = "round";
       if (L.transportation && !o.placesOnly) {
         var by = [[], [], [], []];
@@ -208,7 +246,7 @@
         var m = ctx.getTransform(), x = (f.g[0][0] * m.a + m.e) / d, y = (f.g[0][1] * m.d + m.f) / d;
         places.push({ p: f.p, x: x, y: y });
       });
-    });
+    }); yield; }
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     return labels(ctx, places, P, z, d, o.w, o.h, o);
   }
@@ -250,12 +288,77 @@
       if (dots) { ctx.beginPath(); ctx.arc(L.x * d, L.y * d, 2.2 * d, 0, 2 * Math.PI); ctx.fill(); }
       if ("letterSpacing" in ctx) ctx.letterSpacing = "0px";
     });
+    // o.extra (official map's county numbers): placed after the place names, in the given order, each at its point or
+    //   1.15 text heights below/above it, skipping any that would overlap; { size, halo, items: [{ t, x, y, c }] }
+    var X = o.extra;
+    if (X && X.items && X.items.length) {
+      ctx.font = "600 " + (X.size * d).toFixed(1) + "px -apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Roboto,sans-serif";
+      X.items.forEach(function (it) {
+        var tw = ctx.measureText(it.t).width / d, bx = null, yy = it.y;
+        var free = function (b) { for (var i = 0; i < boxes.length; i++) { var q = boxes[i]; if (b.x0 < q.x1 && b.x1 > q.x0 && b.y0 < q.y1 && b.y1 > q.y0) return false; } return true; };
+        [0, 1.15, -1.15].some(function (dy) { var y = it.y + dy * X.size, b = { x0: it.x - tw / 2 - 1.5, x1: it.x + tw / 2 + 1.5, y0: y - X.size * 0.6, y1: y + X.size * 0.6 }; if (free(b)) { bx = b; yy = y; return true; } return false; });
+        if (!bx) return;
+        boxes.push(bx);
+        ctx.strokeStyle = X.halo; ctx.lineWidth = 3 * d; ctx.strokeText(it.t, it.x * d, yy * d);
+        ctx.fillStyle = it.c; ctx.fillText(it.t, it.x * d, yy * d);
+      });
+    }
     return boxes;
   }
 
+  // ---------- drawing off the page's thread ----------
+  // A recorder with the few canvas calls the maps draw around the base map (warning outlines under the names, the
+  //   location dots over them); its op list is replayed onto the worker's canvas (or the page's back buffer).
+  function Rec() { this.o = []; }
+  ["save", "restore", "beginPath", "closePath", "stroke"].forEach(function (n, c) { Rec.prototype[n] = function () { this.o.push(c); }; });
+  Rec.prototype.fill = function (rule) { this.o.push(5, rule === "evenodd" ? 1 : 0); };
+  Rec.prototype.moveTo = function (x, y) { this.o.push(6, x, y); };
+  Rec.prototype.lineTo = function (x, y) { this.o.push(7, x, y); };
+  Rec.prototype.arc = function (x, y, r, a, b) { this.o.push(8, x, y, r, a, b); };
+  var PROPS = ["fillStyle", "strokeStyle", "lineWidth", "globalAlpha", "lineJoin", "lineCap"];
+  PROPS.forEach(function (p, k) { Object.defineProperty(Rec.prototype, p, { set: function (v) { this.o.push(9, k, v); }, get: function () { return undefined; } }); });
+  function replay(ctx, o) {
+    if (!o) return;
+    for (var i = 0; i < o.length;) {
+      var c = o[i++];
+      if (c === 0) ctx.save(); else if (c === 1) ctx.restore(); else if (c === 2) ctx.beginPath(); else if (c === 3) ctx.closePath(); else if (c === 4) ctx.stroke();
+      else if (c === 5) ctx.fill(o[i++] ? "evenodd" : "nonzero");
+      else if (c === 6) { ctx.moveTo(o[i], o[i + 1]); i += 2; } else if (c === 7) { ctx.lineTo(o[i], o[i + 1]); i += 2; }
+      else if (c === 8) { ctx.arc(o[i], o[i + 1], o[i + 2], o[i + 3], o[i + 4]); i += 5; }
+      else if (c === 9) { ctx[PROPS[o[i]]] = o[i + 1]; i += 2; }
+    }
+  }
+  // the whole layer: pre ops, the base map layer, post ops; returns the label boxes ("top" only)
+  function* genLayer(ctx, q) {
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    replay(ctx, q.pre); ctx.setTransform(1, 0, 0, 1, 0, 0);
+    var boxes = q.layer === "base" ? yield* genBase(ctx, q.slots, q.o) : yield* genTop(ctx, q.slots, q.o);
+    ctx.setTransform(1, 0, 0, 1, 0, 0); replay(ctx, q.post);
+    return boxes || null;
+  }
+
   if (INW) {
+    var OC = null, OX = null, rq = {}, rqT = 0;
+    var canDraw = function () { try { return typeof OffscreenCanvas !== "undefined" && !!new OffscreenCanvas(1, 1).getContext("2d") && "transferToImageBitmap" in OffscreenCanvas.prototype; } catch (x) { return false; } };
+    // newest request per map layer only (a pan can ask again before the last one is drawn)
+    var renders = function () {
+      rqT = 0; var all = rq; rq = {};
+      Object.keys(all).forEach(function (ch) {
+        var q = all[ch];
+        try {
+          if (!OC) { OC = new OffscreenCanvas(q.w, q.h); OX = OC.getContext("2d"); }
+          if (OC.width !== q.w) OC.width = q.w; if (OC.height !== q.h) OC.height = q.h;
+          var boxes = run(genLayer(OX, q)), bmp = OC.transferToImageBitmap();
+          root.postMessage({ rid: q.rid, bmp: bmp, boxes: boxes }, [bmp]);
+        } catch (x) { root.postMessage({ rid: q.rid, skip: true }); }
+      });
+    };
     root.onmessage = function (ev) {
       var m = ev.data;
+      if (m.hello) { root.postMessage({ hello: 1, can: canDraw() }); return; }
+      if (m.init) { tmpl = m.init.tmpl; maxz = m.init.maxz; state = "ok"; return; }
+      if (m.pre) { m.pre.forEach(function (v) { if (v.z <= maxz) get(v.z, ((v.i % v.n) + v.n) % v.n, v.j, true); }); return; }
+      if (m.render) { var old = rq[m.render.ch]; if (old) root.postMessage({ rid: old.rid, skip: true }); rq[m.render.ch] = m.render; if (!rqT) rqT = setTimeout(renders, 0); return; }
       fetch(m.url).then(function (r) { if (!r.ok) throw 0; return r.arrayBuffer(); }).then(function (b) {
         var L = decode(b), tr = [];
         Object.keys(L).forEach(function (n) { L[n].f.forEach(function (f) { f.g.forEach(function (r) { tr.push(r.buffer); }); }); });
@@ -264,8 +367,72 @@
     };
     return;
   }
+  // Draw a whole map layer away from the gesture: ch names the map layer (one request in flight per ch), q =
+  //   { layer: "base" | "top", w, h (device px), slots, o (drawBase/drawTop options), pre, post (Rec) }; cb(res) gets
+  //   { bmp } or { cv } (and boxes for "top") to hand to present(), or null if the request was replaced or failed.
+  var jobs = {}, jobRaf = 0, rid = 0;
+  function render(ch, q, cb) {
+    var m = { ch: ch, rid: ++rid, layer: q.layer, w: Math.max(1, Math.round(q.w)), h: Math.max(1, Math.round(q.h)), slots: q.slots, o: q.o, pre: q.pre ? q.pre.o : null, post: q.post ? q.post.o : null };
+    if (REND && WK) { rjobs[m.rid] = cb; WK.postMessage({ render: m }); return; }
+    // page-drawn: a back buffer per layer, drawn ~4 ms per frame (a tile at a time, names last), then handed over
+    var old = jobs[ch]; if (old && old.cb) old.cb(null);
+    var j = jobs[ch] = old || {}; j.cb = cb;
+    if (!j.cv) { j.cv = document.createElement("canvas"); j.cx = j.cv.getContext("2d"); }
+    if (j.cv.width !== m.w) j.cv.width = m.w; if (j.cv.height !== m.h) j.cv.height = m.h;
+    j.g = genLayer(j.cx, m);
+    if (!jobRaf) jobRaf = requestAnimationFrame(slice);
+  }
+  function slice() {
+    jobRaf = 0; var t0 = performance.now(), left = false;
+    Object.keys(jobs).forEach(function (ch) {
+      var j = jobs[ch]; if (!j.g) return;
+      while (performance.now() - t0 < 4) { var r = j.g.next(); if (r.done) { var cb = j.cb; j.g = null; j.cb = null; if (cb) cb({ cv: j.cv, boxes: r.value }); break; } }
+      if (j.g) left = true;
+    });
+    if (left) jobRaf = requestAnimationFrame(slice);
+  }
+  // put a finished layer on a map canvas; returns the canvas now showing it (a bitmap needs a "bitmaprenderer"
+  //   canvas: the first time, a fresh element with the same class and style replaces one that has a 2D context)
+  function present(cv, res) {
+    if (res.bmp) {
+      var bx = cv._bx || (cv._bx = cv._2d ? null : cv.getContext("bitmaprenderer"));
+      if (!bx) { var n = document.createElement("canvas"); n.className = cv.className; n.style.cssText = cv.style.cssText; cv.parentNode.replaceChild(n, cv); cv = n; bx = cv._bx = cv.getContext("bitmaprenderer"); }
+      if (cv.width !== res.bmp.width) cv.width = res.bmp.width; if (cv.height !== res.bmp.height) cv.height = res.bmp.height;
+      bx.transferFromImageBitmap(res.bmp); return cv;
+    }
+    var cx = cv._2d || (cv._bx ? null : (cv._2d = cv.getContext("2d")));
+    if (!cx) { var n2 = document.createElement("canvas"); n2.className = cv.className; n2.style.cssText = cv.style.cssText; cv.parentNode.replaceChild(n2, cv); cv = n2; cx = cv._2d = cv.getContext("2d"); }
+    if (cv.width !== res.cv.width) cv.width = res.cv.width; if (cv.height !== res.cv.height) cv.height = res.cv.height;
+    cx.setTransform(1, 0, 0, 1, 0, 0); cx.clearRect(0, 0, cv.width, cv.height); cx.drawImage(res.cv, 0, 0); return cv;
+  }
   // ask for tiles just off screen ahead of time ({ z, i, j, n } list, nearest first), so panning finds them loaded
-  function prefetch(list) { if (state !== "ok") return; list.slice(0, 40).forEach(function (v) { if (v.z <= maxz) get(v.z, ((v.i % v.n) + v.n) % v.n, v.j, true); }); }
+  function prefetch(list) {
+    if (state !== "ok") return;
+    if (REND && WK) { WK.postMessage({ pre: list.slice(0, 40).map(function (v) { return { z: v.z, i: v.i, j: v.j, n: v.n }; }) }); return; }
+    list.slice(0, 40).forEach(function (v) { if (v.z <= maxz) get(v.z, ((v.i % v.n) + v.n) % v.n, v.j, true); }); }
+  // One vector layer of a forecast map, whose canvases share one stage transform from the drawn view: ask(q, v) asks
+  //   for a drawing of view v ({x, y, z} world units); once ready it is swapped onto the canvas (newer drawings only)
+  //   and fit() gives the canvas its own transform from the view it shows to the stage's drawn view, so a layer still
+  //   waiting for its redraw stays registered with the others. layer.cv is the canvas showing it (present() may
+  //   replace the element); onShow(cv) runs after each swap.
+  function Layer(ch, cv) { this.ch = ch; this.cv = cv; this.seq = 0; this.shown = 0; this.v = null; this.to = null; this.onShow = null; }
+  Layer.prototype.ask = function (q, v) {
+    var L = this, my = ++L.seq; v = { x: v.x, y: v.y, z: v.z };
+    render(L.ch, q, function (res) {
+      if (!res) return;
+      if (my < L.shown) { if (res.bmp && res.bmp.close) res.bmp.close(); return; }
+      L.shown = my; L.cv = present(L.cv, res); L.v = v; L.fit(L.to); if (L.onShow) L.onShow(L.cv, res);
+    });
+  };
+  Layer.prototype.fit = function (to) {
+    this.to = to; var v = this.v, tf = "";
+    if (v && to) {
+      var s = 256 * Math.pow(2, to.z), k = Math.pow(2, to.z - v.z), dx = v.x - to.x; dx -= Math.round(dx);
+      var tx = dx * s, ty = (v.y - to.y) * s;
+      if (Math.abs(tx) > 0.005 || Math.abs(ty) > 0.005 || Math.abs(k - 1) > 1e-6) tf = "translate(" + tx.toFixed(2) + "px," + ty.toFixed(2) + "px) scale(" + k.toFixed(5) + ")";
+    }
+    if (this.cv.style.transform !== tf) this.cv.style.transform = tf;
+  };
   // nearest named place (city/town/village/hamlet/suburb) to a point, from tiles already loaded around it:
   //   { name, km, dir } or null — used by the official map's readouts so they name the town, not the county
   var PCLS = { city: 1, town: 1, village: 1, hamlet: 1, suburb: 1, neighbourhood: 0 };
@@ -289,5 +456,6 @@
     }
     return best;
   }
-  root.WXVMap = { placeNear: placeNear, prefetch: prefetch, init: init, ok: function () { return state === "ok"; }, failed: function () { return state === "fail"; }, tileZoom: tileZoom, drawBase: drawBase, drawTop: drawTop, _decode: decode };
+  root.WXVMap = { placeNear: placeNear, prefetch: prefetch, init: init, ok: function () { return state === "ok"; }, failed: function () { return state === "fail"; }, tileZoom: tileZoom, drawBase: drawBase, drawTop: drawTop, _decode: decode,
+    render: render, present: present, layer: function (ch, cv) { return new Layer(ch, cv); }, rec: function () { return new Rec(); }, offThread: function () { return REND; } };
 })(this);

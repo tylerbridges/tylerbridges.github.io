@@ -1202,6 +1202,10 @@ html.scrolled .wrap > .top .place::before{left:-14px;top:-3px;bottom:-3px}
 .gstack.scrubbing .nxl{display:none}
 #nownext + #nowprecip:not([hidden]){margin-top:-10px}
 @media(min-width:900px){.outlook-card{padding-inline:18px}.odds-grid{max-width:640px}}
+/* while a map is being dragged (.mapmove on the map box, set after a few px of movement, dropped ~150 ms after it
+   stops) its floating controls lose the backdrop blur, which would re-blur the moving map under them every frame;
+   a denser translucent fill of the same surface keeps them readable, with no layout change */
+.mapmove :is(.rbar,.rleg,.rloc,.rstat,.rwarn,.mmreg,.mmstat:not(.fail),.oqgear,.mfr,.mlocmsg,.minsro,.mhdr){-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:color-mix(in srgb,var(--surface) 90%,transparent)!important}
 </style>
 </head>
 <body>
@@ -1355,9 +1359,9 @@ html.scrolled .wrap > .top .place::before{left:-14px;top:-3px;bottom:-3px}
 
 <!-- map, archive and test-scenario code loads on demand (app.js `need()`); bump these ?v= numbers here when a file
      changes. A page that is already open only self-reloads when app.js?v= below is bumped too. -->
-<script>window.WXV={"wx-scenarios.js":136,"wx-vmap.js":136,"wx-radar.js":161,"wx-models.js":161,"wx-official.js":161,"wx-archive.js":144,"wx-outlook.js":144};</script>
+<script>window.WXV={"wx-scenarios.js":136,"wx-vmap.js":162,"wx-radar.js":162,"wx-models.js":162,"wx-official.js":162,"wx-archive.js":144,"wx-outlook.js":144};</script>
 <script src="wx-normalize.js?v=154" defer></script>
 <script src="wx-live.js?v=156" defer></script>
-<script src="app.js?v=161" defer></script>
+<script src="app.js?v=162" defer></script>
 </body>
 </html>

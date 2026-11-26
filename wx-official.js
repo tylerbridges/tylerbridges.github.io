@@ -196,7 +196,7 @@
   }
 
   // ---------- map ----------
-  var el, stage, cv, cx, cvB, cxB, cvT, cxT, ro, stat, reg;
+  var el, stage, cv, cx, cvB, cxB, cvT, cxT, ro, stat, reg, LB = null, LT = null;
   var W = 0, HH = 0, M = 0, SW = 0, SH = 0, dpr = 1, view = { x: 0, y: 0, z: 6.6 }, drawn = null, raf = 0;
   var loc = null, cur = { k: "qpf", p: 24, th: "04" }, data = null, gen = 0, on = false;
   // map settings (gear menu, saved as wx-oqset): place names, county lines, number size, map colours, 0 for dry counties
@@ -251,6 +251,7 @@
     cvB = mk("canvas", "mml", stage); cxB = cvB.getContext("2d");
     cv = mk("canvas", "mml", stage); cx = cv.getContext("2d");
     cvT = mk("canvas", "mml", stage); cxT = cvT.getContext("2d");
+    if (VM && VM.layer) { LB = VM.layer("oB", cvB); LT = VM.layer("oT", cvT); LB.onShow = function (c) { cvB = c; }; LT.onShow = function (c) { cvT = c; }; }
     stat = mk("div", "mmstat", el); ro = mk("div", "mmro", el); reg = mk("div", "mmreg", el);
     stat.hidden = true; ro.hidden = true;
     // inspector (as in RadarScope): fixed crosshair in the middle; the forecast at that exact spot shows above it as you pan
@@ -277,16 +278,17 @@
     var r = el.getBoundingClientRect(); if (!r.width) return;
     W = Math.round(r.width); HH = Math.round(r.height); M = Math.round(Math.max(W, HH) * 0.2); SW = W + 2 * M; SH = HH + 2 * M; dpr = Math.min(2, root.devicePixelRatio || 1);
     stage.style.cssText = "left:" + -M + "px;top:" + -M + "px;width:" + SW + "px;height:" + SH + "px";
-    cv.width = cvB.width = Math.round(SW * dpr); cv.height = cvB.height = Math.round(SH * dpr);
+    // (vector layers keep their last drawing, stretched, until the redraw at the new size: resizing would blank them)
+    var vm = VM && VM.ok(); cv.width = Math.round(SW * dpr); cv.height = Math.round(SH * dpr); if (!vm) { cvB.width = cv.width; cvB.height = cv.height; }
     // labels as sharp as the screen, within the radar's labels budget (3.6 megapixels; never below 2x)
-    var D = root.devicePixelRatio || 1; tdpr = Math.min(3, D, Math.max(Math.min(D, 2), Math.sqrt(3.6e6 / (SW * SH)))); cvT.width = Math.round(SW * tdpr); cvT.height = Math.round(SH * tdpr); // sharp labels
+    var D = root.devicePixelRatio || 1; tdpr = Math.min(3, D, Math.max(Math.min(D, 2), Math.sqrt(3.6e6 / (SW * SH)))); if (!vm) { cvT.width = Math.round(SW * tdpr); cvT.height = Math.round(SH * tdpr); } // sharp labels
     drawn = null; paint();
   }
   var tdpr = 1;
   function paint() { if (on && !raf) raf = requestAnimationFrame(frame); }
   function frame() {
     raf = 0; if (!on || !W) return;
-    drawn = { x: view.x, y: view.y, z: view.z }; stage.style.transform = "";
+    drawn = { x: view.x, y: view.y, z: view.z }; stage.style.transform = ""; if (LB) { LB.fit(drawn); LT.fit(drawn); }
     draw(); inspect();
   }
   function toScr(lat, lon) { var s = scaleZ(drawn.z); return { x: (wx(lon) - drawn.x) * s + SW / 2, y: (wy(lat) - drawn.y) * s + SH / 2 }; }
@@ -296,9 +298,8 @@
     var vis = function (bb) { return !(bb[2] < V[0] || bb[0] > V[2] || bb[3] < V[1] || bb[1] > V[3]); };
     var list = Object.keys(counties).map(function (f) { return counties[f]; }).filter(function (c) { return vis(c.bb); });
     // base map, exactly as on the radar (OpenFreeMap land and water); plain ground if the tiles can't load
-    cxB.setTransform(1, 0, 0, 1, 0, 0);
-    if (vm) VM.drawBase(cxB, slots(VM.tileZoom(drawn.z), dpr), { dark: dk, dpr: dpr, z: drawn.z });
-    else { cxB.fillStyle = dk ? "#000" : "#f3f3f1"; cxB.fillRect(0, 0, cvB.width, cvB.height); }
+    if (vm) LB.ask({ layer: "base", w: SW * dpr, h: SH * dpr, slots: slots(VM.tileZoom(drawn.z), dpr), o: { dark: dk, dpr: dpr, z: drawn.z } }, drawn);
+    else if ((cxB = cvB.getContext("2d"))) { cxB.setTransform(1, 0, 0, 1, 0, 0); cxB.fillStyle = dk ? "#000" : "#f3f3f1"; cxB.fillRect(0, 0, cvB.width, cvB.height); }
     // the forecast as colour bands (WPC's own polygons, exclusive bands with holes), see-through like the radar
     cx.setTransform(1, 0, 0, 1, 0, 0); cx.clearRect(0, 0, cv.width, cv.height);
     cx.setTransform(k, 0, 0, k, (SW / 2 - drawn.x * s) * dpr, (SH / 2 - drawn.y * s) * dpr);
@@ -311,25 +312,40 @@
     }
     cx.setTransform(1, 0, 0, 1, 0, 0);
     // county lines, roads and every city/town/village name on top, the same as the radar (more appear as you zoom in)
-    cxT.setTransform(1, 0, 0, 1, 0, 0); cxT.clearRect(0, 0, cvT.width, cvT.height);
-    var boxes = vm ? VM.drawTop(cxT, slots(VM.tileZoom(drawn.z), tdpr), { dark: dk, dpr: tdpr, z: drawn.z, w: SW, h: SH }) || [] : [];
-    cxT.setTransform(1, 0, 0, 1, 0, 0);
-    if (data && SET.nums) { var c0 = cx; cx = cxT; var d0 = dpr; dpr = tdpr; try { labels(list, ink, dk, boxes); } finally { cx = c0; dpr = d0; } } // county numbers only when turned on
-    if (loc) {
-      var m = toScr(loc.lat, loc.lon);
-      cxT.beginPath(); cxT.arc(m.x * tdpr, m.y * tdpr, 4.5 * tdpr, 0, 2 * Math.PI); cxT.lineWidth = 2 * tdpr; cxT.strokeStyle = dk ? "#000" : "#fff"; cxT.stroke();
-      cxT.fillStyle = "#1a73e8"; cxT.fill();
+    // with the vector map, its lines and names, the county numbers (placed around the names, as o.extra) and the
+    //   location dot are drawn off the page's thread (wx-vmap.js) and swapped in when ready
+    var nums = data && SET.nums ? numItems(list, ink, dk) : null; // county numbers only when turned on
+    if (vm) {
+      var post = VM.rec(); dot(post, dk);
+      LT.ask({ layer: "top", w: SW * tdpr, h: SH * tdpr, slots: slots(VM.tileZoom(drawn.z), tdpr), o: { dark: dk, dpr: tdpr, z: drawn.z, w: SW, h: SH, extra: nums }, post: post }, drawn);
+      return;
     }
+    if (!(cxT = cvT.getContext("2d"))) return;
+    cxT.setTransform(1, 0, 0, 1, 0, 0); cxT.clearRect(0, 0, cvT.width, cvT.height);
+    if (nums) { var c0 = cx; cx = cxT; var d0 = dpr; dpr = tdpr; try { labels(nums, []); } finally { cx = c0; dpr = d0; } }
+    dot(cxT, dk);
+  }
+  function dot(c, dk) {
+    if (!loc) return;
+    var m = toScr(loc.lat, loc.lon);
+    c.beginPath(); c.arc(m.x * tdpr, m.y * tdpr, 4.5 * tdpr, 0, 2 * Math.PI); c.lineWidth = 2 * tdpr; c.strokeStyle = dk ? "#000" : "#fff"; c.stroke();
+    c.fillStyle = "#1a73e8"; c.fill();
   }
   // county numbers: biggest first, skipping overlaps; text size grows a little with zoom
-  function labels(list, ink, dk, taken) {
-    var size = Math.max(9.5, Math.min(14, 9.5 + (drawn.z - 5.5) * 1.6)) * ({ s: 0.85, l: 1.2 }[SET.size] || 1), boxes = (taken || []).slice(), items = [];
+  // the numbers to place, biggest first: { size, halo, items: [{ t, x, y, c }] } (also wx-vmap.js's o.extra)
+  function numItems(list, ink, dk) {
+    var size = Math.max(9.5, Math.min(14, 9.5 + (drawn.z - 5.5) * 1.6)) * ({ s: 0.85, l: 1.2 }[SET.size] || 1), items = [];
     list.forEach(function (c) {
       var v = countyVal(c), dry = data.qpf ? v < 0.005 : !v; if (dry && !SET.zeros) return;
       var p = toScr(c.lat, c.lon); if (p.x < 0 || p.y < 0 || p.x > SW || p.y > SH) return;
-      items.push({ v: dry ? -1 : v, x: p.x, y: p.y, t: dry ? (data.qpf ? "0.00" : "0%") : data.qpf ? amt(v) : CATL[v], dry: dry });
+      items.push({ v: dry ? -1 : v, x: p.x, y: p.y, t: dry ? (data.qpf ? "0.00" : "0%") : data.qpf ? amt(v) : CATL[v], c: dry ? (dk ? "rgba(255,255,255,.5)" : "rgba(0,0,0,.45)") : ink });
     });
     items.sort(function (a, b) { return b.v - a.v; });
+    return { size: size, halo: dk ? "#000" : "#fff", items: items.map(function (it) { return { t: it.t, x: it.x, y: it.y, c: it.c }; }) };
+  }
+  // (without the vector map: placed here, on the page)
+  function labels(N, taken) {
+    var size = N.size, boxes = (taken || []).slice(), items = N.items;
     cx.textAlign = "center"; cx.textBaseline = "middle"; cx.lineJoin = "round";
     cx.font = "600 " + (size * dpr).toFixed(1) + "px -apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Roboto,sans-serif";
     items.forEach(function (it) {
@@ -338,8 +354,8 @@
       [0, 1.15, -1.15].some(function (dy) { var y = it.y + dy * size, b = { x0: it.x - w / 2 - 1.5, x1: it.x + w / 2 + 1.5, y0: y - size * 0.6, y1: y + size * 0.6 }; if (free(b)) { bx = b; it.y = y; return true; } return false; });
       if (!bx) return;
       boxes.push(bx);
-      cx.strokeStyle = dk ? "#000" : "#fff"; cx.lineWidth = 3 * dpr; cx.strokeText(it.t, it.x * dpr, it.y * dpr);
-      cx.fillStyle = it.dry ? (dk ? "rgba(255,255,255,.5)" : "rgba(0,0,0,.45)") : ink; cx.fillText(it.t, it.x * dpr, it.y * dpr);
+      cx.strokeStyle = N.halo; cx.lineWidth = 3 * dpr; cx.strokeText(it.t, it.x * dpr, it.y * dpr);
+      cx.fillStyle = it.c; cx.fillText(it.t, it.x * dpr, it.y * dpr);
     });
     return boxes;
   }
@@ -387,6 +403,13 @@
     cancelAnimationFrame(tween); ro.hidden = true; var a = { x: view.x, y: view.y, z: view.z }, t0 = performance.now();
     (function stepT(t) { var f = Math.min(1, (t - t0) / 380), e = f * (2 - f); setView(a.x + (x - a.x) * e, a.y + (y - a.y) * e, a.z + (z - a.z) * e); if (f < 1) tween = requestAnimationFrame(stepT); else settle(); })(t0);
   }
+  // the floating controls drop their backdrop blur while the map moves under them (.mapmove, index.html)
+  var mvOn = false, mvT = 0;
+  function moving(go) {
+    var h = (el.closest('.oqwrap') || el); if (!h) return;
+    if (go) { clearTimeout(mvT); mvT = 0; if (!mvOn) { mvOn = true; h.classList.add("mapmove"); } }
+    else if (mvOn && !mvT) mvT = setTimeout(function () { mvT = 0; mvOn = false; h.classList.remove("mapmove"); }, 150);
+  }
   function snap() {
     var a = Array.from(pts.values()), n = a.length; if (!n) return null;
     var cx0 = a.reduce(function (s, p) { return s + p.x; }, 0) / n, cy0 = a.reduce(function (s, p) { return s + p.y; }, 0) / n;
@@ -411,6 +434,7 @@
       var g = snap(); if (!g0 || g.n !== g0.n) { g0 = g; return; }
       if (Math.abs(g.cx - g0.cx) + Math.abs(g.cy - g0.cy) > 4 || g.n > 1) moved = true;
       if (!moved) return;
+      moving(true);
       var z = g0.z + (g.n > 1 && g0.d > 0 ? Math.log2(g.d / g0.d) : 0), s = scaleZ(z), r = box0;
       setView(g0.w.x - (g.cx - r.left - W / 2) / s, g0.w.y - (g.cy - r.top - HH / 2) / s, z);
     }
@@ -425,7 +449,7 @@
         if (now - lastTap < 300) { var w = at(sx, sy); fly(view.x + (w.x - view.x) * 0.5, view.y + (w.y - view.y) * 0.5, view.z + 1); lastTap = 0; return; }
         lastTap = now; var w2 = at(sx, sy); showRO(latOf(w2.y), lonOf(w2.x), sx, sy);
       }
-      if (moved) settle();
+      if (moved) { settle(); moving(false); }
       g0 = null;
     };
     el.addEventListener("pointerup", end); el.addEventListener("pointercancel", end);

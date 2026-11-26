@@ -380,18 +380,48 @@
   //   and text at any zoom — otherwise Esri's raster tiles
   var VM = root.WXVMap;
   function vec() { return VM && VM.ok(); }
+  // Vector layers are drawn away from the page's thread (VM.render: in wx-vmap.js's worker, or time-sliced on old
+  //   browsers): rv is the requested view; the layer keeps showing its last drawing, transformed, until the new one
+  //   is swapped in (done()), so a redraw never lands inside a gesture frame.
   function drawBase() {
-    if (vec()) { VM.drawBase(cxB, visible(VM.tileZoom(rv.z)), { dark: dark(), dpr: dpr, z: rv.z }); return; }
+    if (vec()) { ask(LAYERS[1], { layer: "base", w: SW * dpr, h: SH * dpr, slots: visible(VM.tileZoom(rv.z)), o: { dark: dark(), dpr: dpr, z: rv.z } }); return; }
     cxB.setTransform(1, 0, 0, 1, 0, 0); cxB.fillStyle = dark() ? "#000" : "#f3f3f1"; cxB.fillRect(0, 0, cvB.width, cvB.height);
     if (VM && !VM.failed()) return; // vector map still starting up
     var g = layerGet("Base"); visible(tz()).forEach(function (v) { drawTile(cxB, v, g); });
   }
   function drawLabels() {
-    cxL.setTransform(1, 0, 0, 1, 0, 0); cxL.clearRect(0, 0, cvL.width, cvL.height);
-    if (vec()) { drawWarn(cxL, ldpr); VM.drawTop(cxL, visible(VM.tileZoom(rv.z), ldpr), { dark: dark(), dpr: ldpr, z: rv.z, w: SW, h: SH }); }
-    else { if (!VM || VM.failed()) { var g = layerGet("Reference"); visible(tz(), ldpr).forEach(function (v) { drawTile(cxL, v, g); }); } drawWarn(cxL, ldpr); }
-    // markers: the blue dot is the device's own position (or the forecast location when it follows the device);
-    //   any other forecast location gets a small neutral pin-dot
+    if (vec()) {
+      // warning outlines under the names and the location dots over them, recorded and drawn with the layer
+      var pre = VM.rec(), post = VM.rec(); drawWarn(pre, ldpr); marks(post);
+      ask(LAYERS[2], { layer: "top", w: SW * ldpr, h: SH * ldpr, slots: visible(VM.tileZoom(rv.z), ldpr), o: { dark: dark(), dpr: ldpr, z: rv.z, w: SW, h: SH }, pre: pre, post: post });
+      return;
+    }
+    cvL = LAYERS[2].c; cxL = cvL.getContext("2d");
+    if (cxL) {
+      cxL.setTransform(1, 0, 0, 1, 0, 0); cxL.clearRect(0, 0, cvL.width, cvL.height);
+      if (!VM || VM.failed()) { var g = layerGet("Reference"); visible(tz(), ldpr).forEach(function (v) { drawTile(cxL, v, g); }); } drawWarn(cxL, ldpr);
+      marks(cxL);
+    }
+  }
+  function ask(L, q) {
+    var tv = rv; L.busy = tv; L.nreq++;
+    VM.render(L.k, q, function (res) { done(L, tv, res); });
+  }
+  // a finished vector layer: swap it in and move it to the current view in the same task, so it shows registered
+  function done(L, tv, res) {
+    if (L.busy !== tv) return; // replaced by a newer request
+    L.busy = null;
+    if (res) {
+      L.c = VM.present(L.c, res); if (L.k === "B") cvB = L.c; else cvL = L.c;
+      var v = RV[L.k]; v.x = tv.x; v.y = tv.y; v.z = tv.z; L.nsw++;
+      place(L, scale()); if (L.c.style.transform !== L.tf) L.c.style.transform = L.tf;
+    }
+    if (L.want) { L.want = false; need |= L.b; }
+    paint(0);
+  }
+  // markers: the blue dot is the device's own position (or the forecast location when it follows the device);
+  //   any other forecast location gets a small neutral pin-dot
+  function marks(cxL) {
     var s = rscale(), d = ldpr;
     function pt(p) { var hx = p.x - rv.x; hx -= Math.round(hx); return { x: (hx * s + SW / 2) * d, y: ((p.y - rv.y) * s + SH / 2) * d }; }
     var me = gps ? gps : home && opts.mine ? home : null;
@@ -429,7 +459,7 @@
     });
     cxR.globalCompositeOperation = "source-over"; cxR.globalAlpha = 1;
   }
-  var miss = 0, cpT = 0, movedF = false, aheadT = 0; // tiles drawn from one scan only because the other wasn't loaded yet (tests)
+  var miss = 0, cpT = 0, movedF = false, aheadT = 0, gEnd = -1e9; // tiles drawn from one scan only because the other wasn't loaded yet (tests)
   function shift(v, ox, oy) { return { i: v.i, j: v.j, n: v.n, z: v.z, x0: v.x0 + ox, y0: v.y0 + oy, x1: v.x1 + ox, y1: v.y1 + oy }; }
 
   // ---------- storm motion between consecutive frames ----------
@@ -510,10 +540,21 @@
       if (mvKey === key) paint(2);
     }); }); }); })(k);
   }
+  // a layer's CSS transform from the view it was drawn at to the current one; returns how much of the spare margin
+  //   that uses up (1 = all; a zoom of more than 0.8–1.6x counts as used up), or -1 when it is drawn at the view
+  function place(L, sv) {
+    var v = RV[L.k], dx = view.x - v.x; dx -= Math.round(dx);
+    var k = Math.pow(2, view.z - v.z), tx = -dx * sv, ty = (v.y - view.y) * sv, off = dx || view.y !== v.y || view.z !== v.z;
+    L.tf = off ? "translate3d(" + tx.toFixed(2) + "px," + ty.toFixed(2) + "px,0) scale(" + k.toFixed(5) + ")" : "";
+    return off ? Math.max(Math.abs(tx) + W / 2 * Math.abs(1 - k), Math.abs(ty) + HH / 2 * Math.abs(1 - k)) / MG + (k < 0.8 || k > 1.6 ? 1 : 0) : -1;
+  }
   function frame(ts) {
     raf = 0; if (!on) return;
     var dt = lastT ? Math.min(0.1, (ts - lastT) / 1000) : 0; lastT = ts;
-    if (playing) { advance(dt); need |= 2; }
+    // the loop holds still under a finger (and while a fling glides): the radar is the one layer drawn on the page's
+    //   thread, and redrawing it every frame of a pan costs more than a frame on slower phones; it resumes on release
+    var held = playing && (pts.size > 0 || !!inertia);
+    if (playing && !held) { advance(dt); need |= 2; }
     if (inertia) { stepInertia(dt); }
     if (tween) { stepTween(ts); }
     if (wtip && (view.x !== wtip.x || view.y !== wtip.y || view.z !== wtip.z)) tipHide(); // the readout doesn't follow the map
@@ -522,18 +563,22 @@
     //   half used. Stale layers are redrawn one per frame so no single frame does all the work. While playing, the
     //   radar is redrawn every frame anyway, so it simply follows the view.
     var gest = pts.size > 0 || inertia || tween, stale = 0, pick = null, worst = -1, sv = scale();
+    if (gest) gEnd = ts; else if (mvOn) moving(false); var rest = ts - gEnd > 180; // the page-drawn radar's settling redraw waits until the map has been still ~0.2 s
     // (moves are only recorded by the handlers; tile requests for what's coming run as their own task after this frame)
     if (movedF) { movedF = false; if (!aheadT) aheadT = setTimeout(function () { aheadT = 0; ahead(); }, 0); clearTimeout(moved.t); moved.t = setTimeout(preload, 150); }
+    // (vector layers when the vector map is on: asked for off the page's thread (ask/done), so they can be asked for
+    //   earlier and for tile arrivals mid-gesture too; one request per layer at a time)
+    var av = vec();
     LAYERS.forEach(function (L) {
-      var v = RV[L.k], dx = view.x - v.x; dx -= Math.round(dx);
-      var k = Math.pow(2, view.z - v.z), tx = -dx * sv, ty = (v.y - view.y) * sv, off = dx || view.y !== v.y || view.z !== v.z;
-      L.tf = off ? "translate3d(" + tx.toFixed(2) + "px," + ty.toFixed(2) + "px,0) scale(" + k.toFixed(5) + ")" : "";
-      if (dirty & L.b && !(need & L.b) && worst < 2 && !(gest && L.b === 4)) { worst = 2; pick = L; } // new tiles arrived mid-gesture (labels wait for the margin or the end)
-      if (!off) return;
+      var use = place(L, sv), as = av && L.k !== "R";
+      if (as && L.busy) { if (need & L.b) { L.want = true; need &= ~L.b; } return; } // asked again once this one is in
+      var pg = !as && (L.b === 4 || L.b === 2 && (!playing || held)); // drawn on the page's thread (and not every frame anyway)
+      if (dirty & L.b && !(need & L.b) && worst < 2 && !(pg && (gest || !rest))) { worst = 2; pick = L; } // new tiles arrived mid-gesture (page-drawn layers wait for the margin or the end)
+      if (use < 0) return;
       stale |= L.b;
-      var use = Math.max(Math.abs(tx) + W / 2 * Math.abs(1 - k), Math.abs(ty) + HH / 2 * Math.abs(1 - k)) / MG + (k < 0.8 || k > 1.6 ? 1 : 0);
       if (need & L.b) return; // redrawn below anyway
-      if ((!gest || use > (L.b === 4 ? 0.85 : 0.65)) && use > worst) { worst = use; pick = L; } // (lines/labels: the costliest redraw, and a late one only leaves the outer edge without lines)
+      if (pg && tween && !tween.fly && use < 2) return; // a double-tap zoom scales the last drawing; redrawn once it ends
+      if ((!gest && (rest || !pg) || use > (as ? 0.4 : L.b === 4 ? 0.85 : 0.65)) && use > worst) { worst = use; pick = L; } // (page-drawn lines/labels: the costliest redraw, and a late one only leaves the outer edge without lines)
     });
     if (pick) { need |= pick.b; dirty &= ~pick.b; if (worst < 2) redraws++; }
     // a layer redrawn mid-pan is drawn half a margin ahead in the direction of travel, so it lasts about twice as far
@@ -542,16 +587,18 @@
     if (need) {
       LAYERS.forEach(function (L) {
         if (!(need & L.b)) return;
-        var v = RV[L.k], ld = L === pick ? lead : 0; v.x = view.x + dir.x * ld; v.y = view.y + dir.y * ld; v.z = view.z; L.tf = "";
-        at(v, L.draw);
+        var ld = L === pick ? lead : 0, tv = { x: view.x + dir.x * ld, y: view.y + dir.y * ld, z: view.z };
+        if (av && L.k !== "R") { dirty &= ~L.b; at(tv, L.draw); return; } // (RV changes when the drawing is swapped in)
+        var v = RV[L.k]; v.x = tv.x; v.y = tv.y; v.z = tv.z;
+        at(v, L.draw); place(L, sv); // (a layer drawn ahead is shown moved back to the view in this same frame)
       });
       if (need & stale) { clearTimeout(moved.t); moved.t = setTimeout(preload, 120); }
       dirty &= ~need; need = 0; timeUi();
     }
     LAYERS.forEach(function (L) { if (L.c.style.transform !== L.tf) L.c.style.transform = L.tf; });
     if (!gest || ts - cpT > 250) { cpT = ts; checkPending(); } // (walks every frame's tiles: a few times a second is plenty mid-gesture)
-    var left = LAYERS.some(function (L) { return L.tf; });
-    if (playing || gest || left || dirty) raf = requestAnimationFrame(frame); else lastT = 0;
+    var left = LAYERS.some(function (L) { return L.tf && !L.busy; }) || !rest;
+    if (playing || gest || left || dirty || need) raf = requestAnimationFrame(frame); else lastT = 0;
   }
 
   // ---------- frames and playback ----------
@@ -1061,6 +1108,12 @@
   }
   function clampView() { view.y = Math.max(0.05, Math.min(0.95, view.y)); view.x = ((view.x % 1) + 1) % 1; }
   function moved() { movedF = true; paint(0); }
+  // the floating controls drop their backdrop blur while the map moves under them (.mapmove, index.html)
+  var mvOn = false, mvT = 0;
+  function moving(go) {
+    if (go) { clearTimeout(mvT); mvT = 0; if (!mvOn) { mvOn = true; el.classList.add("mapmove"); } }
+    else if (mvOn && !mvT) mvT = setTimeout(function () { mvT = 0; mvOn = false; el.classList.remove("mapmove"); }, 150);
+  }
   // the map's box is read once when a gesture starts (a fresh read per move would be a layout query on every event)
   var box0 = null;
   function local(e, fresh) { var r = !fresh && box0 || (box0 = el.getBoundingClientRect()); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
@@ -1079,7 +1132,7 @@
     });
     t.addEventListener("pointermove", function (e) {
       if (!pts.has(e.pointerId)) return; var p = local(e); pts.set(e.pointerId, p);
-      if (pts.size > 1 || t._down && Math.hypot(p.x - t._down.x, p.y - t._down.y) > 8) unlock();
+      if (pts.size > 1 || t._down && Math.hypot(p.x - t._down.x, p.y - t._down.y) > 8) { unlock(); moving(true); }
       var ps = Array.from(pts.values()), s = scale();
       if (g0 && g0.n === 1 && ps.length === 1) {
         view.x = g0.vx - (p.x - g0.x) / s; view.y = g0.vy - (p.y - g0.y) / s; clampView();
@@ -1106,7 +1159,7 @@
     t.addEventListener("pointerup", up); t.addEventListener("pointercancel", up);
     t.addEventListener("wheel", function (e) {
       e.preventDefault(); var p = local(e, true), k = e.deltaMode === 1 ? 0.05 : e.deltaMode === 2 ? 1 : 0.0022;
-      zoomAt(p.x, p.y, view.z - e.deltaY * k); moved();
+      zoomAt(p.x, p.y, view.z - e.deltaY * k); moving(true); moved();
     }, { passive: false });
   }
   function stepInertia(dt) {
@@ -1175,7 +1228,8 @@
       '<div class="rbar"><button type="button" class="rplay" aria-label="Play"></button><input type="range" class="rrange" min="0" max="' + (NF - 1) + '" step="0.01" value="' + (NF - 1) + '" aria-label="Radar time"><button type="button" class="rtime num" aria-label="Show the latest radar and check for new scans"><b></b><span></span></button></div>';
     stage = el.querySelector(".rstage"); var cs = el.querySelectorAll("canvas"); cvB = cs[0]; cvR = cs[1]; cvL = cs[2];
     cxB = cvB.getContext("2d"); cxR = cvR.getContext("2d"); cxL = cvL.getContext("2d");
-    LAYERS = [{ k: "R", b: 2, c: cvR, draw: drawRadar, tf: "" }, { k: "B", b: 1, c: cvB, draw: drawBase, tf: "" }, { k: "L", b: 4, c: cvL, draw: drawLabels, tf: "" }];
+    LAYERS = [{ k: "R", b: 2, c: cvR, draw: drawRadar }, { k: "B", b: 1, c: cvB, draw: drawBase }, { k: "L", b: 4, c: cvL, draw: drawLabels }];
+    LAYERS.forEach(function (L) { L.tf = ""; L.busy = null; L.want = false; L.nreq = 0; L.nsw = 0; });
     ui = { stat: el.querySelector(".rstat"), play: el.querySelector(".rplay"), range: el.querySelector(".rrange"), time: el.querySelector(".rtime"), t1: el.querySelector(".rtime b"), t2: el.querySelector(".rtime span"), leg: el.querySelector(".rleg"), warn: el.querySelector(".rwarn") };
     ui.play.addEventListener("click", function () { userPaused = playing; play(!playing); started = true; });
     ui.range.addEventListener("input", function () { var v = +ui.range.value; playing && play(false); userPaused = true; started = true; cur = Math.min(NF - 1, Math.floor(v)); frac = v - cur; if (cur === NF - 1) frac = 0; paint(2); });
@@ -1220,9 +1274,10 @@
     dpr = bud(2, 1.6e6, 1); rdpr = bud(1.5, 0.9e6, 1); ldpr = bud(3, 3.6e6, 2);
     stage.style.cssText = "left:" + -MG + "px;top:" + -MG + "px;width:" + SW + "px;height:" + SH + "px";
     ["B", "R", "L"].forEach(function (k) { RV[k].x = view.x; RV[k].y = view.y; RV[k].z = view.z; });
-    cvB.width = Math.round(SW * dpr); cvB.height = Math.round(SH * dpr);
+    // (a vector layer keeps its last drawing, stretched, until the redraw at the new size is swapped in: resizing it
+    //   here would blank it meanwhile)
+    if (!vec()) { cvB.width = Math.round(SW * dpr); cvB.height = Math.round(SH * dpr); cvL.width = Math.round(SW * ldpr); cvL.height = Math.round(SH * ldpr); }
     cvR.width = Math.round(SW * rdpr); cvR.height = Math.round(SH * rdpr);
-    cvL.width = Math.round(SW * ldpr); cvL.height = Math.round(SH * ldpr);
     paint(7); preload();
   }
 
@@ -1254,7 +1309,7 @@
     hide: function () { warnStop(); tipHide(); stopWatch(); if (gpsMode === "wait") gpsMode = "off"; on = false; playing && play(false); started = false; userPaused = false; clearTimeout(refreshT); clearInterval(tickT); clearInterval(wdT); if (raf) cancelAnimationFrame(raf); raf = 0; },
     refresh: function () { if (on) { recheck(true); warnFetch(); } },
     // for the live data check
-    _state: function () { return { why: s3Why, dom: dom.k, rvR: RV.R, rdpr: rdpr, SW: SW, SH: SH, times: frames && frames.times, refs: frames && frames.refs, flags: frames && frames.flags, s3OK: s3OK, box: box, wk: !!WK, mv: (MV[mvKey] || []).map(function (m) { return m ? [+(m.x * rscale()).toFixed(1), +(m.y * rscale()).toFixed(1)] : null; }), redraws: redraws, tf: cvL && cvL.style.transform, tfs: LAYERS.map(function (L) { return L.c.style.transform; }), src: frames && frames.src, mrmsOK: mrmsOK, corsOK: corsOK, frames: frames && frames.n, valid: frames && frames.valid, ready: frames ? ready(frames) : 0, ring: frames ? ringReady() : 0, miss: miss, stalls: nStall, stallRun: stalls, lastStall: lastStall, resets: resets, lastReset: lastReset, pendingAge: pending ? Date.now() - pendAt : 0, checkingAge: checking ? Date.now() - lastLoad : 0, checking: checking, upd: upd, wkAlive: !!WK && WK.every(function (w) { return !w._ping || Date.now() - w._ping < T.pong; }), view: view, playing: playing, cur: cur, frac: frac, warn: { n: WARN.list.length, at: WARN.at, ok: WARN.ok, err: WARN.err } }; },
+    _state: function () { return { why: s3Why, dom: dom.k, rvR: RV.R, rdpr: rdpr, SW: SW, SH: SH, times: frames && frames.times, refs: frames && frames.refs, flags: frames && frames.flags, s3OK: s3OK, box: box, wk: !!WK, mv: (MV[mvKey] || []).map(function (m) { return m ? [+(m.x * rscale()).toFixed(1), +(m.y * rscale()).toFixed(1)] : null; }), redraws: redraws, vreq: LAYERS.map(function (L) { return L.k + ":" + (L.nreq || 0) + "/" + (L.nsw || 0); }).join(" "), off: !!(VM && VM.offThread && VM.offThread()), tf: cvL && cvL.style.transform, tfs: LAYERS.map(function (L) { return L.c.style.transform; }), src: frames && frames.src, mrmsOK: mrmsOK, corsOK: corsOK, frames: frames && frames.n, valid: frames && frames.valid, ready: frames ? ready(frames) : 0, ring: frames ? ringReady() : 0, miss: miss, stalls: nStall, stallRun: stalls, lastStall: lastStall, resets: resets, lastReset: lastReset, pendingAge: pending ? Date.now() - pendAt : 0, checkingAge: checking ? Date.now() - lastLoad : 0, checking: checking, upd: upd, wkAlive: !!WK && WK.every(function (w) { return !w._ping || Date.now() - w._ping < T.pong; }), view: view, playing: playing, cur: cur, frac: frac, warn: { n: WARN.list.length, at: WARN.at, ok: WARN.ok, err: WARN.err } }; },
     // warning outlines for tests: [{ev, until, pts: [[sx, sy], …] first ring of each polygon in map CSS px}]
     _warn: function () { var s = scale(); return WARN.list.map(function (w) { var off = Math.round(view.x - (w.bb[0] + w.bb[2]) / 2); return { ev: w.ev, until: w.until, end: w.end, pts: w.polys.map(function (pr) { var a = pr[0], o = []; for (var i = 0; i < a.length; i += 2) o.push([(a[i] + off - view.x) * s + W / 2, (a[i + 1] - view.y) * s + HH / 2]); return o; }) }; }); },
     _pal: function () { return pal(); },
