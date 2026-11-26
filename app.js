@@ -82,6 +82,7 @@
       $("fdot").className = "dot" + (refreshFailed || age > 3 * H ? " crit" : partial || age > 75 * 60000 ? " warn" : "");
       $("ftxt").textContent = (refreshFailed ? "Refresh failed" : partial ? "Partial data" : "Checked " + ago(doc.fetchedAt)) + " ⓘ";
       $("fresh").title = "Data & sources · last checked " + dtm(doc.fetchedAt);
+      $("fstat").title = $("fresh").title;
       if (refreshFailed) messages.push("Couldn't refresh weather data. Showing the last loaded forecast.");
       else if (age > 75 * 60000) messages.push("Weather was last checked " + ago(doc.fetchedAt) + ". Tap refresh for current data.");
       if (a === "unavailable") messages.push("Alerts unavailable — active alerts could not be checked.");
@@ -90,9 +91,11 @@
       if (doc.cur && Date.now() - doc.cur.ms > 90 * 60000) messages.push("Current conditions were observed " + ago(doc.cur.ms) + ".");
     }
     notice.hidden = !messages.length; notice.textContent = messages.join(" ");
+    $("fstat").setAttribute("aria-label", "Data status: " + $("ftxt").textContent.replace(" ⓘ", "").toLowerCase()); // the header's status dot
     renderDataInfo();
   }
   $("fresh").addEventListener("click", function () { renderDataInfo(); $("data-info").showModal(); });
+  $("fstat").addEventListener("click", function () { renderDataInfo(); $("data-info").showModal(); });
   $("data-info-close").addEventListener("click", function () { $("data-info").close(); });
   $("data-info").addEventListener("click", function (e) { if (e.target === this) { var r = this.getBoundingClientRect(); if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) this.close(); } });
 
@@ -643,44 +646,75 @@
     mids.forEach(function (i) { head += '<text x="' + (i * PX + 4) + '" y="12" font-size="11" font-weight="600" fill="var(--ink)">' + esc(fmt(start + i * H, { weekday: "short", month: "numeric", day: "numeric" })) + "</text>"; });
     if (!mids.length || mids[0] > 6) head = '<text x="4" y="12" font-size="11" font-weight="600" fill="var(--ink)">' + esc(fmt(start, { weekday: "short", month: "numeric", day: "numeric" })) + "</text>" + head;
 
-    // 0 Next 12 hours (Daily): the temperature line with a few values on it, and under it one thin row of precip-chance
-    //   bars (height = chance, coloured by type as on the Precipitation card, thunder as a strip along its top). The row is
-    //   left out while the full Precipitation card shows right under this one, so the two don't repeat each other.
-    //   Missing hours stay gaps ("–" in the chance row), never 0.
+    // 0 Next 12 hours (Daily): a compact Temperature card built like panel() below (same y-axis labels, gridlines, now
+    //   line/value and hold-to-read), on a tight scale with 3–4 labels; wind chill / heat index as a second line when it
+    //   differs by 3°+ for 2+ of these hours; a value every 3 hours on the line; the hour's weather emoji every 3 hours under the
+    //   plot; and a thin precip-chance row (bars coloured by type as on the Precipitation card) only when some hour reaches
+    //   15% and the full Precipitation card isn't showing right under it. Missing hours stay gaps / "–", never 0.
     if (only === "next") {
-      var showP = !nowPrecipOn(), NT = [["rain", "Rain"], ["snow", "Snow"], ["fzra", "Freezing rain"], ["sleet", "Sleet"]], nUsed = {};
-      var nHD = 16, tTop = nHD + 16, tBot = tTop + 28, bTop = tBot + 12, bBase = bTop + 24, BHn = 18, nH2 = showP ? bBase + 2 : tBot + 8;
-      var tvn = s.t.filter(function (v) { return v != null; }), tlo = Math.min.apply(null, tvn), thi = Math.max.apply(null, tvn);
-      if (thi - tlo < 6) { tlo = (tlo + thi) / 2 - 3; thi = tlo + 6; }
-      var yT = function (v) { return tBot - (tBot - tTop) * (v - tlo) / (thi - tlo); }, yPn = function (v) { return bBase - BHn * Math.max(0, Math.min(100, v)) / 100; };
+      var NT = [["rain", "Rain"], ["snow", "Snow"], ["fzra", "Freezing rain"], ["sleet", "Sleet"]], nUsed = {};
+      var showP = !nowPrecipOn() && s.pop.some(function (v) { return v >= 15; });
+      var nWc = s.wc.filter(function (v, k) { return v != null && s.t[k] != null && s.t[k] - v >= 3; }).length >= 2, nHi = s.hi.filter(function (v, k) { return v != null && s.t[k] != null && v - s.t[k] >= 3; }).length >= 2; // 3°+ apart for 2+ hours
+      var tvn = s.t.concat(nWc ? s.wc : [], nHi ? s.hi : []).filter(function (v) { return v != null; });
+      // tightest scale with at most 4 labels on round steps
+      var nlo = Math.min.apply(null, tvn), nhi = Math.max.apply(null, tvn), ntt = null;
+      [2, 5, 10, 20, 25, 50].forEach(function (st) { var c = nice(nlo, nhi, st); if (c.length <= 4 && (!ntt || c[c.length - 1] - c[0] < ntt[ntt.length - 1] - ntt[0])) ntt = c; });
+      var HD = 16, hT = 64, yN = scale(ntt, hT, 8), yTop = yN(ntt[ntt.length - 1]); // area coordinates (the plot is drawn HD lower)
+      // chance row: thunder strip on top, then room for the chance labels, then bars up to 14 px
+      var icoY = hT + 13, bTop = hT + 28, bBase = bTop + 30, nH2 = HD + (showP ? bBase + 4 : hT + 26);
+      var yPn = function (v) { return bBase - 14 * Math.max(0, Math.min(100, v)) / 100; };
       var nnx = Math.max(1, Math.min(W - 1, (Date.now() - start) / H * PX)), nb = "", lastL = -99;
-      nb += '<line x1="0" x2="' + W + '" y1="' + tBot + '" y2="' + tBot + '" stroke="var(--grid)" stroke-width="1"/>';
-      if (tvn.length) nb += '<path d="' + path(s.t, yT) + '" fill="none" stroke="var(--t)" stroke-width="2.75"/>';
-      for (i = 0; i < n; i++) { // a value every 3 hours, as the axis labels; none right beside the now line (its own value sits there); hidden while holding to read (.nxl)
-        var tvi = s.t[i]; if (tvi == null || hourNum(start + i * H) % 3 || X(i) < nnx + 44 || X(i) > W - 8) continue;
-        nb += '<text class="nxl" x="' + X(i) + '" y="' + (yT(tvi) - 7).toFixed(1) + '" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--ink)" stroke="var(--surface)" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">' + tvi + "°</text>";
+      // the hour's emoji from its weather wording (chance or more) or sky cover; nothing known: no icon
+      var hourCode = function (k) {
+        if (!(s.wxKnown || [])[k]) return null;
+        var on = function (t) { return s[t] && s[t][k] && s[t][k][0] >= 2; };
+        if (on("thunder")) return "tsra";
+        if (on("snow") && (on("rain") || on("fzra") || on("sleet"))) return "rain_snow";
+        if (on("fzra") || on("sleet")) return "fzra"; if (on("snow")) return "snow"; if (on("rain")) return "rain"; if (on("fog")) return "fog";
+        var sk = s.sky[k]; return sk == null ? null : sk <= 5 ? "skc" : sk <= 25 ? "few" : sk <= 50 ? "sct" : sk <= 87 ? "bkn" : "ovc";
+      };
+      if (nWc) nb += '<path d="' + path(s.wc, yN) + '" fill="none" stroke="var(--wc)" stroke-width="2"/>';
+      if (nHi) nb += '<path d="' + path(s.hi, yN) + '" fill="none" stroke="var(--hi)" stroke-width="2"/>';
+      nb += '<path d="' + path(s.t, yN) + '" fill="none" stroke="var(--t)" stroke-width="2.75"/>';
+      for (i = 0; i < n; i++) {
+        if (hourNum(start + i * H) % 3) continue;
+        // value on the line every 3 hours, clear of the now line's time and value labels (right of the line) and the edges;
+        //   on the side away from a heat-index line (above it), else above; never into the emoji row (.nxl: hidden while holding)
+        var tvi = s.t[i];
+        if (tvi != null && !(X(i) > nnx - 16 && X(i) < nnx + 52) && X(i) > 12 && X(i) < W - 12) {
+          var py = yN(tvi), ly = nHi && s.hi[i] != null && py + 16 <= hT ? py + 16 : py - 7;
+          nb += '<text class="nxl" x="' + X(i) + '" y="' + ly.toFixed(1) + '" text-anchor="middle" font-size="11.5" font-weight="700" fill="var(--ink)" stroke="var(--surface)" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">' + tvi + "°</text>";
+        }
+        var ic = hourCode(i), em = ic ? emo(ic, isDay(start + i * H)) : null;
+        if (!em) nb += '<text x="' + X(i) + '" y="' + (icoY + 4) + '" text-anchor="middle" font-size="11" fill="var(--muted)">–</text>';
+        else if (em === FOG) nb += em.replace('<svg class="fogi"', '<svg x="' + (X(i) - 8) + '" y="' + (icoY - 8) + '" width="16" height="16" class="fogi"').replace(' width="1em" height="1em"', "");
+        else nb += '<text x="' + X(i) + '" y="' + (icoY + 6) + '" text-anchor="middle" font-size="16">' + em + "</text>";
       }
       if (showP) {
         nb += '<line x1="0" x2="' + W + '" y1="' + bBase + '" y2="' + bBase + '" stroke="var(--line)"/>';
         for (i = 0; i < n; i++) {
           var pv = s.pop[i];
-          if (pv == null) { nb += '<text x="' + X(i) + '" y="' + (bBase - 4) + '" text-anchor="middle" font-size="10" fill="var(--muted)">–</text>'; continue; }
+          if (pv == null) { nb += '<text x="' + X(i) + '" y="' + (bBase - 3) + '" text-anchor="middle" font-size="10" fill="var(--muted)">–</text>'; continue; }
           var nhere = NT.filter(function (t) { return s[t[0]][i]; }), top = yPn(pv), bw = (PX - 4) / Math.max(1, nhere.length);
           if (pv >= 15) (nhere.length ? nhere : [[null]]).forEach(function (t, k) { // under 15% is left off, as on the period tiles (popShow)
             if (t[0]) nUsed[t[0]] = 1;
             nb += '<rect x="' + (i * PX + 2 + k * bw).toFixed(1) + '" y="' + top.toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + (bBase - top).toFixed(1) + '" fill="' + (t[0] ? "var(--" + t[0] + ")" : "var(--muted)") + '" fill-opacity="' + (t[0] ? ".85" : ".45") + '"/>';
           });
-          if (s.thunder && s.thunder[i]) { nUsed.thunder = 1; nb += '<rect x="' + (i * PX + 1).toFixed(1) + '" y="' + (bTop - 6) + '" width="' + (PX - 2).toFixed(1) + '" height="4" rx="1.5" fill="var(--thunder)"/>'; }
+          if (s.thunder && s.thunder[i]) { nUsed.thunder = 1; nb += '<rect x="' + (i * PX + 1).toFixed(1) + '" y="' + bTop + '" width="' + (PX - 2).toFixed(1) + '" height="3" rx="1.5" fill="var(--thunder)"/>'; }
           // the chance where it changes (NWS chances come in blocks), when 15%+ and clear of the last label
-          if (pv >= 15 && pv !== s.pop[i - 1] && X(i) - lastL >= 26) { lastL = X(i); nb += '<text class="nxl" x="' + X(i) + '" y="' + (top - 3).toFixed(1) + '" text-anchor="middle" font-size="10" font-weight="700" fill="var(--ink2)" stroke="var(--surface)" stroke-width="3" paint-order="stroke" stroke-linejoin="round">' + pv + "%</text>"; }
+          if (pv >= 15 && pv !== s.pop[i - 1] && X(i) - lastL >= 26) { lastL = X(i); nb += '<text class="nxl" x="' + X(i) + '" y="' + (top - 2).toFixed(1) + '" text-anchor="middle" font-size="10" font-weight="700" fill="var(--ink2)" stroke="var(--surface)" stroke-width="3" paint-order="stroke" stroke-linejoin="round">' + pv + "%</text>"; }
         }
       }
-      var tMark = { a: s.t, y: yT, c: "var(--t)", u: "°", n: "Temp" };
-      var nLegend = showP && Object.keys(nUsed).length ? li("var(--t)", "", "Temp") + NT.concat([["thunder", "Thunder"]]).filter(function (t) { return nUsed[t[0]]; }).map(function (t) { return li("var(--" + t[0] + ")", t[0] === "thunder" ? "strip" : "blk", t[1]); }).join("") : "";
-      var nAxis = showP ? '<div class="yax" style="height:' + nH2 + "px;margin-bottom:-" + nH2 + 'px"><span class="mkl" style="top:' + (bBase - 7) + 'px">Precip</span></div>' : "";
+      var nMarks = [{ a: s.t, y: yN, c: "var(--t)", u: "°", n: "Temp" }].concat(nWc ? [{ a: s.wc, y: yN, c: "var(--wc)", u: "°", n: "Wind chill" }] : [], nHi ? [{ a: s.hi, y: yN, c: "var(--hi)", u: "°", n: "Heat index" }] : []);
+      var nTypes = showP ? NT.concat([["thunder", "Thunder"]]).filter(function (t) { return nUsed[t[0]]; }) : [];
+      var nLegend = nWc || nHi || nTypes.length ? li("var(--t)", "", "Temp") + (nWc ? li("var(--wc)", "", "Wind chill") : "") + (nHi ? li("var(--hi)", "", "Heat index") : "") +
+        nTypes.map(function (t) { return li("var(--" + t[0] + ")", t[0] === "thunder" ? "strip" : "blk", t[1]); }).join("") : "";
+      var yo = function (v) { return yN(v) + HD; };
+      var nAxis = '<div class="yax" style="height:' + nH2 + "px;margin-bottom:-" + nH2 + 'px">' + ntt.map(function (t) { return '<span style="top:' + yo(t).toFixed(1) + 'px">' + t + "°</span>"; }).join("") +
+        (showP ? '<span class="mkl" style="top:' + (HD + bBase - 7) + 'px">Precip</span>' : "") + "</div>";
       out.push(wrap("Next 12 hours", nLegend, nAxis, '<svg class="gsvg plot" width="' + W + '" height="' + nH2 + '" viewBox="0 0 ' + W + " " + nH2 + '">' +
-        (function (v) { return v[0] + nb + v[1] + nowVals([tMark], 0, 0, nH2); })(vlines(nH2, 0, nHD)) + "</svg>",
-        [tMark].concat(showP ? [{ a: s.pop, y: yPn, c: "var(--ink2)", u: "%", n: "Precip" }] : []), 0, 0));
+        (function (v) { return '<g transform="translate(0,' + HD + ')">' + hgrid(ntt, yN, hT) + "</g>" + v[0] + '<g transform="translate(0,' + HD + ')">' + nb + "</g>" + v[1] + nowVals(nMarks, HD, yTop + HD - 18, HD + hT); })(vlines(nH2, yTop + HD - 18, yTop + HD)) + "</svg>",
+        nMarks.concat(showP ? [{ a: s.pop, y: yPn, c: "var(--ink2)", u: "%", n: "Precip" }] : []), yTop + HD - 18, HD));
     }
 
     // 1 temperature
@@ -1316,9 +1350,8 @@
   //   resizes its canvases); its (i) popover with the credits and safety notice closes on a tap elsewhere or Escape
   document.addEventListener("pointerdown", function (e) { var d = $("rsrc"); if (d.open && !d.contains(e.target)) d.open = false; });
   document.addEventListener("keydown", function (e) { if (e.key === "Escape") $("rsrc").open = false; });
-  // --toph: how far the stuck header reaches below the top safe area (its height plus the gap above it, --topgap)
-  function setTopH() { var r = document.documentElement; r.style.setProperty("--toph", document.querySelector(".top").offsetHeight + (parseFloat(getComputedStyle(r).getPropertyValue("--topgap")) || 0) + "px"); }
-  setTopH(); window.addEventListener("resize", setTopH);
+  // --toph (how far the header reaches below the top safe area) is a CSS constant now that the header is fixed: nothing
+  //   measures it during scrolling (a layout read there forced a full-page layout on every compact flip)
   function showTab(t) {
     if (t === "totals") t = "maps"; // old tab name (the storm totals card is on Forecast)
     if (t === "forecast") t = "maps"; // the Maps tab is now called Forecast
@@ -1338,7 +1371,7 @@
     if (t === "radar") radarOn(); else if (window.WXRadar) WXRadar.hide();
     requestAnimationFrame(equalize);
     if (changed) window.scrollTo(0, 0);
-    if (t === "daily") { activeCard = -1; setTopH(); requestAnimationFrame(syncStrip); }
+    if (t === "daily") { activeCard = -1; requestAnimationFrame(syncStrip); }
     try { localStorage.setItem("wx-tab", t); } catch (e) {}
     touchTab();
   }
@@ -1387,11 +1420,12 @@
     if (!dock) return function () {};
     // keep the selected-tab pill on its tab while the bar resizes
     // the bar snaps between sizes (no size animation), and the pill is placed once without sliding, so nothing jiggles
-    // the header snaps a line shorter at the same time (the "Updated …" line hides), giving the page more room
-    //   the browser then shifts the scroll position by the header's change (scroll anchoring); that shift isn't the user
-    //   scrolling, so it's ignored (otherwise it flips the state straight back, over and over)
+    // the header shrinks to 36 px at the same time; it is position:fixed over a constant spacer, so the page itself never
+    //   reflows or shifts (no scroll anchoring, which iOS Safari doesn't do anyway) and nothing reads layout here; the
+    //   pill rides along by column in CSS, so only its slide transition is switched off. The short quiet time after a
+    //   flip plus the 24 px down / 12 px up thresholds keep the state from flip-flopping.
     var quiet = 0;
-    function set(small) { if (dock.classList.contains("mini") === small) return; dock.classList.toggle("mini", small); document.documentElement.classList.toggle("scrolled", small); setTopH(); movePill(false); acc = 0; quiet = performance.now() + 380; setTimeout(setTopH, 300); requestAnimationFrame(function () { last = window.scrollY; }); }
+    function set(small) { if (dock.classList.contains("mini") === small) return; dock.classList.toggle("mini", small); document.documentElement.classList.toggle("scrolled", small); $("nav").classList.remove("anim"); acc = 0; quiet = performance.now() + 380; requestAnimationFrame(function () { last = window.scrollY; }); }
     function upd() {
       tick = false; var y = window.scrollY, d = y - last; last = y;
       if (performance.now() < quiet) return;
@@ -1457,15 +1491,15 @@
   //   container to its graph, since the Now card's contents are rebuilt on every refresh)
   function wireScrub(el, getI, within) {
     var ok = function (t) { return !within || (t.closest && t.closest(within)); };
-    el.addEventListener("touchstart", function (e) { if (e.touches.length === 1 && ok(e.target)) scrubStart(e.target, e.touches[0].clientX, e.touches[0].clientY, getI()); }, { passive: true });
+    el.addEventListener("touchstart", function (e) { if (e.touches.length === 1 && ok(e.target)) scrubStart(e.target, e.touches[0].clientX, e.touches[0].clientY, getI(e.target)); }, { passive: true });
     el.addEventListener("touchmove", function (e) { if (e.touches.length === 1) scrubMove(e.touches[0].clientX, e.touches[0].clientY, e); }, { passive: true });
     el.addEventListener("touchend", scrubEnd); el.addEventListener("touchcancel", scrubEnd);
-    el.addEventListener("mousedown", function (e) { if (ok(e.target)) scrubStart(e.target, e.clientX, e.clientY, getI()); });
+    el.addEventListener("mousedown", function (e) { if (ok(e.target)) scrubStart(e.target, e.clientX, e.clientY, getI(e.target)); });
     el.addEventListener("contextmenu", function (e) { if (ok(e.target) && e.target.closest(".gsc")) e.preventDefault(); });
   }
   wireScrub($("gin"), function () { return G; });
-  wireScrub($("nowcard"), function () { return GN; }, "#nowprecip");
-  wireScrub($("nowcard"), function () { return GX; }, "#nownext");
+  // one set of listeners on the Now card serves both of its graphs (Precipitation GN, Next 12 hours GX)
+  wireScrub($("nowcard"), function (t) { return t.closest("#nownext") ? GX : GN; }, "#nowprecip, #nownext");
   window.addEventListener("mousemove", function (e) { if (sc0) scrubMove(e.clientX, e.clientY, e); });
   window.addEventListener("mouseup", function () { if (sc0 || scrubbing) scrubEnd(); });
 
@@ -1498,7 +1532,7 @@
   //   (a hold is hold-to-read). Its listeners are passive: noPull() above already cancels the browser's own pull at the top.
   var PTR_AT = 70, ptrEl = $("ptr"), pr = null;
   function ptrShow(d, drag) {
-    ptrEl.classList.toggle("drag", drag); ptrEl.style.opacity = d ? String(Math.min(1, d / 40)) : "";
+    ptrEl.classList.toggle("drag", drag); ptrEl.classList.toggle("on", !!d); ptrEl.style.opacity = d ? String(Math.min(1, d / 40)) : "";
     ptrEl.style.transform = d ? "translateY(" + d + "px)" : ""; ptrEl.firstChild.style.transform = drag ? "rotate(" + Math.round(d / PTR_AT * 300) + "deg)" : "";
   }
   function ptrEnd(go) {
