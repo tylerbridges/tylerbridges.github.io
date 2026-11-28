@@ -865,14 +865,15 @@
     gin.querySelectorAll(".pan").forEach(function (pn, k) { var r = WXK.indexOf(k); pn.style.order = r >= 0 ? r - 100 : k === CLOUDK ? 100 : k; });
     gLayout(gin);
     // an amount pushed under the row labels (the box's visible part narrower than its number) is hidden rather than shown
-    //   cut off; an IntersectionObserver does it off the scroll path (no scroll listener)
+    //   cut off. Measured from the numbers' own positions (sticky, so they only move under the labels at a box's end) on
+    //   the shared scroller's scroll, once per frame, and whenever the card is laid out. Numbers start visible; the old
+    //   IntersectionObserver version sometimes left every number hidden on iPhone (Nov 28).
     if (AMIO[gin.id]) AMIO[gin.id].disconnect(); AMIO[gin.id] = null;
-    var amS = gin.querySelectorAll(".amb > span");
-    if (amS.length && window.IntersectionObserver) {
-      var amg = parseFloat(getComputedStyle(gin).getPropertyValue("--amg")) || 48;
-      var amio = AMIO[gin.id] = new IntersectionObserver(function (es) { es.forEach(function (e) { e.target.classList.toggle("amhide", e.intersectionRatio < 0.99); }); },
-        { root: gin.querySelector(".gall"), rootMargin: "0px 0px 0px -" + amg + "px", threshold: [0, 0.99, 1] });
-      amS.forEach(function (sp) { amio.observe(sp); });
+    var amAll = gin.querySelector(".gall");
+    if (amAll && gin.querySelector(".amb > span")) {
+      var amRaf = 0;
+      amAll.addEventListener("scroll", function () { if (!amRaf) amRaf = requestAnimationFrame(function () { amRaf = 0; amCheck(gin); }); }, { passive: true });
+      amCheck(gin);
     }
     var I = { el: gin, start: start, n: n, nowI: nowI, mids: mids, marks: MARKS, W: W, px: PX, cw: gin.clientWidth };
 
@@ -916,6 +917,14 @@
   function scrollNow(I) {
     var sc = scOf(I); if (!I.needScroll || !sc.clientWidth) return; I.needScroll = false;
     sc.scrollTo({ left: Math.max(0, GL + ((Date.now() - I.start) / H) * (I.px || PX) - sc.clientWidth * 0.3), behavior: "auto" });
+    amCheck(I.el);
+  }
+  function amCheck(gin) {
+    var all = gin && gin.querySelector(".gall"); if (!all) return;
+    var sp = gin.querySelectorAll(".amb > span"); if (!sp.length) return;
+    var ar = all.getBoundingClientRect(); if (!ar.width) return; // hidden tab: checked again when it lays out
+    var edge = ar.left + (parseFloat(getComputedStyle(gin).getPropertyValue("--amg")) || 48);
+    for (var i = 0; i < sp.length; i++) { var r = sp[i].getBoundingClientRect(); sp[i].classList.toggle("amhide", r.width > 0 && r.left < edge - 0.5); }
   }
   // size sticky titles/legends to the visible width and draw each card's box behind its panel
   function gLayout(gin) {
@@ -924,6 +933,7 @@
     var pans = gin.querySelectorAll(".pan"), boxes = [];
     for (var k = 0; k < pans.length; k++) boxes.push('<div style="top:' + pans[k].offsetTop + "px;height:" + pans[k].offsetHeight + 'px"></div>');
     bg.innerHTML = boxes.join("");
+    amCheck(gin);
   }
   // re-lay-out whenever the Hourly area or the Now card changes size (including when a hidden tab is shown)
   function layoutAll() {
